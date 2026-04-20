@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+data/*.db*
+data/tpl*.json
+.env
+.env.local
+.git
+.gitignore
+.claude
+README.md
+tests
+*.log
+.DS_Store
+Thumbs.db
