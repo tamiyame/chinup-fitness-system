@@ -1,23 +1,14 @@
 // 將課程範本展開為實際場次清單。純函式，方便測試。
 
-const RECURRENCE_STEP_DAYS = {
-  monthly: 7,      // 每月一次 = 每 7*4 天…其實我們用「每週同一天」為單位展開，依 cycle 期間內所有該 day_of_week 的日期
-  bimonthly: 7,
-  quarterly: 7,
-  semiannual: 7,
-};
-
-// 每個 recurrence 代表「多久出現一次場次」。最直觀的模型：
-// - monthly: 該月第一個 day_of_week
-// - bimonthly: 每兩個月第一個 day_of_week
-// - quarterly: 每季第一個 day_of_week
-// - semiannual: 每半年第一個 day_of_week
+// 每個月節拍型 recurrence 代表：在起訖期間內，每 N 個月取該月的第一個 day_of_week。
 const RECURRENCE_MONTH_STEP = {
   monthly: 1,
   bimonthly: 2,
   quarterly: 3,
   semiannual: 6,
 };
+
+export const RECURRENCES = ['weekly', 'monthly', 'bimonthly', 'quarterly', 'semiannual'];
 
 function firstDayOfWeekInMonth(year, month, dayOfWeek) {
   const d = new Date(Date.UTC(year, month, 1));
@@ -45,20 +36,33 @@ function addMinutesLocal(localStr, minutes) {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
 }
 
-export function expandTemplate(tpl) {
-  const {
-    day_of_week,
-    start_time,
-    duration_minutes,
-    recurrence,
-    cycle_start_date,
-    cycle_end_date,
-    registration_deadline_hours,
-  } = tpl;
+function buildSession(date, start_time, duration_minutes, registration_deadline_hours) {
+  const ymd = toYMD(date);
+  const startAt = combineLocal(ymd, start_time);
+  const endAt = addMinutesLocal(startAt, duration_minutes);
+  const deadline = addMinutesLocal(startAt, -registration_deadline_hours * 60);
+  return { session_date: ymd, start_at: startAt, end_at: endAt, registration_deadline: deadline };
+}
 
-  const monthStep = RECURRENCE_MONTH_STEP[recurrence];
-  if (!monthStep) throw new Error(`unknown recurrence: ${recurrence}`);
+function expandWeekly(tpl) {
+  const { day_of_week, start_time, duration_minutes, cycle_start_date, cycle_end_date, registration_deadline_hours } = tpl;
+  const start = new Date(cycle_start_date + 'T00:00:00Z');
+  const end = new Date(cycle_end_date + 'T23:59:59Z');
 
+  // 找到起始日後（含）第一個符合 day_of_week 的日期
+  const first = new Date(start);
+  const diff = (day_of_week - first.getUTCDay() + 7) % 7;
+  first.setUTCDate(first.getUTCDate() + diff);
+
+  const sessions = [];
+  for (let cur = first; cur <= end; cur.setUTCDate(cur.getUTCDate() + 7)) {
+    sessions.push(buildSession(cur, start_time, duration_minutes, registration_deadline_hours));
+  }
+  return sessions;
+}
+
+function expandByMonthStep(tpl, monthStep) {
+  const { day_of_week, start_time, duration_minutes, cycle_start_date, cycle_end_date, registration_deadline_hours } = tpl;
   const start = new Date(cycle_start_date + 'T00:00:00Z');
   const end = new Date(cycle_end_date + 'T23:59:59Z');
 
@@ -70,16 +74,7 @@ export function expandTemplate(tpl) {
     const sessionDate = firstDayOfWeekInMonth(cursorYear, cursorMonth, day_of_week);
     if (sessionDate > end) break;
     if (sessionDate >= start) {
-      const ymd = toYMD(sessionDate);
-      const startAt = combineLocal(ymd, start_time);
-      const endAt = addMinutesLocal(startAt, duration_minutes);
-      const deadline = addMinutesLocal(startAt, -registration_deadline_hours * 60);
-      sessions.push({
-        session_date: ymd,
-        start_at: startAt,
-        end_at: endAt,
-        registration_deadline: deadline,
-      });
+      sessions.push(buildSession(sessionDate, start_time, duration_minutes, registration_deadline_hours));
     }
     cursorMonth += monthStep;
     if (cursorMonth >= 12) {
@@ -87,6 +82,13 @@ export function expandTemplate(tpl) {
       cursorMonth = cursorMonth % 12;
     }
   }
-
   return sessions;
+}
+
+export function expandTemplate(tpl) {
+  const { recurrence } = tpl;
+  if (recurrence === 'weekly') return expandWeekly(tpl);
+  const monthStep = RECURRENCE_MONTH_STEP[recurrence];
+  if (!monthStep) throw new Error(`unknown recurrence: ${recurrence}`);
+  return expandByMonthStep(tpl, monthStep);
 }

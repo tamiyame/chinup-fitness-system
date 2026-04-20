@@ -3,7 +3,7 @@ import { api, toast, fmtDate, dow, bootAuth } from '/app.js';
 const user = await bootAuth({ requireAdmin: true });
 if (!user) { /* redirected */ }
 
-const RECURRENCE_LABEL = { monthly: '每月', bimonthly: '每兩個月', quarterly: '每季', semiannual: '每半年' };
+const RECURRENCE_LABEL = { weekly: '每週', monthly: '每月', bimonthly: '每兩個月', quarterly: '每季', semiannual: '每半年' };
 const SESSION_STATUS_LABEL = { open: '開放', confirmed: '已成班', cancelled: '未開課', completed: '結束' };
 const REG_STATUS_LABEL = { confirmed: '正取', waitlisted: '候補', cancelled: '取消', rejected: '未開課' };
 

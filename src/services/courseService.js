@@ -1,5 +1,5 @@
 import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
-import { expandTemplate } from './schedule.js';
+import { expandTemplate, RECURRENCES } from './schedule.js';
 import { notify } from './notifications.js';
 import { ApiError } from './registration.js';
 
@@ -36,7 +36,7 @@ function validateTemplate(t) {
     if (t[k] === undefined || t[k] === null || t[k] === '') throw new ApiError(400, `missing_${k}`);
   }
   if (t.min_capacity < 1 || t.max_capacity < t.min_capacity) throw new ApiError(400, 'invalid_capacity');
-  if (!['monthly', 'bimonthly', 'quarterly', 'semiannual'].includes(t.recurrence)) throw new ApiError(400, 'invalid_recurrence');
+  if (!RECURRENCES.includes(t.recurrence)) throw new ApiError(400, 'invalid_recurrence');
   if (t.day_of_week < 0 || t.day_of_week > 6) throw new ApiError(400, 'invalid_day_of_week');
   if (!/^\d{2}:\d{2}$/.test(t.start_time)) throw new ApiError(400, 'invalid_start_time');
   if (t.cycle_end_date < t.cycle_start_date) throw new ApiError(400, 'invalid_cycle_dates');

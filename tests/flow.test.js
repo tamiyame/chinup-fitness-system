@@ -143,4 +143,36 @@ console.log('[case 7] notification log');
 const notifCount = db.prepare("SELECT COUNT(*) AS c FROM notifications").get().c;
 expect('通知筆數 > 10', () => assert(notifCount > 10, `only ${notifCount}`));
 
+// --- Case 8: weekly recurrence ---
+console.log('[case 8] weekly recurrence expansion');
+const tWeekly = createTemplate({
+  name: '每週三 TRX',
+  description: 'weekly test',
+  min_capacity: 2, max_capacity: 5,
+  day_of_week: 3,            // 週三
+  start_time: '19:00',
+  duration_minutes: 60,
+  recurrence: 'weekly',
+  cycle_start_date: '2026-05-01',   // 週五
+  cycle_end_date: '2026-05-31',     // 週日
+  registration_deadline_hours: 24,
+});
+// 2026-05 的週三：5/6, 5/13, 5/20, 5/27 = 4 場
+expect('weekly 2026-05 應展開 4 場', () => assert.equal(tWeekly.sessionsCreated, 4));
+
+const weeklySessions = db.prepare("SELECT session_date FROM course_sessions WHERE template_id = ? ORDER BY session_date").all(tWeekly.templateId);
+expect('weekly 日期連續每 7 天', () => {
+  const dates = weeklySessions.map(s => s.session_date);
+  for (let i = 1; i < dates.length; i++) {
+    const diff = (new Date(dates[i]) - new Date(dates[i-1])) / (24 * 3600 * 1000);
+    assert.equal(diff, 7, `${dates[i-1]} → ${dates[i]} 不是 7 天`);
+  }
+});
+expect('weekly 全為週三', () => {
+  weeklySessions.forEach(s => {
+    const d = new Date(s.session_date + 'T00:00:00Z');
+    assert.equal(d.getUTCDay(), 3);
+  });
+});
+
 console.log(`\n[flow test] done (${notifCount} notifications logged)`);

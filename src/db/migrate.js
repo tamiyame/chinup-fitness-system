@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS course_templates (
   day_of_week INTEGER NOT NULL,
   start_time TEXT NOT NULL,
   duration_minutes INTEGER NOT NULL DEFAULT 60,
-  recurrence TEXT NOT NULL CHECK(recurrence IN ('monthly','bimonthly','quarterly','semiannual')),
+  recurrence TEXT NOT NULL CHECK(recurrence IN ('weekly','monthly','bimonthly','quarterly','semiannual')),
   cycle_start_date TEXT NOT NULL,
   cycle_end_date TEXT NOT NULL,
   registration_deadline_hours INTEGER NOT NULL DEFAULT 24,
