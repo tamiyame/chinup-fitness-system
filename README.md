@@ -113,6 +113,22 @@ tests/
 - `POST /api/admin/jobs/process-deadlines` — 手動截止判定
 - `POST /api/admin/jobs/send-reminders` — 手動寄提醒
 
+## 部署到 Railway
+
+本專案已備好 `railway.json` 與自動 schema / admin 初始化。步驟：
+
+1. 到 [Railway](https://railway.com) 新建專案 → Deploy from GitHub repo → 選本 repo
+2. **環境變數**（Settings → Variables）：
+   ```
+   ADMIN_EMAIL=你的email
+   ADMIN_PASSWORD=強密碼
+   DB_PATH=/app/data/app.db
+   ```
+3. **Volume**（Settings → Volumes）：掛到 `/app/data`（儲存 SQLite，避免每次重啟遺失）
+4. **Domain**（Settings → Networking → Generate Domain）：拿到 `https://xxx.up.railway.app`
+
+系統啟動時會自動建立 schema 並依環境變數建立管理員；未設定 env 則建立預設 `admin@chinup.local / admin1234` 並印警告。
+
 ## License
 
 MIT

@@ -57,3 +57,41 @@ export function userFromToken(token) {
   if (!session) return null;
   return safeUser(getUserById.get(session.user_id));
 }
+
+// Production boot helper: ensure at least one admin exists.
+// - If ADMIN_EMAIL + ADMIN_PASSWORD env vars are set, upsert that admin.
+// - Otherwise, if no admin exists yet, create a default one and print a warning.
+export function ensureInitialAdmin() {
+  const email = process.env.ADMIN_EMAIL;
+  const password = process.env.ADMIN_PASSWORD;
+  const name = process.env.ADMIN_NAME || 'Administrator';
+
+  if (email && password) {
+    const existing = getUserByEmail.get(email);
+    if (!existing) {
+      db.prepare(
+        'INSERT INTO users (name, email, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?)'
+      ).run(name, email, hashPassword(password), 'admin', 'email');
+      console.log(`[auth] created admin from env: ${email}`);
+    }
+    return;
+  }
+
+  const anyAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get();
+  if (!anyAdmin) {
+    const defaultEmail = 'admin@chinup.local';
+    const defaultPassword = 'admin1234';
+    db.prepare(
+      'INSERT INTO users (name, email, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?)'
+    ).run('Administrator', defaultEmail, hashPassword(defaultPassword), 'admin', 'email');
+    console.log('');
+    console.log('  ╔══════════════════════════════════════════════════╗');
+    console.log('  ║  ⚠️  DEFAULT ADMIN CREATED — change credentials!  ║');
+    console.log(`  ║    Email:    ${defaultEmail.padEnd(36)}║`);
+    console.log(`  ║    Password: ${defaultPassword.padEnd(36)}║`);
+    console.log('  ║  Set ADMIN_EMAIL + ADMIN_PASSWORD env vars to    ║');
+    console.log('  ║  override on next boot.                          ║');
+    console.log('  ╚══════════════════════════════════════════════════╝');
+    console.log('');
+  }
+}

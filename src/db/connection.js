@@ -1,16 +1,21 @@
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { SCHEMA } from './schema.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH || resolve(__dirname, '../../data/app.db');
 
-import { mkdirSync } from 'node:fs';
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
 export const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
+
+// Auto-apply schema on connection open. Idempotent (CREATE TABLE IF NOT EXISTS).
+// Ensures services' top-level `db.prepare(...)` statements have tables available.
+db.exec(SCHEMA);
 
 // 本地 wall-clock 時間字串：與 schedule.js 儲存格式一致。
 export function nowLocal() {

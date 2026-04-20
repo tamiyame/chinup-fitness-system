@@ -9,7 +9,7 @@ import {
   processDeadlines, processReminders,
 } from './services/courseService.js';
 import { register, cancelRegistration, ApiError } from './services/registration.js';
-import { login as authLogin, logout as authLogout, userFromToken } from './services/auth.js';
+import { login as authLogin, logout as authLogout, userFromToken, ensureInitialAdmin } from './services/auth.js';
 import { startScheduler } from './scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -145,8 +145,11 @@ app.post('/api/admin/jobs/send-reminders', requireAdmin, asyncHandler((req, res)
 const PORT = Number(process.env.PORT || 3000);
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    console.log(`[server] listening on http://localhost:${PORT}`);
+  // Bootstrap: migrations already applied on DB open; ensure an admin exists.
+  ensureInitialAdmin();
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[server] listening on port ${PORT}`);
     startScheduler();
   });
 }
