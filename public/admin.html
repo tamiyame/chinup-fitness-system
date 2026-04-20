@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>管理後台 - Chin-Up Fitness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav class="navbar sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a href="/" class="brand-mark">
+        <span class="brand-dot">💪</span> Chin-Up Fitness
+      </a>
+      <div class="hidden md:flex items-center gap-6">
+        <a href="/" class="nav-link">課程</a>
+        <a href="/my.html" class="nav-link">我的報名</a>
+        <a href="/admin.html" class="nav-link active">管理後台</a>
+      </div>
+    </div>
+    <div id="auth-bar" class="flex items-center gap-3"></div>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-6">
+  <section class="hero">
+    <span class="hero-eyebrow">⚙️ Admin Console</span>
+    <h1>課程管理後台</h1>
+    <p>建立團體課程範本、檢視每場次報名狀態、並手動處理截止與寄送提醒。</p>
+  </section>
+
+  <!-- stats -->
+  <section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+    <div class="card"><div class="subtle">課程範本</div><div class="text-3xl font-bold mt-1" id="stat-templates">—</div></div>
+    <div class="card"><div class="subtle">總場次</div><div class="text-3xl font-bold mt-1" id="stat-sessions">—</div></div>
+    <div class="card"><div class="subtle">報名總人次</div><div class="text-3xl font-bold mt-1" id="stat-regs">—</div></div>
+    <div class="card"><div class="subtle">候補人次</div><div class="text-3xl font-bold mt-1" id="stat-waitlist" style="color:#a16207">—</div></div>
+  </section>
+
+  <!-- templates -->
+  <section class="mb-10">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="section-title">課程範本</h2>
+      <button id="new-btn" class="btn btn-primary">＋ 新增範本</button>
+    </div>
+    <div id="templates" class="grid gap-3"></div>
+  </section>
+
+  <!-- ops -->
+  <section class="mb-10">
+    <h2 class="section-title mb-4">系統操作</h2>
+    <div class="card">
+      <div class="flex flex-wrap gap-3 items-center">
+        <button id="run-deadlines" class="btn btn-dark">⏰ 立即處理截止</button>
+        <button id="run-reminders" class="btn btn-dark">📣 寄送上課提醒</button>
+        <span id="job-result" class="subtle"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- notifications -->
+  <section class="pb-16">
+    <h2 class="section-title mb-4">通知紀錄 <span class="subtle">(最近 100 筆)</span></h2>
+    <div class="card p-0 overflow-hidden">
+      <div id="notifs" class="max-h-96 overflow-auto"></div>
+    </div>
+  </section>
+</main>
+
+<!-- Modal -->
+<div id="modal" class="overlay" style="display:none;">
+  <div class="modal-panel">
+    <div class="flex items-start justify-between mb-5">
+      <div>
+        <h3 id="modal-title" class="section-title">新增範本</h3>
+        <p class="subtle mt-1">設定課程資訊、人數與排課週期</p>
+      </div>
+      <button id="cancel-btn" type="button" class="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
+    </div>
+    <form id="tpl-form" class="space-y-4">
+      <input type="hidden" name="id">
+      <div>
+        <label class="form-label">課程名稱</label>
+        <input name="name" required class="form-input" placeholder="例：週三晚間 TRX 核心訓練">
+      </div>
+      <div>
+        <label class="form-label">課程說明</label>
+        <textarea name="description" class="form-textarea" placeholder="簡單介紹課程內容、適合對象、師資"></textarea>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div><label class="form-label">人數下限</label><input name="min_capacity" type="number" min="1" value="3" required class="form-input"></div>
+        <div><label class="form-label">人數上限</label><input name="max_capacity" type="number" min="1" value="8" required class="form-input"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div><label class="form-label">開課星期</label>
+          <select name="day_of_week" class="form-select">
+            <option value="0">週日</option><option value="1">週一</option><option value="2">週二</option>
+            <option value="3" selected>週三</option><option value="4">週四</option><option value="5">週五</option><option value="6">週六</option>
+          </select>
+        </div>
+        <div><label class="form-label">開始時間</label><input name="start_time" type="time" value="19:00" required class="form-input"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div><label class="form-label">時長（分鐘）</label><input name="duration_minutes" type="number" min="15" value="60" class="form-input"></div>
+        <div><label class="form-label">截止時數（開課前 N 小時）</label><input name="registration_deadline_hours" type="number" min="0" value="24" class="form-input"></div>
+      </div>
+      <div>
+        <label class="form-label">重複週期</label>
+        <select name="recurrence" class="form-select">
+          <option value="monthly">每月一次</option>
+          <option value="bimonthly">每兩個月一次</option>
+          <option value="quarterly">每季一次</option>
+          <option value="semiannual">每半年一次</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div><label class="form-label">週期起始</label><input name="cycle_start_date" type="date" required class="form-input"></div>
+        <div><label class="form-label">週期結束</label><input name="cycle_end_date" type="date" required class="form-input"></div>
+      </div>
+      <div class="flex justify-end gap-2 pt-4 border-t border-slate-100">
+        <button type="button" id="cancel-btn-2" class="btn btn-ghost">取消</button>
+        <button type="submit" class="btn btn-primary">儲存並展開場次</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Drawer -->
+<div id="drawer" class="overlay" style="display:none;">
+  <div class="drawer-panel">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h3 id="drawer-title" class="section-title">場次名單</h3>
+        <p class="subtle mt-1">點擊場次可展開完整報名名單</p>
+      </div>
+      <button id="close-drawer" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+    </div>
+    <div id="drawer-content"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script type="module" src="/app.js"></script>
+<script type="module" src="/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的報名 - Chin-Up Fitness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav class="navbar sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a href="/" class="brand-mark">
+        <span class="brand-dot">💪</span> Chin-Up Fitness
+      </a>
+      <div class="hidden md:flex items-center gap-6">
+        <a href="/" class="nav-link">課程</a>
+        <a href="/my.html" class="nav-link active">我的報名</a>
+        <a href="/admin.html" class="nav-link">管理後台</a>
+      </div>
+    </div>
+    <div id="auth-bar" class="flex items-center gap-3"></div>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-6">
+  <section class="hero">
+    <span class="hero-eyebrow">📋 Personal</span>
+    <h1>我的報名</h1>
+    <p>檢視所有報名中、候補中、以及已完成的課程狀態。</p>
+  </section>
+
+  <section class="pb-16">
+    <div id="regs" class="grid gap-3"></div>
+    <div id="empty" class="empty-state" style="display:none;">
+      <span class="empty-state-icon">📭</span>
+      <p>尚未報名任何課程</p>
+      <a href="/" class="btn btn-primary mt-4">瀏覽課程</a>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script type="module">
+import { api, toast, fmtDate, bootAuth } from '/app.js';
+
+const user = await bootAuth();
+if (!user) { /* redirected */ }
+
+const LABEL_REG = { confirmed: '正取', waitlisted: '候補', cancelled: '已取消', rejected: '未開課' };
+const LABEL_SESSION = { open: '開放報名', confirmed: '已成班', cancelled: '未開課', completed: '已結束' };
+
+async function load() {
+  const list = document.getElementById('regs');
+  const empty = document.getElementById('empty');
+  try {
+    const regs = await api('/api/my/registrations');
+    if (!regs.length) { empty.style.display = 'block'; list.innerHTML = ''; return; }
+    empty.style.display = 'none';
+    list.innerHTML = regs.map(r => {
+      const dt = new Date(r.start_at);
+      const d = String(dt.getDate()).padStart(2, '0');
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const canCancel = ['confirmed','waitlisted'].includes(r.status) && r.session_status === 'open';
+      return `
+      <article class="card">
+        <div class="flex items-center gap-5">
+          <div class="text-center px-4 py-2 rounded-lg" style="background:var(--brand-50);min-width:72px;">
+            <div class="text-2xl font-bold" style="color:var(--brand-700);line-height:1;">${d}</div>
+            <div class="text-xs mt-1" style="color:var(--brand-700)">${dt.getFullYear()}/${m}</div>
+          </div>
+          <div class="flex-1">
+            <h3 class="card-title">${r.course_name}</h3>
+            <div class="meta">
+              <span class="meta-item"><span class="meta-icon">🕐</span> ${fmtDate(r.start_at)}</span>
+            </div>
+            <div class="flex items-center gap-2 mt-3 flex-wrap">
+              <span class="badge badge-${r.status}">${LABEL_REG[r.status]}</span>
+              <span class="badge badge-${r.session_status}">場次 · ${LABEL_SESSION[r.session_status]}</span>
+              ${r.position ? `<span class="subtle">候補第 ${r.position} 位</span>` : ''}
+            </div>
+          </div>
+          ${canCancel ? `<button data-id="${r.id}" class="cancel-btn btn btn-danger btn-sm">取消報名</button>` : ''}
+        </div>
+      </article>`;
+    }).join('');
+    list.querySelectorAll('.cancel-btn').forEach(btn => {
+      btn.addEventListener('click', () => handleCancel(Number(btn.dataset.id)));
+    });
+  } catch (e) {
+    toast(`載入失敗：${e.message}`, 'error');
+  }
+}
+
+async function handleCancel(id) {
+  if (!confirm('確定取消這筆報名嗎？')) return;
+  try {
+    await api(`/api/registrations/${id}`, { method: 'DELETE' });
+    toast('已取消報名', 'success');
+    load();
+  } catch (e) { toast(`取消失敗：${e.message}`, 'error'); }
+}
+
+load();
+</script>
+</body>
+</html>

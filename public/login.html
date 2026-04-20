@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登入 - Chin-Up Fitness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/style.css">
+<style>
+  body {
+    background-image:
+      radial-gradient(1200px 600px at 20% 10%, rgba(16, 185, 129, 0.18), transparent 55%),
+      radial-gradient(900px 500px at 90% 90%, rgba(6, 78, 59, 0.12), transparent 55%);
+    min-height: 100vh;
+  }
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: var(--shadow-lg);
+    max-width: 420px; width: 100%;
+  }
+  .demo-chip {
+    display: block; width: 100%; text-align: left;
+    padding: 10px 14px; margin-top: 8px;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: #fafbfc;
+    cursor: pointer; font-size: 13px;
+    transition: all 150ms;
+  }
+  .demo-chip:hover { border-color: var(--brand-500); background: var(--brand-50); }
+  .demo-chip .role { color: var(--brand-700); font-weight: 600; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .demo-chip .cred { font-family: 'SF Mono', Consolas, monospace; color: var(--ink-soft); margin-top: 2px; }
+</style>
+</head>
+<body class="flex items-center justify-center p-6">
+
+<div class="login-card">
+  <div class="text-center mb-8">
+    <div class="brand-dot mx-auto mb-3" style="width:56px;height:56px;font-size:28px;border-radius:16px;">💪</div>
+    <h1 class="text-2xl font-bold" style="letter-spacing:-0.02em;">歡迎回來</h1>
+    <p class="subtle mt-2">登入 Chin-Up Fitness 繼續報名課程</p>
+  </div>
+
+  <form id="login-form" class="space-y-4">
+    <div>
+      <label class="form-label" for="email">電子郵件</label>
+      <input id="email" name="email" type="email" required class="form-input" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div>
+      <label class="form-label" for="password">密碼</label>
+      <input id="password" name="password" type="password" required class="form-input" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div id="err" class="text-sm" style="color:#dc2626;display:none;"></div>
+    <button type="submit" class="btn btn-primary w-full mt-2" id="submit-btn">登入</button>
+  </form>
+
+  <div class="mt-8 pt-6" style="border-top:1px solid var(--line);">
+    <p class="subtle text-center mb-2">測試用帳號（點擊快速填入）</p>
+    <button type="button" class="demo-chip" data-email="admin@chinup.local" data-password="admin1234">
+      <div class="role">🛡 管理者</div>
+      <div class="cred">admin@chinup.local / admin1234</div>
+    </button>
+    <button type="button" class="demo-chip" data-email="user1@chinup.local" data-password="pass1234">
+      <div class="role">👤 一般會員</div>
+      <div class="cred">user1@chinup.local / pass1234</div>
+    </button>
+  </div>
+</div>
+
+<script type="module">
+const $ = s => document.querySelector(s);
+
+document.querySelectorAll('.demo-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    $('#email').value = btn.dataset.email;
+    $('#password').value = btn.dataset.password;
+    $('#email').focus();
+  });
+});
+
+$('#login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = $('#email').value.trim();
+  const password = $('#password').value;
+  const submit = $('#submit-btn');
+  const err = $('#err');
+  err.style.display = 'none';
+  submit.disabled = true;
+  submit.textContent = '登入中…';
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error === 'invalid_credentials' ? '帳號或密碼錯誤' : data.error || 'login failed');
+    localStorage.setItem('chinup.token', data.token);
+    localStorage.setItem('chinup.user', JSON.stringify(data.user));
+    const redirect = new URLSearchParams(location.search).get('redirect') || (data.user.role === 'admin' ? '/admin.html' : '/');
+    location.href = redirect;
+  } catch (e2) {
+    err.textContent = e2.message;
+    err.style.display = 'block';
+    submit.disabled = false;
+    submit.textContent = '登入';
+  }
+});
+
+// already logged in → skip
+if (localStorage.getItem('chinup.token')) {
+  fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${localStorage.getItem('chinup.token')}` }})
+    .then(r => r.ok ? r.json() : null)
+    .then(u => { if (u) location.href = u.role === 'admin' ? '/admin.html' : '/'; });
+}
+</script>
+</body>
+</html>

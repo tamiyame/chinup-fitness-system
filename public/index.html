@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chin-Up Fitness 報名系統</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<nav class="navbar sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a href="/" class="brand-mark">
+        <span class="brand-dot">💪</span> Chin-Up Fitness
+      </a>
+      <div class="hidden md:flex items-center gap-6">
+        <a href="/" class="nav-link active">課程</a>
+        <a href="/my.html" class="nav-link">我的報名</a>
+        <a href="/admin.html" class="nav-link">管理後台</a>
+      </div>
+    </div>
+    <div id="auth-bar" class="flex items-center gap-3"></div>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-6">
+
+  <section class="hero">
+    <span class="hero-eyebrow">💪 2026 Spring Program</span>
+    <h1>找到適合你的<br>團體訓練課程</h1>
+    <p>由專業教練設計的循環課表，每月開課、彈性報名。額滿自動進入候補、成班與否都會通知你。</p>
+  </section>
+
+  <section class="pb-16">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="section-title">可報名課程</h2>
+      <span id="count-badge" class="subtle"></span>
+    </div>
+    <div id="sessions" class="grid gap-4"></div>
+    <div id="empty" class="empty-state" style="display:none;">
+      <span class="empty-state-icon">🗓️</span>
+      <p>目前沒有可報名的課程</p>
+      <p class="subtle mt-1">請稍後再查看，或聯絡管理員新增課程</p>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script type="module" src="/app.js"></script>
+<script type="module" src="/courses.js"></script>
+</body>
+</html>
