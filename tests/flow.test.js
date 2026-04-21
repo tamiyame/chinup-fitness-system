@@ -100,6 +100,18 @@ expect('r7 仍 waitlisted 且 position=1', () => {
   assert.equal(r7After.position, 1);
 });
 
+// --- Case 4b: 取消後再報名同場 → 不得 UNIQUE constraint 失敗 ---
+console.log('[case 4b] cancel → re-register same session');
+// u1 已在 case 4 取消，這裡重新報名同一場
+const r1Again = register({ sessionId: firstSessionId, userId: u1 });
+expect('re-register 成功（不因 UNIQUE 崩潰）', () => {
+  assert(['confirmed', 'waitlisted'].includes(r1Again.status));
+  // 應重用原本的 row（relevant because we reactivateReg instead of insert）
+  assert.equal(r1Again.registrationId, r1.registrationId);
+});
+// 清理：再取消一次還原狀態（讓 case 5/6 預期不變）
+cancelRegistration({ registrationId: r1Again.registrationId, userId: u1 });
+
 // --- Case 5: 截止處理 - 達下限 → 成立 ---
 console.log('[case 5] processDeadlines: meet minimum → confirmed');
 // 把 deadline 調到過去

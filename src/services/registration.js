@@ -13,11 +13,14 @@ export class ApiError extends Error {
 // 查詢語句（preparedStatement 重用）
 const getSession = db.prepare('SELECT * FROM course_sessions WHERE id = ?');
 const getTemplate = db.prepare('SELECT * FROM course_templates WHERE id = ?');
-const getExistingReg = db.prepare(
-  "SELECT * FROM registrations WHERE session_id = ? AND user_id = ? AND status IN ('confirmed','waitlisted')"
+const getAnyReg = db.prepare(
+  "SELECT * FROM registrations WHERE session_id = ? AND user_id = ?"
 );
 const insertReg = db.prepare(
   'INSERT INTO registrations (session_id, user_id, status, position) VALUES (?, ?, ?, ?)'
+);
+const reactivateReg = db.prepare(
+  "UPDATE registrations SET status = ?, position = ?, registered_at = datetime('now') WHERE id = ?"
 );
 const updateSessionCounts = db.prepare(
   'UPDATE course_sessions SET confirmed_count = ?, waitlist_count = ? WHERE id = ?'
@@ -56,8 +59,12 @@ export function register({ sessionId, userId }) {
 
     if (nowLocal() > session.registration_deadline) throw new ApiError(409, 'registration_closed');
 
-    const existing = getExistingReg.get(sessionId, userId);
-    if (existing) throw new ApiError(409, 'already_registered');
+    // Check for ANY existing row (the UNIQUE (session_id, user_id) constraint
+    // would otherwise reject a fresh INSERT for a user who once cancelled).
+    const existing = getAnyReg.get(sessionId, userId);
+    if (existing && ['confirmed', 'waitlisted'].includes(existing.status)) {
+      throw new ApiError(409, 'already_registered');
+    }
 
     const tpl = getTemplate.get(session.template_id);
     const confirmed = getConfirmedCount.get(sessionId).c;
@@ -71,7 +78,15 @@ export function register({ sessionId, userId }) {
       position = session.waitlist_count + 1;
     }
 
-    const info = insertReg.run(sessionId, userId, status, position);
+    let registrationId;
+    if (existing) {
+      // Reactivate cancelled / rejected row instead of inserting a dup.
+      reactivateReg.run(status, position, existing.id);
+      registrationId = existing.id;
+    } else {
+      const info = insertReg.run(sessionId, userId, status, position);
+      registrationId = info.lastInsertRowid;
+    }
     recalcAndSave(sessionId);
 
     const vars = {
@@ -86,7 +101,7 @@ export function register({ sessionId, userId }) {
       vars,
     });
 
-    return { registrationId: info.lastInsertRowid, status, position };
+    return { registrationId, status, position };
   });
 }
 
