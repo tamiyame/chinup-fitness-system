@@ -20,32 +20,61 @@
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 20px;
-    padding: 40px;
+    padding: 36px;
     box-shadow: var(--shadow-lg);
-    max-width: 420px; width: 100%;
+    max-width: 440px; width: 100%;
   }
-  .demo-chip {
-    display: block; width: 100%; text-align: left;
-    padding: 10px 14px; margin-top: 8px;
-    border: 1px solid var(--line); border-radius: 10px;
-    background: #fafbfc;
-    cursor: pointer; font-size: 13px;
+  .btn-google {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; padding: 11px 18px;
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: white; color: #1f2937; font-weight: 600; font-size: 14px;
+    transition: all 150ms; cursor: pointer;
+    text-decoration: none;
+  }
+  .btn-google:hover { background: #f9fafb; border-color: #9ca3af; }
+  .google-icon { width: 18px; height: 18px; flex-shrink: 0; }
+
+  .divider { display: flex; align-items: center; gap: 10px; color: var(--ink-mute); font-size: 12px; margin: 20px 0; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+  .tab-btn {
+    flex: 1; padding: 10px 0; font-size: 14px; font-weight: 600;
+    background: transparent; border: none; cursor: pointer;
+    color: var(--ink-mute); border-bottom: 2px solid transparent;
     transition: all 150ms;
   }
-  .demo-chip:hover { border-color: var(--brand-500); background: var(--brand-50); }
-  .demo-chip .role { color: var(--brand-700); font-weight: 600; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
-  .demo-chip .cred { font-family: 'SF Mono', Consolas, monospace; color: var(--ink-soft); margin-top: 2px; }
+  .tab-btn.active { color: var(--brand-700); border-bottom-color: var(--brand-600); }
 </style>
 </head>
 <body class="flex items-center justify-center p-6">
 
 <div class="login-card">
-  <div class="text-center mb-8">
+  <div class="text-center mb-6">
     <div class="brand-dot mx-auto mb-3" style="width:56px;height:56px;font-size:28px;border-radius:16px;">💪</div>
-    <h1 class="text-2xl font-bold" style="letter-spacing:-0.02em;">歡迎回來</h1>
-    <p class="subtle mt-2">登入 Chin-Up Fitness 繼續報名課程</p>
+    <h1 class="text-2xl font-bold" id="title" style="letter-spacing:-0.02em;">歡迎回來</h1>
+    <p class="subtle mt-1" id="subtitle">登入 Chin-Up Fitness 繼續報名課程</p>
   </div>
 
+  <div class="flex border-b border-slate-200 mb-5">
+    <button type="button" class="tab-btn active" data-mode="login">登入</button>
+    <button type="button" class="tab-btn" data-mode="register">註冊新帳號</button>
+  </div>
+
+  <!-- Google OAuth -->
+  <a href="/api/auth/google" class="btn-google">
+    <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+    </svg>
+    使用 Google 登入
+  </a>
+
+  <div class="divider">或</div>
+
+  <!-- Login form -->
   <form id="login-form" class="space-y-4">
     <div>
       <label class="form-label" for="email">電子郵件</label>
@@ -55,43 +84,88 @@
       <label class="form-label" for="password">密碼</label>
       <input id="password" name="password" type="password" required class="form-input" placeholder="••••••••" autocomplete="current-password">
     </div>
-    <div id="err" class="text-sm" style="color:#dc2626;display:none;"></div>
-    <button type="submit" class="btn btn-primary w-full mt-2" id="submit-btn">登入</button>
+    <div id="login-err" class="text-sm" style="color:#dc2626;display:none;"></div>
+    <button type="submit" class="btn btn-primary w-full" id="login-btn">登入</button>
   </form>
 
-  <div class="mt-8 pt-6" style="border-top:1px solid var(--line);">
-    <p class="subtle text-center mb-2">測試用帳號（點擊快速填入）</p>
-    <button type="button" class="demo-chip" data-email="admin@chinup.local" data-password="admin1234">
-      <div class="role">🛡 管理者</div>
-      <div class="cred">admin@chinup.local / admin1234</div>
-    </button>
-    <button type="button" class="demo-chip" data-email="user1@chinup.local" data-password="pass1234">
-      <div class="role">👤 一般會員</div>
-      <div class="cred">user1@chinup.local / pass1234</div>
-    </button>
-  </div>
+  <!-- Register form -->
+  <form id="register-form" class="space-y-4" style="display:none;">
+    <div>
+      <label class="form-label" for="r-name">姓名</label>
+      <input id="r-name" name="name" type="text" required class="form-input" placeholder="王小明">
+    </div>
+    <div>
+      <label class="form-label" for="r-email">電子郵件</label>
+      <input id="r-email" name="email" type="email" required class="form-input" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div>
+      <label class="form-label" for="r-phone">手機（選填，接收簡訊通知用）</label>
+      <input id="r-phone" name="phone" type="tel" class="form-input" placeholder="0912345678">
+    </div>
+    <div>
+      <label class="form-label" for="r-password">密碼（至少 8 字元）</label>
+      <input id="r-password" name="password" type="password" required class="form-input" placeholder="••••••••" autocomplete="new-password" minlength="8">
+    </div>
+    <div>
+      <label class="form-label" for="r-notif">通知方式</label>
+      <select id="r-notif" name="notification_preference" class="form-select">
+        <option value="email">Email</option>
+        <option value="sms">簡訊</option>
+        <option value="both">Email + 簡訊</option>
+      </select>
+    </div>
+    <div id="register-err" class="text-sm" style="color:#dc2626;display:none;"></div>
+    <button type="submit" class="btn btn-primary w-full" id="register-btn">建立帳號</button>
+  </form>
 </div>
 
 <script type="module">
 const $ = s => document.querySelector(s);
 
-document.querySelectorAll('.demo-chip').forEach(btn => {
-  btn.addEventListener('click', () => {
-    $('#email').value = btn.dataset.email;
-    $('#password').value = btn.dataset.password;
-    $('#email').focus();
-  });
-});
+// --- tab switching ---
+const titleEl = $('#title');
+const subEl = $('#subtitle');
+const loginForm = $('#login-form');
+const regForm = $('#register-form');
+const tabs = document.querySelectorAll('.tab-btn');
 
-$('#login-form').addEventListener('submit', async (e) => {
+function switchMode(mode) {
+  tabs.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  if (mode === 'login') {
+    titleEl.textContent = '歡迎回來';
+    subEl.textContent = '登入 Chin-Up Fitness 繼續報名課程';
+    loginForm.style.display = ''; regForm.style.display = 'none';
+  } else {
+    titleEl.textContent = '建立新帳號';
+    subEl.textContent = '加入 Chin-Up Fitness 開始報名團體課程';
+    loginForm.style.display = 'none'; regForm.style.display = '';
+  }
+}
+tabs.forEach(b => b.addEventListener('click', () => switchMode(b.dataset.mode)));
+
+// Already logged in? bounce based on role
+if (localStorage.getItem('chinup.token')) {
+  fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${localStorage.getItem('chinup.token')}` }})
+    .then(r => r.ok ? r.json() : null)
+    .then(u => { if (u) location.href = u.role === 'admin' ? '/admin.html' : '/'; });
+}
+
+// Display OAuth error on URL (?err=xxx)
+const err = new URLSearchParams(location.search).get('err');
+if (err) {
+  $('#login-err').textContent = `登入失敗：${err}`;
+  $('#login-err').style.display = 'block';
+}
+
+// --- Login form ---
+loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const email = $('#email').value.trim();
   const password = $('#password').value;
-  const submit = $('#submit-btn');
-  const err = $('#err');
-  err.style.display = 'none';
-  submit.disabled = true;
-  submit.textContent = '登入中…';
+  const submit = $('#login-btn');
+  const errEl = $('#login-err');
+  errEl.style.display = 'none';
+  submit.disabled = true; submit.textContent = '登入中…';
 
   try {
     const res = await fetch('/api/auth/login', {
@@ -100,25 +174,52 @@ $('#login-form').addEventListener('submit', async (e) => {
       body: JSON.stringify({ email, password }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error === 'invalid_credentials' ? '帳號或密碼錯誤' : data.error || 'login failed');
+    if (!res.ok) throw new Error(data.error === 'invalid_credentials' ? '帳號或密碼錯誤' : (data.error || 'login failed'));
     localStorage.setItem('chinup.token', data.token);
     localStorage.setItem('chinup.user', JSON.stringify(data.user));
     const redirect = new URLSearchParams(location.search).get('redirect') || (data.user.role === 'admin' ? '/admin.html' : '/');
     location.href = redirect;
   } catch (e2) {
-    err.textContent = e2.message;
-    err.style.display = 'block';
-    submit.disabled = false;
-    submit.textContent = '登入';
+    errEl.textContent = e2.message;
+    errEl.style.display = 'block';
+    submit.disabled = false; submit.textContent = '登入';
   }
 });
 
-// already logged in → skip
-if (localStorage.getItem('chinup.token')) {
-  fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${localStorage.getItem('chinup.token')}` }})
-    .then(r => r.ok ? r.json() : null)
-    .then(u => { if (u) location.href = u.role === 'admin' ? '/admin.html' : '/'; });
-}
+// --- Register form ---
+regForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(regForm).entries());
+  const submit = $('#register-btn');
+  const errEl = $('#register-err');
+  errEl.style.display = 'none';
+  submit.disabled = true; submit.textContent = '建立中…';
+
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const msgs = {
+        invalid_email: '電子郵件格式不正確',
+        password_too_short: '密碼至少需 8 字元',
+        missing_name: '請輸入姓名',
+        email_exists: '此 Email 已被註冊，請直接登入或使用 Google',
+      };
+      throw new Error(msgs[data.error] || data.error || 'register failed');
+    }
+    localStorage.setItem('chinup.token', data.token);
+    localStorage.setItem('chinup.user', JSON.stringify(data.user));
+    location.href = '/';
+  } catch (e2) {
+    errEl.textContent = e2.message;
+    errEl.style.display = 'block';
+    submit.disabled = false; submit.textContent = '建立帳號';
+  }
+});
 </script>
 </body>
 </html>

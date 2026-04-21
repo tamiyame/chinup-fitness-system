@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   phone TEXT,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
+  google_id TEXT,
   role TEXT NOT NULL DEFAULT 'user',
   notification_preference TEXT NOT NULL DEFAULT 'email',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))

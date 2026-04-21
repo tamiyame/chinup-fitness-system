@@ -17,6 +17,20 @@ db.exec('PRAGMA foreign_keys = ON;');
 // Ensures services' top-level `db.prepare(...)` statements have tables available.
 db.exec(SCHEMA);
 
+// In-place migrations for schema evolution. Each step must be idempotent so
+// running against a fresh DB or an older DB both end in the same state.
+function columnExists(table, column) {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all();
+  return rows.some((r) => r.name === column);
+}
+
+if (!columnExists('users', 'google_id')) {
+  db.exec('ALTER TABLE users ADD COLUMN google_id TEXT');
+}
+db.exec(
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL'
+);
+
 // 本地 wall-clock 時間字串：與 schedule.js 儲存格式一致。
 export function nowLocal() {
   const d = new Date();

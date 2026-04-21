@@ -9,7 +9,16 @@ import {
   processDeadlines, processReminders,
 } from './services/courseService.js';
 import { register, cancelRegistration, ApiError } from './services/registration.js';
-import { login as authLogin, logout as authLogout, userFromToken, ensureInitialAdmin } from './services/auth.js';
+import {
+  login as authLogin,
+  logout as authLogout,
+  userFromToken,
+  ensureInitialAdmin,
+  registerWithPassword,
+  findOrCreateGoogleUser,
+  loginAsGoogleUser,
+} from './services/auth.js';
+import { randomBytes } from 'node:crypto';
 import { startScheduler } from './scheduler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -72,6 +81,11 @@ app.post('/api/auth/login', asyncHandler((req, res) => {
   res.json(result);
 }));
 
+app.post('/api/auth/register', asyncHandler((req, res) => {
+  const result = registerWithPassword(req.body || {});
+  res.status(201).json(result);
+}));
+
 app.post('/api/auth/logout', (req, res) => {
   const token = getTokenFromReq(req);
   if (token) authLogout(token);
@@ -80,6 +94,98 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/me', requireUser, (req, res) => {
   res.json(req.user);
+});
+
+// --- Google OAuth ---
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+
+// Ephemeral CSRF state store (single instance is fine for Railway 1-replica).
+// Keys auto-expire after 10 min.
+const oauthStates = new Map();
+function rememberState(state) {
+  oauthStates.set(state, Date.now());
+  // cleanup expired
+  for (const [k, ts] of oauthStates) {
+    if (Date.now() - ts > 10 * 60 * 1000) oauthStates.delete(k);
+  }
+}
+function consumeState(state) {
+  const ok = oauthStates.has(state);
+  oauthStates.delete(state);
+  return ok;
+}
+
+function googleRedirectUri(req) {
+  if (PUBLIC_URL) return `${PUBLIC_URL}/api/auth/google/callback`;
+  return `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+}
+
+app.get('/api/auth/google', (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(500).send('Google OAuth not configured');
+  const state = randomBytes(16).toString('hex');
+  rememberState(state);
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: googleRedirectUri(req),
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'online',
+    prompt: 'select_account',
+    state,
+  });
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+app.get('/api/auth/google/callback', async (req, res) => {
+  try {
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+      return res.status(500).send('Google OAuth not configured');
+    }
+    const { code, state, error } = req.query;
+    if (error) return res.redirect('/login.html?err=' + encodeURIComponent(error));
+    if (!code || !state) return res.redirect('/login.html?err=invalid_callback');
+    if (!consumeState(state)) return res.redirect('/login.html?err=invalid_state');
+
+    // Exchange code for tokens
+    const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: googleRedirectUri(req),
+        grant_type: 'authorization_code',
+      }),
+    });
+    const tokens = await tokenResp.json();
+    if (!tokenResp.ok) {
+      console.error('[google] token exchange failed:', tokens);
+      return res.redirect('/login.html?err=google_token_failed');
+    }
+
+    // Get userinfo
+    const userResp = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const gu = await userResp.json();
+    if (!gu.id || !gu.email) {
+      console.error('[google] userinfo failed:', gu);
+      return res.redirect('/login.html?err=google_userinfo_failed');
+    }
+
+    const user = findOrCreateGoogleUser({ googleId: gu.id, email: gu.email, name: gu.name });
+    const session = loginAsGoogleUser(user);
+
+    // Pass token back via URL fragment (not query) so it doesn't hit logs
+    const landing = user.role === 'admin' ? '/admin.html' : '/';
+    res.redirect(`${landing}#token=${session.token}`);
+  } catch (e) {
+    console.error('[google] callback error:', e);
+    res.redirect('/login.html?err=google_callback_error');
+  }
 });
 
 // --- Browse courses (any authenticated user) ---

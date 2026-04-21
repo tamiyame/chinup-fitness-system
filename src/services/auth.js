@@ -29,6 +29,7 @@ const insertSession = db.prepare('INSERT INTO auth_sessions (token, user_id, exp
 const getSession = db.prepare('SELECT * FROM auth_sessions WHERE token = ? AND expires_at > datetime(\'now\')');
 const deleteSession = db.prepare('DELETE FROM auth_sessions WHERE token = ?');
 const getUserByEmail = db.prepare('SELECT * FROM users WHERE email = ?');
+const getUserByGoogleId = db.prepare('SELECT * FROM users WHERE google_id = ?');
 const getUserById = db.prepare('SELECT * FROM users WHERE id = ?');
 
 function safeUser(u) {
@@ -37,14 +38,80 @@ function safeUser(u) {
   return rest;
 }
 
+function createSession(userId) {
+  const token = randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  insertSession.run(token, userId, expiresAt);
+  return { token, expiresAt };
+}
+
 export function login({ email, password }) {
   const user = getUserByEmail.get(email);
   if (!user) throw new ApiError(401, 'invalid_credentials');
   if (!verifyPassword(password, user.password_hash)) throw new ApiError(401, 'invalid_credentials');
-  const token = randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
-  insertSession.run(token, user.id, expiresAt);
-  return { token, user: safeUser(user), expiresAt };
+  const session = createSession(user.id);
+  return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt };
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function registerWithPassword({ email, password, name, phone, notification_preference }) {
+  if (!email || !EMAIL_RE.test(email)) throw new ApiError(400, 'invalid_email');
+  if (!password || password.length < 8) throw new ApiError(400, 'password_too_short');
+  if (!name || !name.trim()) throw new ApiError(400, 'missing_name');
+
+  const existing = getUserByEmail.get(email);
+  if (existing) throw new ApiError(409, 'email_exists');
+
+  const info = db
+    .prepare(
+      'INSERT INTO users (name, email, phone, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?, ?)'
+    )
+    .run(
+      name.trim(),
+      email.toLowerCase(),
+      phone || null,
+      hashPassword(password),
+      'user',
+      notification_preference || 'email'
+    );
+
+  const user = getUserById.get(info.lastInsertRowid);
+  const session = createSession(user.id);
+  console.log(`[auth] new user registered: ${user.email}`);
+  return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt };
+}
+
+// Google OAuth: upsert user by google_id, else link by email, else create.
+// Password is stored as a sentinel that can never match scrypt verification.
+const GOOGLE_SENTINEL = 'oauth:google';
+
+export function findOrCreateGoogleUser({ googleId, email, name }) {
+  // 1. existing by google_id
+  let user = getUserByGoogleId.get(googleId);
+  if (user) return user;
+
+  // 2. existing by email → link the google_id
+  user = getUserByEmail.get(email);
+  if (user) {
+    db.prepare('UPDATE users SET google_id = ? WHERE id = ?').run(googleId, user.id);
+    console.log(`[auth] linked google_id to existing user: ${email}`);
+    return getUserById.get(user.id);
+  }
+
+  // 3. new user
+  const info = db
+    .prepare(
+      'INSERT INTO users (name, email, password_hash, google_id, role, notification_preference) VALUES (?, ?, ?, ?, ?, ?)'
+    )
+    .run(name || email.split('@')[0], email.toLowerCase(), GOOGLE_SENTINEL, googleId, 'user', 'email');
+  console.log(`[auth] new user via Google: ${email}`);
+  return getUserById.get(info.lastInsertRowid);
+}
+
+export function loginAsGoogleUser(user) {
+  const session = createSession(user.id);
+  return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt };
 }
 
 export function logout(token) {

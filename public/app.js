@@ -56,6 +56,18 @@ const DOW = ['日', '一', '二', '三', '四', '五', '六'];
 export function dow(n) { return `週${DOW[n]}`; }
 
 // 頁面啟動時：確認身份；若是 admin-only 頁面且不是 admin，導向 home
+// Consume OAuth callback: `/#token=xxx` → save to storage, clean URL.
+function consumeOAuthHash() {
+  if (!location.hash.startsWith('#token=')) return;
+  const token = decodeURIComponent(location.hash.slice(7));
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+    // remove hash without triggering reload
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+}
+consumeOAuthHash();
+
 export async function bootAuth({ requireAdmin = false } = {}) {
   const token = getToken();
   if (!token) { redirectToLogin(); return null; }
