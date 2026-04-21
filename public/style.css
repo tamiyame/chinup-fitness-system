@@ -1,11 +1,11 @@
 /* ============ Design tokens ============ */
 :root {
-  --brand-50: #f0fdf4;
-  --brand-100: #dcfce7;
-  --brand-500: #10b981;
-  --brand-600: #059669;
-  --brand-700: #047857;
-  --brand-900: #064e3b;
+  --brand-50: #f0f9ff;
+  --brand-100: #e0f2fe;
+  --brand-500: #38bdf8;
+  --brand-600: #0ea5e9;
+  --brand-700: #0284c7;
+  --brand-900: #0c4a6e;
 
   --surface: #ffffff;
   --surface-raised: #ffffff;
@@ -18,7 +18,7 @@
   --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
   --shadow: 0 4px 16px -4px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
   --shadow-lg: 0 12px 32px -8px rgba(15, 23, 42, 0.14);
-  --shadow-brand: 0 6px 24px -6px rgba(16, 185, 129, 0.35);
+  --shadow-brand: 0 6px 24px -6px rgba(56, 189, 248, 0.35);
 
   --radius: 14px;
   --radius-sm: 10px;
@@ -35,8 +35,8 @@ html, body {
 
 body {
   background-image:
-    radial-gradient(1200px 500px at -10% -20%, rgba(16, 185, 129, 0.08), transparent 60%),
-    radial-gradient(800px 400px at 110% 10%, rgba(6, 78, 59, 0.05), transparent 55%);
+    radial-gradient(1200px 500px at -10% -20%, rgba(56, 189, 248, 0.08), transparent 60%),
+    radial-gradient(800px 400px at 110% 10%, rgba(14, 165, 233, 0.05), transparent 55%);
   background-attachment: fixed;
 }
 
@@ -72,11 +72,13 @@ body {
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .brand-dot {
-  width: 28px; height: 28px; border-radius: 8px;
-  background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
+  width: 32px; height: 32px;
   display: grid; place-items: center;
-  color: white; font-size: 16px;
-  box-shadow: var(--shadow-brand);
+  overflow: hidden;
+}
+.brand-dot img {
+  width: 100%; height: 100%;
+  object-fit: contain;
 }
 
 /* ============ Hero ============ */
@@ -90,7 +92,7 @@ body {
   letter-spacing: 0.12em; text-transform: uppercase;
   background: var(--brand-50);
   padding: 6px 12px; border-radius: var(--radius-pill);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.2);
 }
 .hero h1 {
   font-size: clamp(28px, 4vw, 42px);
@@ -115,7 +117,7 @@ body {
 .card:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow);
-  border-color: rgba(16, 185, 129, 0.25);
+  border-color: rgba(56, 189, 248, 0.25);
 }
 
 .card-title {
@@ -210,7 +212,7 @@ body {
 .form-input:focus, .form-select:focus, .form-textarea:focus {
   outline: none;
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
 }
 .form-textarea { min-height: 70px; resize: vertical; }
 
