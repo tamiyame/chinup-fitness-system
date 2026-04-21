@@ -86,10 +86,17 @@ export async function bootAuth({ requireAdmin = false } = {}) {
   }
 
   renderAuthBar(user);
+  // Pages hide <body> via inline style until auth is confirmed. Reveal now.
+  document.body.style.visibility = 'visible';
   return user;
 }
 
 function renderAuthBar(user) {
+  // Hide admin nav link for non-admin users
+  document.querySelectorAll('a[href="/admin.html"]').forEach((el) => {
+    el.style.display = ['admin', 'owner'].includes(user.role) ? '' : 'none';
+  });
+
   const el = document.getElementById('auth-bar');
   if (!el) return;
   const badgeMap = {

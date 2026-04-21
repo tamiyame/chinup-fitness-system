@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/style.css">
+<style>body { visibility: hidden; }</style>
 </head>
 <body>
 <nav class="navbar sticky top-0 z-20">
@@ -50,7 +51,7 @@
 import { api, toast, fmtDate, bootAuth } from '/app.js';
 
 const user = await bootAuth();
-if (!user) { /* redirected */ }
+if (!user) throw new Error('__redirected_by_auth__');
 
 const LABEL_REG = { confirmed: '正取', waitlisted: '候補', cancelled: '已取消', rejected: '未開課' };
 const LABEL_SESSION = { open: '開放報名', confirmed: '已成班', cancelled: '未開課', completed: '已結束' };

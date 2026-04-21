@@ -1,7 +1,8 @@
 import { api, toast, fmtDate, dow, bootAuth } from '/app.js';
 
 const user = await bootAuth({ requireAdmin: true });
-if (!user) { /* redirected */ }
+// If bootAuth redirected, halt module execution so no admin content renders.
+if (!user) throw new Error('__redirected_by_auth__');
 
 const ROLE_LABEL = { owner: '擁有者', admin: '管理者', user: '會員' };
 const ROLE_BADGE = { owner: 'waitlisted', admin: 'confirmed', user: 'open' };

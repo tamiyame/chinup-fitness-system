@@ -147,7 +147,7 @@ tabs.forEach(b => b.addEventListener('click', () => switchMode(b.dataset.mode)))
 if (localStorage.getItem('chinup.token')) {
   fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${localStorage.getItem('chinup.token')}` }})
     .then(r => r.ok ? r.json() : null)
-    .then(u => { if (u) location.href = u.role === 'admin' ? '/admin.html' : '/'; });
+    .then(u => { if (u) location.href = ['admin','owner'].includes(u.role) ? '/admin.html' : '/'; });
 }
 
 // Display OAuth error on URL (?err=xxx)
@@ -177,7 +177,7 @@ loginForm.addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error(data.error === 'invalid_credentials' ? '帳號或密碼錯誤' : (data.error || 'login failed'));
     localStorage.setItem('chinup.token', data.token);
     localStorage.setItem('chinup.user', JSON.stringify(data.user));
-    const redirect = new URLSearchParams(location.search).get('redirect') || (data.user.role === 'admin' ? '/admin.html' : '/');
+    const redirect = new URLSearchParams(location.search).get('redirect') || (['admin','owner'].includes(data.user.role) ? '/admin.html' : '/');
     location.href = redirect;
   } catch (e2) {
     errEl.textContent = e2.message;

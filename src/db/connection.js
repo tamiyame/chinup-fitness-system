@@ -31,11 +31,11 @@ db.exec(
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL'
 );
 
-// One-time role bootstrap for the initial admin cohort.
-// Guarded by role='user' so it only ever promotes unassigned accounts —
-// subsequent boots are no-ops, and the owner can re-assign freely.
-db.exec(`UPDATE users SET role='admin' WHERE id IN (1,2,3) AND role='user'`);
-db.exec(`UPDATE users SET role='owner' WHERE id=4 AND role='user'`);
+// NOTE: initial role bootstrap has run in production.
+// Removed because the guard `role='user'` made demoted accounts get
+// re-promoted on every boot — owners' role changes weren't sticky.
+// Going forward, roles are managed exclusively through the /api/admin/users
+// endpoint by the owner.
 
 // 本地 wall-clock 時間字串：與 schedule.js 儲存格式一致。
 export function nowLocal() {

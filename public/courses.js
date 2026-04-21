@@ -1,7 +1,7 @@
 import { api, toast, fmtDate, bootAuth, getUser } from '/app.js';
 
 const user = await bootAuth();
-if (!user) { /* redirected */ }
+if (!user) throw new Error('__redirected_by_auth__');
 
 const DOW_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
 
