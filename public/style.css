@@ -285,6 +285,74 @@ body {
   display: block;
 }
 
+/* ============ Day-of-week accordion (courses page) ============ */
+.day-group {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition: box-shadow 200ms ease, border-color 200ms ease;
+}
+.day-group[open] {
+  box-shadow: var(--shadow);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+.day-group summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 18px 22px;
+  display: flex; align-items: center; gap: 16px;
+  transition: background 150ms ease;
+}
+.day-group summary::-webkit-details-marker { display: none; }
+.day-group summary:hover { background: var(--brand-50); }
+
+.day-chip {
+  width: 52px; height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--brand-100), var(--brand-50));
+  color: var(--brand-700);
+  display: grid; place-items: center;
+  font-weight: 700; font-size: 18px;
+  flex-shrink: 0;
+  transition: all 220ms ease;
+  box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
+}
+.day-group[open] .day-chip {
+  background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
+  color: white;
+  box-shadow: 0 6px 18px -4px rgba(56, 189, 248, 0.45);
+}
+
+.day-title { flex: 1; min-width: 0; }
+.day-title h3 {
+  font-size: 16px; font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.day-title p {
+  font-size: 13px; color: var(--ink-soft); margin-top: 2px;
+}
+
+.day-chevron {
+  width: 20px; height: 20px;
+  color: var(--ink-mute);
+  transition: transform 240ms ease, color 200ms ease;
+}
+.day-group[open] .day-chevron {
+  transform: rotate(180deg);
+  color: var(--brand-600);
+}
+
+.day-group-content {
+  padding: 8px 20px 20px;
+  border-top: 1px solid var(--line);
+  background: #fafbfc;
+}
+.day-group-content .card {
+  background: var(--surface);
+}
+
 /* Accordion (details) */
 details.session-row {
   background: var(--surface);

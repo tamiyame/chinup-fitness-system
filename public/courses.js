@@ -4,6 +4,9 @@ const user = await bootAuth();
 if (!user) throw new Error('__redirected_by_auth__');
 
 const DOW_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
+const DOW_FULL = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+// Display order: Mon → Sun (Taiwan convention)
+const DOW_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 async function load() {
   const uid = getUser();
@@ -35,13 +38,50 @@ async function load() {
     empty.style.display = 'none';
     badge.textContent = `共 ${sessions.length} 場`;
 
-    list.innerHTML = sessions.map(s => card(s, mySet.get(s.id))).join('');
+    // Group by day-of-week (0..6 Sun..Sat)
+    const groups = [[], [], [], [], [], [], []];
+    for (const s of sessions) {
+      const dow = new Date(s.start_at).getDay();
+      groups[dow].push(s);
+    }
+
+    // Render in Mon..Sun order, skip days with zero sessions
+    list.innerHTML = DOW_ORDER
+      .filter((d) => groups[d].length > 0)
+      .map((d) => renderDayGroup(d, groups[d], mySet))
+      .join('');
+
     list.querySelectorAll('.register-btn').forEach(btn => {
       btn.addEventListener('click', () => handleRegister(Number(btn.dataset.sessionId)));
     });
   } catch (e) {
     toast(`載入失敗：${e.message}`, 'error');
   }
+}
+
+function renderDayGroup(dow, daySessions, mySet) {
+  const next = daySessions[0]; // already sorted by start_at asc from API
+  const nextDt = new Date(next.start_at);
+  const nextLabel = `${nextDt.getFullYear()}/${String(nextDt.getMonth() + 1).padStart(2, '0')}/${String(nextDt.getDate()).padStart(2, '0')}`;
+  const timeSet = [...new Set(daySessions.map((s) => s.start_at.slice(11, 16)))];
+  const timesLabel = timeSet.length <= 3 ? timeSet.join(' / ') : `${timeSet[0]} 起共 ${timeSet.length} 個時段`;
+
+  const chevron = `<svg class="day-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
+  return `
+  <details class="day-group">
+    <summary>
+      <div class="day-chip">${DOW_FULL[dow]}</div>
+      <div class="day-title">
+        <h3>${DOW_FULL[dow]}・共 ${daySessions.length} 場</h3>
+        <p>下次：${nextLabel}・時段 ${timesLabel}</p>
+      </div>
+      ${chevron}
+    </summary>
+    <div class="day-group-content">
+      ${daySessions.map((s) => card(s, mySet.get(s.id))).join('')}
+    </div>
+  </details>`;
 }
 
 function card(s, my) {
