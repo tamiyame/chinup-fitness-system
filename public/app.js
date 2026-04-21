@@ -80,7 +80,7 @@ export async function bootAuth({ requireAdmin = false } = {}) {
     return null;
   }
 
-  if (requireAdmin && user.role !== 'admin') {
+  if (requireAdmin && !['admin', 'owner'].includes(user.role)) {
     location.href = '/';
     return null;
   }
@@ -92,9 +92,12 @@ export async function bootAuth({ requireAdmin = false } = {}) {
 function renderAuthBar(user) {
   const el = document.getElementById('auth-bar');
   if (!el) return;
-  const badge = user.role === 'admin'
-    ? '<span class="badge badge-confirmed" style="font-size:10px;">管理者</span>'
-    : '<span class="badge badge-open" style="font-size:10px;">會員</span>';
+  const badgeMap = {
+    owner: '<span class="badge badge-waitlisted" style="font-size:10px;">擁有者</span>',
+    admin: '<span class="badge badge-confirmed" style="font-size:10px;">管理者</span>',
+    user:  '<span class="badge badge-open" style="font-size:10px;">會員</span>',
+  };
+  const badge = badgeMap[user.role] || badgeMap.user;
   el.innerHTML = `
     <div class="flex items-center gap-2">
       ${badge}

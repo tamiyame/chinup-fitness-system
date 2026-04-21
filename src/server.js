@@ -44,7 +44,14 @@ function requireUser(req, res, next) {
 
 function requireAdmin(req, res, next) {
   requireUser(req, res, () => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'admin_only' });
+    if (!['admin', 'owner'].includes(req.user.role)) return res.status(403).json({ error: 'admin_only' });
+    next();
+  });
+}
+
+function requireOwner(req, res, next) {
+  requireUser(req, res, () => {
+    if (req.user.role !== 'owner') return res.status(403).json({ error: 'owner_only' });
     next();
   });
 }
@@ -228,6 +235,40 @@ app.patch('/api/admin/templates/:id', requireAdmin, asyncHandler((req, res) => {
 
 app.get('/api/admin/sessions/:id/registrations', requireAdmin, asyncHandler((req, res) => {
   res.json(listRegistrationsBySession(Number(req.params.id)));
+}));
+
+// --- User management ---
+// Admin + owner can see the roster. Only owner can change roles.
+app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
+  const rows = db.prepare(`
+    SELECT id, name, email, phone, role, notification_preference,
+           (google_id IS NOT NULL) AS has_google, created_at
+    FROM users ORDER BY id ASC
+  `).all();
+  res.json(rows);
+}));
+
+app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => {
+  const targetId = Number(req.params.id);
+  const { role } = req.body || {};
+  if (!['user', 'admin', 'owner'].includes(role)) {
+    return res.status(400).json({ error: 'invalid_role' });
+  }
+  if (targetId === req.user.id) {
+    return res.status(400).json({ error: 'cannot_change_own_role' });
+  }
+
+  const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'user_not_found' });
+
+  // Prevent demoting the last owner (keeps the app always recoverable).
+  if (target.role === 'owner' && role !== 'owner') {
+    const ownerCount = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'owner'").get().c;
+    if (ownerCount <= 1) return res.status(400).json({ error: 'last_owner' });
+  }
+
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
+  res.json({ ok: true, id: targetId, role });
 }));
 
 app.get('/api/admin/notifications', requireAdmin, asyncHandler((req, res) => {

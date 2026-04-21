@@ -3,6 +3,9 @@ import { api, toast, fmtDate, dow, bootAuth } from '/app.js';
 const user = await bootAuth({ requireAdmin: true });
 if (!user) { /* redirected */ }
 
+const ROLE_LABEL = { owner: '擁有者', admin: '管理者', user: '會員' };
+const ROLE_BADGE = { owner: 'waitlisted', admin: 'confirmed', user: 'open' };
+
 const RECURRENCE_LABEL = { weekly: '每週', monthly: '每月', bimonthly: '每兩個月', quarterly: '每季', semiannual: '每半年' };
 const SESSION_STATUS_LABEL = { open: '開放', confirmed: '已成班', cancelled: '未開課', completed: '結束' };
 const REG_STATUS_LABEL = { confirmed: '正取', waitlisted: '候補', cancelled: '取消', rejected: '未開課' };
@@ -214,5 +217,85 @@ document.getElementById('run-reminders').addEventListener('click', async () => {
   } catch (e) { toast(`失敗：${e.message}`, 'error'); }
 });
 
+async function loadUsers() {
+  const el = document.getElementById('users-table');
+  const note = document.getElementById('users-note');
+  const canEdit = user.role === 'owner';
+  note.textContent = canEdit
+    ? '你是擁有者 — 可指派其他帳號為管理者'
+    : '僅擁有者可變更角色';
+
+  try {
+    const rows = await api('/api/admin/users');
+    if (!rows.length) { el.innerHTML = '<div class="p-6 subtle text-center">無會員</div>'; return; }
+
+    el.innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th style="width:60px;">ID</th>
+          <th>姓名</th>
+          <th>Email</th>
+          <th>登入方式</th>
+          <th>角色</th>
+          <th>加入時間</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => renderUserRow(r, canEdit)).join('')}
+        </tbody>
+      </table>`;
+
+    if (canEdit) {
+      el.querySelectorAll('select.role-select').forEach(sel => {
+        sel.addEventListener('change', async (e) => {
+          const id = Number(sel.dataset.id);
+          const newRole = sel.value;
+          try {
+            await api(`/api/admin/users/${id}/role`, { method: 'PATCH', body: { role: newRole } });
+            toast(`已更新：${sel.dataset.name} → ${ROLE_LABEL[newRole]}`, 'success');
+            loadUsers();
+          } catch (err) {
+            const msgs = {
+              cannot_change_own_role: '不能變更自己的角色',
+              last_owner: '不能降級最後一位擁有者',
+              invalid_role: '無效的角色',
+            };
+            toast(msgs[err.data?.error] || `失敗：${err.message}`, 'error');
+            sel.value = sel.dataset.original;
+          }
+        });
+      });
+    }
+  } catch (e) {
+    el.innerHTML = `<div class="p-6 text-red-500">${e.message}</div>`;
+  }
+}
+
+function renderUserRow(r, canEdit) {
+  const isSelf = r.id === user.id;
+  const loginBadge = r.has_google
+    ? '<span class="badge badge-confirmed" style="font-size:11px;">Google</span>'
+    : '<span class="badge badge-completed" style="font-size:11px;">Email</span>';
+
+  // Edit controls: owner can change others' roles, but not own
+  const roleCell = canEdit && !isSelf
+    ? `<select class="role-select form-select" style="padding:4px 8px;font-size:13px;" data-id="${r.id}" data-name="${r.name}" data-original="${r.role}">
+         <option value="user" ${r.role==='user'?'selected':''}>會員</option>
+         <option value="admin" ${r.role==='admin'?'selected':''}>管理者</option>
+         <option value="owner" ${r.role==='owner'?'selected':''}>擁有者</option>
+       </select>`
+    : `<span class="badge badge-${ROLE_BADGE[r.role] || 'open'}">${ROLE_LABEL[r.role] || r.role}</span>${isSelf ? ' <span class="subtle text-xs">(你)</span>' : ''}`;
+
+  return `
+    <tr>
+      <td class="subtle">#${r.id}</td>
+      <td><span class="font-medium">${r.name}</span></td>
+      <td class="subtle">${r.email}</td>
+      <td>${loginBadge}</td>
+      <td>${roleCell}</td>
+      <td class="subtle">${fmtDate(r.created_at)}</td>
+    </tr>`;
+}
+
 loadTemplates();
+loadUsers();
 loadNotifs();
