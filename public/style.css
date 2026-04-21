@@ -68,8 +68,8 @@ body {
 .brand-mark {
   display: inline-flex; align-items: center; gap: 8px;
   font-weight: 700; font-size: 17px;
-  background: linear-gradient(135deg, var(--brand-600), var(--brand-900));
-  -webkit-background-clip: text; background-clip: text; color: transparent;
+  color: #000;
+  text-decoration: none;
 }
 .brand-dot {
   width: 32px; height: 32px;
