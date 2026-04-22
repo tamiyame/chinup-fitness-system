@@ -35,20 +35,28 @@ async function load() {
     empty.style.display = 'none';
     badge.textContent = `共 ${sessions.length} 場`;
 
-    // Group by course template (= "course type"). Sessions API already
-    // sorts by start_at ASC so the first entry in each group is the nearest.
+    // Group by course NAME. Templates sharing the same name (e.g. multiple
+    // '重量訓練' ranges or 'TRX' classes) merge into one accordion card.
+    // Sessions API already sorts by start_at ASC so the first session in
+    // each group is the nearest-upcoming.
     const groups = new Map();
     for (const s of sessions) {
-      const key = s.template_id;
+      const key = (s.name || '').trim();
       if (!groups.has(key)) {
         groups.set(key, {
           name: s.name,
           description: s.description,
+          // When multiple templates merge under the same name, show the
+          // union range for capacity and the min/max of duration.
           min_capacity: s.min_capacity,
           max_capacity: s.max_capacity,
           duration_minutes: s.duration_minutes,
           sessions: [],
         });
+      } else {
+        const g = groups.get(key);
+        g.min_capacity = Math.min(g.min_capacity, s.min_capacity);
+        g.max_capacity = Math.max(g.max_capacity, s.max_capacity);
       }
       groups.get(key).sessions.push(s);
     }
