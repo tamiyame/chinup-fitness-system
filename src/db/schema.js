@@ -80,7 +80,7 @@ CREATE INDEX IF NOT EXISTS idx_reg_session_status ON registrations(session_id, s
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
-  session_id INTEGER REFERENCES course_sessions(id),
+  session_id INTEGER REFERENCES course_sessions(id) ON DELETE SET NULL,
   type TEXT NOT NULL,
   channel TEXT NOT NULL,
   subject TEXT,

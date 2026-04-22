@@ -59,12 +59,14 @@ async function loadTemplates() {
           <div class="flex gap-2">
             <button data-id="${t.id}" class="edit-btn btn btn-ghost btn-sm">編輯</button>
             <button data-id="${t.id}" class="view-btn btn btn-dark btn-sm">查看場次</button>
+            <button data-id="${t.id}" class="del-btn btn btn-danger btn-sm">刪除</button>
           </div>
         </div>
       </article>
     `).join('');
     container.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => openEdit(Number(b.dataset.id))));
     container.querySelectorAll('.view-btn').forEach(b => b.addEventListener('click', () => openDrawer(Number(b.dataset.id))));
+    container.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => deleteTemplate(Number(b.dataset.id))));
   } catch (e) {
     toast(`載入範本失敗：${e.message}`, 'error');
   }
@@ -159,6 +161,41 @@ document.getElementById('tpl-form').addEventListener('submit', async (e) => {
     toast(`失敗：${err.data?.error || err.message}`, 'error');
   }
 });
+
+async function deleteTemplate(id) {
+  let t;
+  try {
+    t = await api(`/api/admin/templates/${id}`);
+  } catch (e) {
+    toast(`載入範本失敗：${e.message}`, 'error');
+    return;
+  }
+
+  const sessionCount = t.sessions.length;
+  const activeRegs = t.sessions.reduce(
+    (n, s) => n + (s.confirmed_count || 0) + (s.waitlist_count || 0),
+    0
+  );
+
+  const lines = [
+    `確定刪除課程範本「${t.name}」？`,
+    '',
+    '將連帶刪除：',
+    `・${sessionCount} 個場次`,
+    `・目前 ${activeRegs} 筆進行中的報名（含候補）`,
+    '',
+    '已取消 / 未開課的報名也會一併清除，無法復原。',
+  ];
+  if (!confirm(lines.join('\n'))) return;
+
+  try {
+    const r = await api(`/api/admin/templates/${id}`, { method: 'DELETE' });
+    toast(`已刪除「${t.name}」（${r.sessionsDeleted} 場次、${r.registrationsDeleted} 報名）`, 'success');
+    loadTemplates();
+  } catch (e) {
+    toast(`刪除失敗：${e.message}`, 'error');
+  }
+}
 
 async function openDrawer(templateId) {
   const d = document.getElementById('drawer');

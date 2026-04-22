@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { db } from './db/connection.js';
+import { db, tx } from './db/connection.js';
 import {
   createTemplate, editTemplate, listTemplates, getTemplate,
   listOpenSessions, listRegistrationsBySession, listUserRegistrations,
@@ -231,6 +231,35 @@ app.post('/api/admin/templates', requireAdmin, asyncHandler((req, res) => {
 app.patch('/api/admin/templates/:id', requireAdmin, asyncHandler((req, res) => {
   const result = editTemplate(Number(req.params.id), req.body);
   res.json(result);
+}));
+
+app.delete('/api/admin/templates/:id', requireAdmin, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const tpl = db.prepare('SELECT name FROM course_templates WHERE id = ?').get(id);
+  if (!tpl) return res.status(404).json({ error: 'template_not_found' });
+
+  const sessionCount = db.prepare('SELECT COUNT(*) AS c FROM course_sessions WHERE template_id = ?').get(id).c;
+  const regCount = db.prepare(`
+    SELECT COUNT(*) AS c FROM registrations r
+    JOIN course_sessions s ON s.id = r.session_id
+    WHERE s.template_id = ?
+  `).get(id).c;
+
+  // Wrap in transaction. Existing DBs may have notifications.session_id with
+  // no ON DELETE SET NULL (pre-existing FK) — manually null the refs first so
+  // the cascade doesn't trip a FOREIGN KEY constraint.
+  tx(() => {
+    db.prepare(`
+      UPDATE notifications SET session_id = NULL
+      WHERE session_id IN (SELECT id FROM course_sessions WHERE template_id = ?)
+    `).run(id);
+    // FK cascade: course_sessions.template_id ON DELETE CASCADE
+    //             registrations.session_id   ON DELETE CASCADE
+    db.prepare('DELETE FROM course_templates WHERE id = ?').run(id);
+  });
+
+  console.log(`[admin] template #${id} '${tpl.name}' deleted by user ${req.user.id} (${sessionCount} sessions, ${regCount} regs)`);
+  res.json({ ok: true, sessionsDeleted: sessionCount, registrationsDeleted: regCount });
 }));
 
 app.get('/api/admin/sessions/:id/registrations', requireAdmin, asyncHandler((req, res) => {
