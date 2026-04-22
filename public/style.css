@@ -309,20 +309,31 @@ body {
 .day-group summary:hover { background: var(--brand-50); }
 
 .day-chip {
-  width: 52px; height: 52px;
+  width: 56px; height: 56px;
   border-radius: 14px;
   background: linear-gradient(135deg, var(--brand-100), var(--brand-50));
   color: var(--brand-700);
-  display: grid; place-items: center;
-  font-weight: 700; font-size: 18px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 20px; line-height: 1;
   flex-shrink: 0;
   transition: all 220ms ease;
   box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
+}
+.day-chip-unit {
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.12em;
+  margin-top: 3px;
+  opacity: 0.72;
 }
 .day-group[open] .day-chip {
   background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
   color: white;
   box-shadow: 0 6px 18px -4px rgba(56, 189, 248, 0.45);
+}
+.course-meta {
+  font-size: 12px !important;
+  color: var(--ink-mute) !important;
+  margin-top: 6px !important;
 }
 
 .day-title { flex: 1; min-width: 0; }
