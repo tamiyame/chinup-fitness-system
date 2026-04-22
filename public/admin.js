@@ -115,6 +115,19 @@ async function openEdit(id) {
   const t = await api(`/api/admin/templates/${id}`);
   document.getElementById('modal-title').textContent = '編輯範本';
   const f = document.getElementById('tpl-form');
+
+  // Preserve legacy names that aren't in current categories by appending a temp option.
+  const sel = document.getElementById('tpl-name-select');
+  if (sel && t.name && !categoriesCache.some(c => c.name === t.name)) {
+    // Remove any previously injected legacy option first
+    [...sel.querySelectorAll('option[data-legacy="1"]')].forEach(o => o.remove());
+    const opt = document.createElement('option');
+    opt.value = t.name;
+    opt.textContent = `${t.name}（舊名稱，未列於分類）`;
+    opt.dataset.legacy = '1';
+    sel.appendChild(opt);
+  }
+
   for (const k of ['name','description','min_capacity','max_capacity','day_of_week','start_time','duration_minutes','registration_deadline_hours','recurrence','cycle_start_date','cycle_end_date']) {
     if (f[k]) f[k].value = t[k] ?? '';
   }
@@ -297,6 +310,108 @@ function renderUserRow(r, canEdit) {
     </tr>`;
 }
 
+// --- Categories ---
+let categoriesCache = [];
+
+async function loadCategories() {
+  const el = document.getElementById('categories-table');
+  try {
+    categoriesCache = await api('/api/admin/categories');
+    // Populate template form select
+    const sel = document.getElementById('tpl-name-select');
+    if (sel) {
+      const current = sel.value;
+      sel.innerHTML = '<option value="">— 從下方分類中選擇 —</option>' +
+        categoriesCache.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+      if (current && categoriesCache.some(c => c.name === current)) sel.value = current;
+    }
+
+    if (!categoriesCache.length) {
+      el.innerHTML = '<div class="p-6 subtle text-center">尚無分類，點「＋ 新增分類」</div>';
+      return;
+    }
+
+    el.innerHTML = `
+      <table class="data-table">
+        <thead><tr>
+          <th style="width:60px;">排序</th>
+          <th>名稱</th>
+          <th>說明</th>
+          <th style="width:160px;">操作</th>
+        </tr></thead>
+        <tbody>
+          ${categoriesCache.map(c => `
+            <tr>
+              <td class="subtle">#${c.sort_order}</td>
+              <td><span class="font-medium">${escapeHtml(c.name)}</span></td>
+              <td class="subtle">${escapeHtml(c.description || '—')}</td>
+              <td>
+                <button class="btn btn-ghost btn-sm cat-edit" data-id="${c.id}">編輯</button>
+                <button class="btn btn-danger btn-sm cat-del" data-id="${c.id}">刪除</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    el.querySelectorAll('.cat-edit').forEach(b => b.addEventListener('click', () => editCategory(Number(b.dataset.id))));
+    el.querySelectorAll('.cat-del').forEach(b => b.addEventListener('click', () => deleteCategory(Number(b.dataset.id))));
+  } catch (e) {
+    el.innerHTML = `<div class="p-6 text-red-500">${e.message}</div>`;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function newCategory() {
+  const name = prompt('分類名稱（例：重量訓練、TRX、HIIT）');
+  if (!name || !name.trim()) return;
+  const description = prompt('說明（可留空）') || '';
+  try {
+    await api('/api/admin/categories', { method: 'POST', body: { name: name.trim(), description } });
+    toast(`已新增：${name.trim()}`, 'success');
+    loadCategories();
+  } catch (e) {
+    const msgs = { name_exists: '此名稱已存在', missing_name: '名稱不能為空' };
+    toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
+  }
+}
+
+async function editCategory(id) {
+  const c = categoriesCache.find(x => x.id === id);
+  if (!c) return;
+  const name = prompt('分類名稱', c.name);
+  if (name === null) return;
+  const description = prompt('說明', c.description || '') ?? c.description;
+  const sort_order = prompt('排序（數字越小越前）', String(c.sort_order)) ?? c.sort_order;
+  try {
+    await api(`/api/admin/categories/${id}`, { method: 'PATCH', body: { name, description, sort_order } });
+    toast('已更新', 'success');
+    loadCategories();
+  } catch (e) {
+    const msgs = { name_exists: '此名稱已存在' };
+    toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
+  }
+}
+
+async function deleteCategory(id) {
+  const c = categoriesCache.find(x => x.id === id);
+  if (!c) return;
+  if (!confirm(`確定刪除分類「${c.name}」？\n\n既有課程範本不受影響，但此名稱會從下拉選單消失。`)) return;
+  try {
+    await api(`/api/admin/categories/${id}`, { method: 'DELETE' });
+    toast('已刪除', 'success');
+    loadCategories();
+  } catch (e) {
+    toast(`失敗：${e.message}`, 'error');
+  }
+}
+
+document.getElementById('new-cat-btn').addEventListener('click', newCategory);
+
+loadCategories();
 loadTemplates();
 loadUsers();
 loadNotifs();

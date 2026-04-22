@@ -52,6 +52,17 @@
     <div id="templates" class="grid gap-3"></div>
   </section>
 
+  <!-- categories -->
+  <section class="mb-10">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="section-title">課程分類</h2>
+      <button id="new-cat-btn" class="btn btn-ghost btn-sm">＋ 新增分類</button>
+    </div>
+    <div class="card p-0 overflow-hidden">
+      <div id="categories-table"></div>
+    </div>
+  </section>
+
   <!-- ops -->
   <section class="mb-10">
     <h2 class="section-title mb-4">系統操作</h2>
@@ -98,7 +109,10 @@
       <input type="hidden" name="id">
       <div>
         <label class="form-label">課程名稱</label>
-        <input name="name" required class="form-input" placeholder="例：週三晚間 TRX 核心訓練">
+        <select name="name" required class="form-select" id="tpl-name-select">
+          <option value="">— 從下方分類中選擇 —</option>
+        </select>
+        <p class="subtle mt-1" style="font-size:11px;">同名的課程會在會員端合併成同一張卡。如需新增分類請到下方「課程分類」管理。</p>
       </div>
       <div>
         <label class="form-label">課程說明</label>

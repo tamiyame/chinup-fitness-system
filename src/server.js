@@ -237,6 +237,57 @@ app.get('/api/admin/sessions/:id/registrations', requireAdmin, asyncHandler((req
   res.json(listRegistrationsBySession(Number(req.params.id)));
 }));
 
+// --- Course categories ---
+app.get('/api/admin/categories', requireAdmin, asyncHandler((req, res) => {
+  const rows = db.prepare(
+    'SELECT * FROM course_categories WHERE active = 1 ORDER BY sort_order ASC, id ASC'
+  ).all();
+  res.json(rows);
+}));
+
+app.post('/api/admin/categories', requireAdmin, asyncHandler((req, res) => {
+  const { name, description, sort_order } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'missing_name' });
+  try {
+    const info = db.prepare(
+      'INSERT INTO course_categories (name, description, sort_order) VALUES (?, ?, ?)'
+    ).run(name.trim(), description || null, Number(sort_order) || 0);
+    res.status(201).json({ id: info.lastInsertRowid, name: name.trim() });
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'name_exists' });
+    throw e;
+  }
+}));
+
+app.patch('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const existing = db.prepare('SELECT * FROM course_categories WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'category_not_found' });
+  const { name, description, sort_order } = req.body || {};
+  try {
+    db.prepare(
+      'UPDATE course_categories SET name = ?, description = ?, sort_order = ? WHERE id = ?'
+    ).run(
+      (name ?? existing.name).trim(),
+      description ?? existing.description,
+      sort_order !== undefined ? Number(sort_order) : existing.sort_order,
+      id
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'name_exists' });
+    throw e;
+  }
+}));
+
+app.delete('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  // Soft-delete via active=0 so existing templates keep working even if their
+  // category is hidden from the creation dropdown.
+  db.prepare('UPDATE course_categories SET active = 0 WHERE id = ?').run(id);
+  res.json({ ok: true });
+}));
+
 // --- User management ---
 // Admin + owner can see the roster. Only owner can change roles.
 app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {

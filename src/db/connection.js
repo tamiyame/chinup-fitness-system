@@ -37,6 +37,23 @@ db.exec(
 // Going forward, roles are managed exclusively through the /api/admin/users
 // endpoint by the owner.
 
+// Seed default course categories on first boot. Uses INSERT OR IGNORE so
+// deletions by the admin don't re-appear and re-runs are no-ops.
+const defaultCategories = [
+  { name: '重量訓練', description: '肌力與阻力訓練', sort_order: 10 },
+  { name: 'TRX',    description: '懸吊阻力訓練',    sort_order: 20 },
+  { name: 'HIIT',   description: '高強度間歇訓練',  sort_order: 30 },
+  { name: '綜合體能', description: '多元體能訓練',   sort_order: 40 },
+  { name: '瑜伽',    description: '流動瑜伽與伸展', sort_order: 50 },
+  { name: '核心訓練', description: '核心穩定與控制', sort_order: 60 },
+];
+const insertCat = db.prepare(
+  'INSERT OR IGNORE INTO course_categories (name, description, sort_order) VALUES (?, ?, ?)'
+);
+for (const c of defaultCategories) {
+  insertCat.run(c.name, c.description, c.sort_order);
+}
+
 // 本地 wall-clock 時間字串：與 schedule.js 儲存格式一致。
 export function nowLocal() {
   const d = new Date();
