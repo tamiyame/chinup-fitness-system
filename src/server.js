@@ -277,15 +277,25 @@ app.get('/api/admin/categories', requireAdmin, asyncHandler((req, res) => {
 app.post('/api/admin/categories', requireAdmin, asyncHandler((req, res) => {
   const { name, description, sort_order } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: 'missing_name' });
-  try {
-    const info = db.prepare(
-      'INSERT INTO course_categories (name, description, sort_order) VALUES (?, ?, ?)'
-    ).run(name.trim(), description || null, Number(sort_order) || 0);
-    res.status(201).json({ id: info.lastInsertRowid, name: name.trim() });
-  } catch (e) {
-    if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'name_exists' });
-    throw e;
+  const trimmed = name.trim();
+
+  // Check for any existing row (including old soft-deleted active=0 rows so
+  // admins can re-create a name they previously removed).
+  const existing = db.prepare('SELECT id, active FROM course_categories WHERE name = ?').get(trimmed);
+  if (existing && existing.active === 1) {
+    return res.status(409).json({ error: 'name_exists' });
   }
+  if (existing) {
+    db.prepare(
+      'UPDATE course_categories SET active = 1, description = ?, sort_order = ? WHERE id = ?'
+    ).run(description || null, Number(sort_order) || 0, existing.id);
+    return res.status(200).json({ id: existing.id, name: trimmed, reactivated: true });
+  }
+
+  const info = db.prepare(
+    'INSERT INTO course_categories (name, description, sort_order) VALUES (?, ?, ?)'
+  ).run(trimmed, description || null, Number(sort_order) || 0);
+  res.status(201).json({ id: info.lastInsertRowid, name: trimmed });
 }));
 
 app.patch('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) => {
@@ -311,9 +321,10 @@ app.patch('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) => 
 
 app.delete('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) => {
   const id = Number(req.params.id);
-  // Soft-delete via active=0 so existing templates keep working even if their
-  // category is hidden from the creation dropdown.
-  db.prepare('UPDATE course_categories SET active = 0 WHERE id = ?').run(id);
+  // Hard delete — matches admin expectation ("delete means gone"). Templates
+  // store the category name as a plain string, so removal never orphans them.
+  const info = db.prepare('DELETE FROM course_categories WHERE id = ?').run(id);
+  if (info.changes === 0) return res.status(404).json({ error: 'category_not_found' });
   res.json({ ok: true });
 }));
 
