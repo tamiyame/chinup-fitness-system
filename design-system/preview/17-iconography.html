@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Iconography</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { font-family: var(--font-sans); }
+  .row { display: flex; gap: 22px; width: 100%; align-items: center; justify-content: space-around; }
+  .col { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .icons { display: flex; gap: 6px; align-items: center; font-size: 22px; }
+  .icons.uni { font-family: var(--font-mono); font-size: 22px; color: #475569; font-weight: 600; }
+  .name { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #475569; }
+  .legend { font-family: var(--font-mono); font-size: 10px; color: #94a3b8; }
+  svg { width: 22px; height: 22px; color: #475569; }
+</style>
+</head>
+<body>
+<div class="card column" style="justify-content:center;gap:14px;">
+  <div class="row">
+    <div class="col"><span class="icons">💪 📋 ⚙️ 🗓️ 👥 ⏳ 🕐 🎉</span><span class="name">Emoji anchors</span><span class="legend">system color emoji</span></div>
+  </div>
+  <div class="row">
+    <div class="col"><span class="icons uni">＋ ✕ →</span><span class="name">Unicode</span></div>
+    <div class="col">
+      <span class="icons">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+      </span>
+      <span class="name">Inline SVG</span>
+      <span class="legend">stroke 2.5 · round caps</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

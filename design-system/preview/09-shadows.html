@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shadows</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { font-family: var(--font-sans); background: #f8faf9; }
+  .row { display: flex; gap: 22px; align-items: center; justify-content: space-around; width: 100%; padding: 10px 0; }
+  .item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .box {
+    width: 86px; height: 64px; border-radius: 14px;
+    background: #ffffff; border: 1px solid #e5e7eb;
+  }
+  .sm { box-shadow: 0 1px 2px 0 rgba(15,23,42,0.04); }
+  .md { box-shadow: 0 4px 16px -4px rgba(15,23,42,0.08), 0 2px 4px -2px rgba(15,23,42,0.04); }
+  .lg { box-shadow: 0 12px 32px -8px rgba(15,23,42,0.14); }
+  .brand { box-shadow: 0 6px 24px -6px rgba(56,189,248,0.45); }
+  .name { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #475569; }
+  .val { font-family: var(--font-mono); font-size: 10px; color: #94a3b8; }
+</style>
+</head>
+<body>
+<div class="card center">
+  <div class="row">
+    <div class="item"><div class="box sm"></div><span class="name">Sm</span><span class="val">resting</span></div>
+    <div class="item"><div class="box md"></div><span class="name">Default</span><span class="val">hover / open</span></div>
+    <div class="item"><div class="box lg"></div><span class="name">Lg</span><span class="val">modal / drawer</span></div>
+    <div class="item"><div class="box brand"></div><span class="name">Brand</span><span class="val">primary btn</span></div>
+  </div>
+</div>
+</body>
+</html>

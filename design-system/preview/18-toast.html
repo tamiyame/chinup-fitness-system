@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Toast</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { font-family: var(--font-sans); background: #f8faf9; }
+  .row { display: flex; flex-direction: column; gap: 8px; width: 100%; align-items: flex-end; }
+  .toast {
+    padding: 12px 20px; border-radius: 10px; color: white;
+    font-size: 14px; font-weight: 500;
+    box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.14);
+  }
+  .toast.success { background: #0ea5e9; }
+  .toast.error   { background: #dc2626; }
+  .toast.info    { background: #0f172a; }
+</style>
+</head>
+<body>
+<div class="card column" style="justify-content:center;">
+  <div class="row">
+    <div class="toast success">🎉 報名成功（正取）</div>
+    <div class="toast info">已進候補 第 2 位</div>
+    <div class="toast error">取消失敗：connection error</div>
+  </div>
+</div>
+</body>
+</html>

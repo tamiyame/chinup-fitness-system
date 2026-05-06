@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Badges</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { font-family: var(--font-sans); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 9999px;
+    font-size: 12px; font-weight: 600; border: 1px solid transparent;
+  }
+  .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .85; }
+  .open { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+  .confirmed { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+  .waitlisted { background: #fffbeb; color: #a16207; border-color: #fcd34d; }
+  .cancelled { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+  .completed { background: #f1f5f9; color: #334155; border-color: #cbd5e1; }
+</style>
+</head>
+<body>
+<div class="card column" style="justify-content:center;gap:10px;">
+  <div class="row">
+    <span class="badge open">開放報名</span>
+    <span class="badge confirmed">已成班</span>
+    <span class="badge confirmed">已報名（正取）</span>
+    <span class="badge waitlisted">候補第 2 位</span>
+    <span class="badge waitlisted">已額滿</span>
+  </div>
+  <div class="row">
+    <span class="badge cancelled">未開課</span>
+    <span class="badge completed">已結束</span>
+    <span class="badge completed">場次 · 已結束</span>
+    <span class="badge open">會員</span>
+    <span class="badge confirmed">管理者</span>
+  </div>
+</div>
+</body>
+</html>

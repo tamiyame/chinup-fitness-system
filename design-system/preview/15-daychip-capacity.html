@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Day chip + capacity</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { font-family: var(--font-sans); }
+  .row { display: flex; gap: 24px; align-items: center; width: 100%; justify-content: space-around; }
+  .chip {
+    width: 64px; height: 64px;
+    border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 22px; line-height: 1;
+  }
+  .chip-rest {
+    background: linear-gradient(135deg, #e0f2fe, #f0f9ff);
+    color: #0284c7;
+  }
+  .chip-active {
+    background: linear-gradient(135deg, #38bdf8, #0284c7);
+    color: #fff;
+    box-shadow: 0 6px 18px -4px rgba(56, 189, 248, 0.45);
+  }
+  .unit { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; margin-top: 3px; opacity: 0.72; }
+  .col { display: flex; flex-direction: column; gap: 8px; min-width: 130px; }
+  .name { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #475569; }
+  .bar { height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; width: 140px; }
+  .fill { height: 100%; border-radius: 3px; }
+  .fill-default { background: linear-gradient(90deg, #38bdf8, #0284c7); width: 65%; }
+  .fill-full { background: linear-gradient(90deg, #f59e0b, #d97706); width: 100%; }
+  .legend { font-family: var(--font-mono); font-size: 10px; color: #94a3b8; }
+</style>
+</head>
+<body>
+<div class="card center" style="gap:0;">
+  <div class="row">
+    <div class="col" style="align-items:center;">
+      <div class="chip chip-rest">5<span class="unit">場</span></div>
+      <span class="name">Day chip · rest</span>
+    </div>
+    <div class="col" style="align-items:center;">
+      <div class="chip chip-active">5<span class="unit">場</span></div>
+      <span class="name">Day chip · open</span>
+    </div>
+    <div class="col">
+      <span class="name">Capacity</span>
+      <div class="bar"><div class="fill fill-default"></div></div>
+      <span class="legend">5 / 8 · sky gradient</span>
+      <div class="bar"><div class="fill fill-full"></div></div>
+      <span class="legend">8 / 8 · amber when full</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>
