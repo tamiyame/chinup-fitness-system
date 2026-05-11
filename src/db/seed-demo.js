@@ -3,6 +3,9 @@ import { db } from './connection.js';
 import { createTemplate } from '../services/courseService.js';
 import { register } from '../services/registration.js';
 import { hashPassword } from '../services/auth.js';
+import { createCoach, setCoachActive, getCoachByUser } from '../services/coachService.js';
+import { addRule, addException } from '../services/availabilityService.js';
+import { createBooking } from '../services/bookingService.js';
 
 db.exec("DELETE FROM auth_sessions; DELETE FROM notifications; DELETE FROM registrations; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM users;");
 
@@ -76,3 +79,57 @@ console.log('[seed-demo] done');
 console.log('  templates:', db.prepare('SELECT COUNT(*) AS c FROM course_templates').get().c);
 console.log('  sessions:', db.prepare('SELECT COUNT(*) AS c FROM course_sessions').get().c);
 console.log('  registrations:', db.prepare('SELECT COUNT(*) AS c FROM registrations').get().c);
+
+// --- Coach: create demo coach user ---
+const coachEmail = 'coach1@chinup.local';
+let coachUser = db.prepare('SELECT * FROM users WHERE email = ?').get(coachEmail);
+if (!coachUser) {
+  const info = db.prepare(
+    "INSERT INTO users (name, email, password_hash, role, notification_preference) VALUES (?, ?, ?, 'coach', 'email')"
+  ).run('王教練', coachEmail, hashPassword('coachpass1234'));
+  coachUser = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+  console.log(`[seed] created coach user ${coachEmail} / coachpass1234`);
+}
+
+let coach = getCoachByUser(coachUser.id);
+if (!coach) {
+  const c = createCoach({
+    userId: coachUser.id,
+    displayName: '王教練',
+    specialty: '增肌減脂 · 體態雕塑',
+    bio: '10 年訓練資歷，國立體大畢業，CSCS 認證。\n專長：肌力訓練、運動表現、體態雕塑。',
+    sortOrder: 10,
+  });
+  setCoachActive(c.id, true);
+  coach = getCoachByUser(coachUser.id);
+}
+
+// Add rules if empty
+if (db.prepare('SELECT COUNT(*) AS c FROM coach_availability_rules WHERE coach_id = ?').get(coach.id).c === 0) {
+  const today = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const from = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-01`;
+  for (const dow of [1, 3, 5]) {
+    addRule({ coachId: coach.id, dayOfWeek: dow, startTime: '09:00', endTime: '12:00', effectiveFrom: from });
+    addRule({ coachId: coach.id, dayOfWeek: dow, startTime: '14:00', endTime: '17:00', effectiveFrom: from });
+  }
+  // Add one leave exception for a future Tuesday
+  const futureTue = new Date(today.getTime() + 14 * 86400_000);
+  while (futureTue.getDay() !== 2) futureTue.setDate(futureTue.getDate() + 1);
+  const tueStr = `${futureTue.getFullYear()}-${pad(futureTue.getMonth() + 1)}-${pad(futureTue.getDate())}`;
+  // Tuesday isn't in the base rules anyway, so use a Monday to make the leave visible
+  const futureMon = new Date(today.getTime() + 7 * 86400_000);
+  while (futureMon.getDay() !== 1) futureMon.setDate(futureMon.getDate() + 1);
+  const monStr = `${futureMon.getFullYear()}-${pad(futureMon.getMonth() + 1)}-${pad(futureMon.getDate())}`;
+  addException({ coachId: coach.id, exceptionDate: monStr, type: 'leave', note: '個人事務' });
+
+  // One demo booking 2 weeks out on a Wednesday at 10:00
+  const futureWed = new Date(today.getTime() + 14 * 86400_000);
+  while (futureWed.getDay() !== 3) futureWed.setDate(futureWed.getDate() + 1);
+  const wedStr = `${futureWed.getFullYear()}-${pad(futureWed.getMonth() + 1)}-${pad(futureWed.getDate())}T10:00:00`;
+  const memberId = db.prepare("SELECT id FROM users WHERE email = 'user1@chinup.local'").get()?.id;
+  if (memberId) {
+    try { createBooking({ coachId: coach.id, memberId, startAt: wedStr, note: '想練腿' }); } catch {}
+  }
+  console.log(`[seed] coach #${coach.id} rules + exception + demo booking ready`);
+}
