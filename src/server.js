@@ -49,6 +49,15 @@ function requireAdmin(req, res, next) {
   });
 }
 
+function requireCoach(req, res, next) {
+  requireUser(req, res, () => {
+    if (!['coach', 'admin', 'owner'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'coach_only' });
+    }
+    next();
+  });
+}
+
 function requireOwner(req, res, next) {
   requireUser(req, res, () => {
     if (req.user.role !== 'owner') return res.status(403).json({ error: 'owner_only' });
@@ -342,7 +351,7 @@ app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
 app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => {
   const targetId = Number(req.params.id);
   const { role } = req.body || {};
-  if (!['user', 'admin', 'owner'].includes(role)) {
+  if (!['user', 'coach', 'admin', 'owner'].includes(role)) {
     return res.status(400).json({ error: 'invalid_role' });
   }
   if (targetId === req.user.id) {
