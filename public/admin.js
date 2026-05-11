@@ -448,7 +448,57 @@ async function deleteCategory(id) {
 
 document.getElementById('new-cat-btn').addEventListener('click', newCategory);
 
+// --- Coach management ---
+async function loadCoachMgmt() {
+  const coaches = await api('/api/admin/coaches');
+  const users = await api('/api/admin/users');
+  const wrap = document.getElementById('coach-mgmt-list');
+  wrap.innerHTML = '';
+  if (coaches.length === 0) wrap.innerHTML = '<p class="text-slate-500 text-sm">尚無教練</p>';
+  for (const c of coaches) {
+    const row = document.createElement('div');
+    row.className = 'card flex items-center justify-between gap-3 mb-2';
+    row.innerHTML = `
+      <div>
+        <div class="font-semibold">${c.display_name} <span class="text-xs ${c.is_active ? 'text-green-600' : 'text-amber-600'}">${c.is_active ? '啟用中' : '待啟用'}</span></div>
+        <div class="text-xs text-slate-500">${c.user_email} · ${c.specialty || ''}</div>
+      </div>
+      <div class="flex gap-2">
+        <button data-id="${c.id}" data-active="${c.is_active}" class="btn btn-ghost btn-sm toggle-active">${c.is_active ? '停用' : '啟用'}</button>
+        <button data-id="${c.id}" class="btn btn-danger btn-sm demote-btn">降為一般用戶</button>
+      </div>
+    `;
+    wrap.appendChild(row);
+  }
+  wrap.querySelectorAll('.toggle-active').forEach(b => b.addEventListener('click', async () => {
+    await api(`/api/admin/coaches/${b.dataset.id}`, { method: 'PATCH', body: { is_active: b.dataset.active === '0' || b.dataset.active === 'false' ? 1 : 0 } });
+    loadCoachMgmt();
+  }));
+  wrap.querySelectorAll('.demote-btn').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('確定降為一般用戶？歷史預約會保留，但未來不會出現在會員端')) return;
+    await api(`/api/admin/coaches/${b.dataset.id}`, { method: 'DELETE' });
+    loadCoachMgmt();
+  }));
+
+  const sel = document.getElementById('user-to-promote');
+  sel.innerHTML = users
+    .filter(u => u.role === 'user')
+    .map(u => `<option value="${u.id}">${u.name}（${u.email}）</option>`)
+    .join('');
+}
+
+document.getElementById('promote-coach-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const userId = Number(new FormData(e.target).get('user_id'));
+  try {
+    await api('/api/admin/coaches', { method: 'POST', body: { user_id: userId } });
+    toast('已升為教練（待設定資料後啟用）');
+    loadCoachMgmt();
+  } catch (err) { toast(`錯誤：${err.message}`, 'error'); }
+});
+
 loadCategories();
 loadTemplates();
 loadUsers();
 loadNotifs();
+loadCoachMgmt();

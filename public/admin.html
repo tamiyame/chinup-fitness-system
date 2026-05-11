@@ -87,6 +87,21 @@
     </div>
   </section>
 
+  <!-- coach management -->
+  <section id="coach-mgmt" class="mb-10">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="section-title">教練管理</h2>
+    </div>
+    <div id="coach-mgmt-list"></div>
+    <details class="mt-3">
+      <summary class="text-sm cursor-pointer">+ 由現有 user 升級為教練</summary>
+      <form id="promote-coach-form" class="mt-2 flex gap-2 items-center">
+        <select name="user_id" id="user-to-promote" class="border rounded p-2 text-sm flex-1"></select>
+        <button class="btn btn-primary btn-sm">升為教練</button>
+      </form>
+    </details>
+  </section>
+
   <!-- notifications -->
   <section class="pb-16">
     <h2 class="section-title mb-4">通知紀錄 <span class="subtle">(最近 100 筆)</span></h2>
