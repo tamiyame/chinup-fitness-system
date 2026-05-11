@@ -119,8 +119,10 @@ npm start                   # http://localhost:3000
 ### 測試
 
 ```bash
-node tests/flow.test.js     # 核心流程單元測試（12 項）
-node tests/api.test.js      # HTTP API 整合測試（17 項，需 server 先啟動）
+node tests/flow.test.js          # 團體課核心流程單元測試
+node tests/booking-flow.test.js  # 一對一 + 點數系統單元測試
+node tests/api.test.js           # 既有 HTTP API 整合測試（需 server 先啟動）
+node tests/booking-api.test.js   # 一對一 + 點數 HTTP 整合測試（同上）
 ```
 
 ## 架構

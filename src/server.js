@@ -284,13 +284,26 @@ app.delete('/api/admin/templates/:id', requireAdmin, asyncHandler((req, res) => 
     WHERE s.template_id = ?
   `).get(id).c;
 
-  // Wrap in transaction. Existing DBs may have notifications.session_id with
-  // no ON DELETE SET NULL (pre-existing FK) — manually null the refs first so
-  // the cascade doesn't trip a FOREIGN KEY constraint.
+  // Wrap in transaction. Several FKs reference course_sessions / registrations
+  // without ON DELETE SET NULL (point_transactions added by Phase 2; notifications
+  // pre-existing). Null those refs first so the template cascade doesn't trip
+  // a FOREIGN KEY constraint.
   tx(() => {
     db.prepare(`
       UPDATE notifications SET session_id = NULL
       WHERE session_id IN (SELECT id FROM course_sessions WHERE template_id = ?)
+    `).run(id);
+    db.prepare(`
+      UPDATE point_transactions SET related_session_id = NULL
+      WHERE related_session_id IN (SELECT id FROM course_sessions WHERE template_id = ?)
+    `).run(id);
+    db.prepare(`
+      UPDATE point_transactions SET related_registration_id = NULL
+      WHERE related_registration_id IN (
+        SELECT r.id FROM registrations r
+        JOIN course_sessions s ON s.id = r.session_id
+        WHERE s.template_id = ?
+      )
     `).run(id);
     // FK cascade: course_sessions.template_id ON DELETE CASCADE
     //             registrations.session_id   ON DELETE CASCADE
