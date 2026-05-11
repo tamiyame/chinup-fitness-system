@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS coach_availability_exceptions (
 
 CREATE TABLE IF NOT EXISTS bookings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  coach_id INTEGER NOT NULL REFERENCES coaches(id),
+  coach_id INTEGER NOT NULL REFERENCES coaches(id) ON DELETE RESTRICT,
   member_id INTEGER NOT NULL REFERENCES users(id),
   start_at TEXT NOT NULL,
   end_at TEXT NOT NULL,
@@ -137,7 +137,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   cancelled_by INTEGER REFERENCES users(id),
   cancel_reason TEXT,
   note TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (start_at < end_at)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS bookings_coach_start_confirmed
