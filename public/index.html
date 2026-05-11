@@ -26,6 +26,7 @@
         <a href="/my-bookings.html" class="nav-link">我的一對一</a>
         <a href="/my.html" class="nav-link">我的報名</a>
         <a href="/admin.html" class="nav-link">管理後台</a>
+        <a href="/coach.html" id="coach-link" class="nav-link hidden">教練後台</a>
       </div>
     </div>
     <div id="auth-bar" class="flex items-center gap-3"></div>
@@ -59,5 +60,10 @@
 
 <script type="module" src="/app.js"></script>
 <script type="module" src="/courses.js"></script>
+<script type="module">
+import { getUser } from '/app.js';
+const u = getUser();
+if (u && ['coach','admin','owner'].includes(u.role)) document.getElementById('coach-link')?.classList.remove('hidden');
+</script>
 </body>
 </html>

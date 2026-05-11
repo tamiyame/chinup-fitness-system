@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>教練後台 · CHINUP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/colors_and_type.css">
+<link rel="stylesheet" href="/style.css">
+<style>body { visibility: hidden; }</style>
+</head>
+<body>
+<nav class="navbar sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <a href="/" class="brand-mark"><span class="brand-dot"><img src="/logo.png" alt="logo"></span> CHINUP Performance</a>
+    <div id="auth-bar" class="flex items-center gap-3"></div>
+  </div>
+</nav>
+
+<main class="max-w-4xl mx-auto px-6 py-8">
+  <div id="pending-banner" class="hidden mb-4 p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-900">
+    您的教練資料尚未啟用，請聯絡管理員啟用後才會顯示給會員。
+  </div>
+
+  <h1 class="page-title">教練後台</h1>
+
+  <div class="flex gap-2 border-b mb-4 overflow-x-auto">
+    <button data-tab="bookings" class="tab tab-active">我的預約</button>
+    <button data-tab="availability" class="tab">可預約時段</button>
+    <button data-tab="profile" class="tab">個人資料</button>
+  </div>
+
+  <section id="tab-bookings" class="tab-panel"></section>
+  <section id="tab-availability" class="tab-panel hidden"></section>
+  <section id="tab-profile" class="tab-panel hidden"></section>
+</main>
+
+<div id="toast" class="toast"></div>
+<script type="module" src="/coach.js"></script>
+</body>
+</html>
