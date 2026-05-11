@@ -143,8 +143,8 @@ CREATE TABLE bookings (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   coach_id        INTEGER NOT NULL REFERENCES coaches(id),
   member_id       INTEGER NOT NULL REFERENCES users(id),
-  start_at        TEXT NOT NULL,       -- ISO datetime UTC
-  end_at          TEXT NOT NULL,       -- start_at + 60min
+  start_at        TEXT NOT NULL,       -- local wall-clock 'YYYY-MM-DDTHH:MM:SS' (Asia/Taipei) — same convention as course_sessions.start_at via nowLocal()
+  end_at          TEXT NOT NULL,       -- local wall-clock, start_at + 60min
   status          TEXT NOT NULL DEFAULT 'confirmed',  -- 'confirmed' | 'cancelled'
   cancelled_at    TEXT,
   cancelled_by    INTEGER REFERENCES users(id),
@@ -174,7 +174,7 @@ For `GET /api/coaches/:id/availability?from=YYYY-MM-DD&to=YYYY-MM-DD`:
    - Slots in the past
    - Slots less than 2 hours from `now()` — "buffer window" to prevent last-second bookings
    - Slots beyond the booking window (default: 30 days from `now()`, configurable)
-4. Return the filtered slots as ISO datetimes
+4. Return the filtered slots as local wall-clock strings (`YYYY-MM-DDTHH:MM:SS`)
 
 Configuration (kept in code constants for Phase 1, can move to a config table later):
 
@@ -311,7 +311,7 @@ Following chinup's existing two-file convention (`tests/flow.test.js` for servic
 - Sub-2h buffer enforced
 - Beyond 30-day window filtered
 - Already-confirmed booking excluded
-- Time zone: rule `start_time='09:00'` produces a UTC slot at the Asia/Taipei wall-clock 09:00
+- Local-time consistency: rule `start_time='09:00'` produces a slot string `'YYYY-MM-DDT09:00:00'` (no UTC conversion)
 
 **Booking lifecycle:**
 - Successful booking insert
@@ -380,7 +380,7 @@ Decide during implementation whether to add to existing aggregator pages (`admin
 ## 13 · Risks & Concerns
 
 - **Concurrency on slot picking**: two members hitting the confirm button on the same slot at the same time. The unique partial index on `bookings(coach_id, start_at) WHERE status='confirmed'` prevents the duplicate insert at the DB layer; the second request gets a constraint error and the API returns a "此時段剛被預約走了" message.
-- **Time zone**: all times shown to users are Asia/Taipei. Datetimes stored as UTC in `start_at` / `end_at`. `coach_availability_rules.start_time` / `end_time` are local (HH:MM). Slot computation must apply Taipei TZ when expanding rules into datetimes.
+- **Time zone**: chinup convention is local wall-clock strings (Asia/Taipei implied). `start_at`/`end_at`, `start_time`/`end_time`, and `exception_date` are all naive local time. Slot computation works in local time throughout — no UTC conversion. `created_at` uses SQLite's `datetime('now')` (UTC) — kept for historical record only, never compared with `start_at`.
 - **Coach rule retroactivity**: if a coach deletes a rule, existing future bookings under it should NOT be invalidated. `effective_to` is a soft tombstone — historical and already-booked slots remain bookings, but future slots stop appearing. Tests must cover this.
 - **Member abuse of free cancellation**: with no time limit and (eventually) full refund, a member could repeatedly book-and-cancel. Out of scope for Phase 1 (no points = no real cost). Phase 2 should reconsider — admin observation page `/admin/bookings/one-on-one` is the first line of detection.
 - **Avatar disk persistence on Railway**: `data/` directory is on Railway's persistent volume (per existing chinup setup) — confirm before deploy that the volume is mounted at the right path and survives redeploy.
