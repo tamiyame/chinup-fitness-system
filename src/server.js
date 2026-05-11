@@ -18,6 +18,19 @@ import {
   updateCoach as svcUpdateCoach,
 } from './services/coachService.js';
 import {
+  addRule as svcAddRule,
+  listRules as svcListRules,
+  deleteRule as svcDeleteRule,
+  addException as svcAddException,
+  listExceptions as svcListExceptions,
+  deleteException as svcDeleteException,
+  computeAvailableSlots as svcComputeSlots,
+} from './services/availabilityService.js';
+import {
+  listCoachBookings as svcListCoachBookings,
+  cancelBooking as svcCancelBooking,
+} from './services/bookingService.js';
+import {
   login as authLogin,
   logout as authLogout,
   userFromToken,
@@ -433,6 +446,101 @@ app.delete('/api/admin/coaches/:id', requireAdmin, asyncHandler((req, res) => {
     db.prepare("UPDATE users SET role = 'user' WHERE id = ?").run(coach.user_id);
   });
   res.json({ ok: true, demoted_user_id: coach.user_id });
+}));
+
+function loadCoachForUser(req, res) {
+  const coach = svcGetCoachByUser(req.user.id);
+  if (!coach) {
+    res.status(404).json({ error: 'coach_record_not_found' });
+    return null;
+  }
+  return coach;
+}
+
+// --- One-on-one: coach self-service ---
+
+app.get('/api/coach/me', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  res.json(coach);
+}));
+
+app.patch('/api/coach/me/profile', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { display_name, specialty, bio } = req.body || {};
+  svcUpdateCoach(coach.id, { displayName: display_name, specialty, bio });
+  res.json(svcGetCoach(coach.id));
+}));
+
+app.get('/api/coach/me/rules', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  res.json(svcListRules(coach.id));
+}));
+
+app.post('/api/coach/me/rules', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { day_of_week, start_time, end_time, effective_from, effective_to } = req.body || {};
+  const result = svcAddRule({
+    coachId: coach.id,
+    dayOfWeek: Number(day_of_week),
+    startTime: start_time,
+    endTime: end_time,
+    effectiveFrom: effective_from,
+    effectiveTo: effective_to,
+  });
+  res.status(201).json(result);
+}));
+
+app.delete('/api/coach/me/rules/:id', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  svcDeleteRule({ coachId: coach.id, ruleId: Number(req.params.id) });
+  res.json({ ok: true });
+}));
+
+app.get('/api/coach/me/exceptions', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  res.json(svcListExceptions(coach.id));
+}));
+
+app.post('/api/coach/me/exceptions', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { exception_date, type, start_time, end_time, note } = req.body || {};
+  const result = svcAddException({
+    coachId: coach.id,
+    exceptionDate: exception_date,
+    type,
+    startTime: start_time,
+    endTime: end_time,
+    note,
+  });
+  res.status(201).json(result);
+}));
+
+app.delete('/api/coach/me/exceptions/:id', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  svcDeleteException({ coachId: coach.id, exceptionId: Number(req.params.id) });
+  res.json({ ok: true });
+}));
+
+app.get('/api/coach/me/bookings', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  res.json(svcListCoachBookings(coach.id));
+}));
+
+app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { from, to } = req.query;
+  if (!from || !to) return res.status(400).json({ error: 'missing_range' });
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
 }));
 
 app.get('/api/admin/notifications', requireAdmin, asyncHandler((req, res) => {
