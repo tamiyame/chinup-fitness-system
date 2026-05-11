@@ -7,6 +7,8 @@ import {
   addRule, listRules, deleteRule,
   addException, listExceptions, deleteException,
 } from '../src/services/availabilityService.js';
+import { computeAvailableSlots } from '../src/services/availabilityService.js';
+import { createBooking } from '../src/services/bookingService.js';
 import assert from 'node:assert/strict';
 
 function reset() {
@@ -105,3 +107,91 @@ expect('extra exception requires times', () => {
 
 deleteException({ coachId: c1.id, exceptionId: ex1.id });
 expect('after delete, one exception remains', () => assert.equal(listExceptions(c1.id).length, 1));
+
+// --- Case 3: slot computation ---
+
+console.log('[case 3] computeAvailableSlots');
+
+reset();
+const uA = makeUser('coach-test-A@chinup.local', '陳教練');
+const cA = createCoach({ userId: uA, displayName: '陳教練' });
+setCoachActive(cA.id, true);
+
+// Far future rules so "past slot" and "buffer" filters don't trip
+addRule({ coachId: cA.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00', effectiveFrom: '2099-01-01' });
+addRule({ coachId: cA.id, dayOfWeek: 3, startTime: '14:00', endTime: '16:00', effectiveFrom: '2099-01-01' });
+
+// 2099-05-04 is a Monday; 2099-05-06 is a Wednesday
+const slots = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-04', toDate: '2099-05-06' });
+expect('Monday expands to 3 60-min slots (09,10,11)', () => {
+  const mon = slots.filter(s => s.startsWith('2099-05-04'));
+  assert.deepEqual(mon, ['2099-05-04T09:00:00', '2099-05-04T10:00:00', '2099-05-04T11:00:00']);
+});
+expect('Wednesday expands to 2 slots (14,15)', () => {
+  const wed = slots.filter(s => s.startsWith('2099-05-06'));
+  assert.deepEqual(wed, ['2099-05-06T14:00:00', '2099-05-06T15:00:00']);
+});
+expect('Tuesday yields nothing', () => {
+  assert.equal(slots.filter(s => s.startsWith('2099-05-05')).length, 0);
+});
+
+// leave exception wipes the day
+addException({ coachId: cA.id, exceptionDate: '2099-05-04', type: 'leave' });
+const slots2 = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-04', toDate: '2099-05-04' });
+expect('leave exception removes all slots that day', () => assert.equal(slots2.length, 0));
+
+// extra exception adds a window
+addException({ coachId: cA.id, exceptionDate: '2099-05-07', type: 'extra', startTime: '10:00', endTime: '12:00' });
+const slots3 = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-07', toDate: '2099-05-07' });
+expect('extra exception adds 2 slots', () => {
+  assert.deepEqual(slots3, ['2099-05-07T10:00:00', '2099-05-07T11:00:00']);
+});
+
+// effective_from honored
+reset();
+const uB = makeUser('coach-test-B@chinup.local', 'B 教練');
+const cB = createCoach({ userId: uB, displayName: 'B' });
+setCoachActive(cB.id, true);
+addRule({ coachId: cB.id, dayOfWeek: 1, startTime: '09:00', endTime: '10:00', effectiveFrom: '2099-05-10' });
+const slotsBefore = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-04', toDate: '2099-05-04' });
+const slotsAfter  = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-11', toDate: '2099-05-11' });
+expect('rule before effective_from yields nothing', () => assert.equal(slotsBefore.length, 0));
+expect('rule on/after effective_from yields slots', () => assert.equal(slotsAfter.length, 1));
+
+// effective_to honored
+addRule({ coachId: cB.id, dayOfWeek: 2, startTime: '09:00', endTime: '10:00', effectiveFrom: '2099-05-01', effectiveTo: '2099-05-05' });
+const tueIn = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-05', toDate: '2099-05-05' });
+const tueOut = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-12', toDate: '2099-05-12' });
+expect('Tuesday within effective_to yields slot', () => assert.equal(tueIn.length, 1));
+expect('Tuesday after effective_to yields nothing', () => assert.equal(tueOut.length, 0));
+
+// past slots filtered
+addRule({ coachId: cB.id, dayOfWeek: new Date().getDay(), startTime: '00:00', endTime: '23:00', effectiveFrom: '2000-01-01' });
+const today = (() => { const d=new Date(); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
+const todaySlots = computeAvailableSlots({ coachId: cB.id, fromDate: today, toDate: today });
+expect('today: no slots before now()', () => {
+  const now = new Date();
+  const nowStr = `${today}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:00`;
+  for (const s of todaySlots) assert(s > nowStr, `slot ${s} should be after ${nowStr}`);
+});
+expect('today: no slot within 2-hour buffer', () => {
+  const now = Date.now();
+  const buffer = now + 2 * 60 * 60 * 1000;
+  for (const s of todaySlots) {
+    const slotMs = new Date(s.replace(' ', 'T')).getTime();
+    assert(slotMs >= buffer, `slot ${s} within 2h buffer`);
+  }
+});
+
+// confirmed booking excludes the slot
+reset();
+const uC = makeUser('coach-test-C@chinup.local', 'C');
+const cC = createCoach({ userId: uC, displayName: 'C' });
+setCoachActive(cC.id, true);
+addRule({ coachId: cC.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00', effectiveFrom: '2099-01-01' });
+const memberId = db.prepare("SELECT id FROM users WHERE role='user' ORDER BY id LIMIT 1").get().id;
+createBooking({ coachId: cC.id, memberId, startAt: '2099-05-04T10:00:00' });
+const slotsC = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04' });
+expect('booked slot removed from availability', () => {
+  assert.deepEqual(slotsC, ['2099-05-04T09:00:00', '2099-05-04T11:00:00']);
+});

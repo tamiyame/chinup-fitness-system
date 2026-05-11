@@ -83,3 +83,108 @@ function todayLocal() {
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+// --- Configuration (Phase 1 constants) ---
+export const SLOT_DURATION_MINUTES = 60;
+export const BUFFER_HOURS = 2;
+export const BOOKING_WINDOW_DAYS = 30;
+
+const listConfirmedBookings = db.prepare(`
+  SELECT start_at FROM bookings
+  WHERE coach_id = ? AND status = 'confirmed'
+    AND start_at >= ? AND start_at <= ?
+`);
+
+const listRulesForDate = db.prepare(`
+  SELECT * FROM coach_availability_rules
+  WHERE coach_id = ?
+    AND day_of_week = ?
+    AND effective_from <= ?
+    AND (effective_to IS NULL OR effective_to >= ?)
+`);
+
+const listExceptionsForDate = db.prepare(`
+  SELECT * FROM coach_availability_exceptions
+  WHERE coach_id = ? AND exception_date = ?
+`);
+
+/**
+ * Compute available 60-min slots for a coach within [fromDate, toDate] inclusive.
+ * Returns local wall-clock strings 'YYYY-MM-DDTHH:MM:SS' sorted ascending.
+ */
+export function computeAvailableSlots({ coachId, fromDate, toDate }) {
+  if (!YYYYMMDD.test(fromDate) || !YYYYMMDD.test(toDate)) {
+    throw new ApiError(400, 'invalid_date_range');
+  }
+
+  const now = new Date();
+  const bufferMs = now.getTime() + BUFFER_HOURS * 3600_000;
+
+  const dates = enumerateDates(fromDate, toDate);
+  const rawSlots = [];
+  for (const date of dates) {
+    const exceptions = listExceptionsForDate.all(coachId, date);
+    const hasLeave = exceptions.some(e => e.type === 'leave');
+    const windows = [];
+    if (!hasLeave) {
+      const dow = new Date(date + 'T00:00:00').getDay();
+      const rules = listRulesForDate.all(coachId, dow, date, date);
+      for (const r of rules) windows.push({ start: r.start_time, end: r.end_time });
+      for (const e of exceptions) {
+        if (e.type === 'extra') windows.push({ start: e.start_time, end: e.end_time });
+      }
+    }
+    for (const w of windows) {
+      const slotStartsHH = splitWindowIntoSlots(w.start, w.end, SLOT_DURATION_MINUTES);
+      for (const hh of slotStartsHH) rawSlots.push(`${date}T${hh}:00`);
+    }
+  }
+  rawSlots.sort();
+
+  const nowStr = localWallClock(now);
+  const afterFilter = rawSlots.filter(s => {
+    if (s <= nowStr) return false;
+    const slotMs = new Date(s).getTime();
+    if (slotMs < bufferMs) return false;
+    return true;
+  });
+  if (afterFilter.length === 0) return [];
+
+  const minSlot = afterFilter[0];
+  const maxSlot = afterFilter[afterFilter.length - 1];
+  const booked = new Set(
+    listConfirmedBookings.all(coachId, minSlot, maxSlot).map(b => b.start_at)
+  );
+  return afterFilter.filter(s => !booked.has(s));
+}
+
+function enumerateDates(fromDate, toDate) {
+  const out = [];
+  let cur = new Date(fromDate + 'T00:00:00');
+  const end = new Date(toDate + 'T00:00:00');
+  while (cur <= end) {
+    const pad = (n) => String(n).padStart(2, '0');
+    out.push(`${cur.getFullYear()}-${pad(cur.getMonth() + 1)}-${pad(cur.getDate())}`);
+    cur = new Date(cur.getTime() + 86400_000);
+  }
+  return out;
+}
+
+function splitWindowIntoSlots(startHHMM, endHHMM, durationMin) {
+  const [sH, sM] = startHHMM.split(':').map(Number);
+  const [eH, eM] = endHHMM.split(':').map(Number);
+  const startMin = sH * 60 + sM;
+  const endMin = eH * 60 + eM;
+  const out = [];
+  for (let m = startMin; m + durationMin <= endMin; m += durationMin) {
+    const hh = String(Math.floor(m / 60)).padStart(2, '0');
+    const mm = String(m % 60).padStart(2, '0');
+    out.push(`${hh}:${mm}`);
+  }
+  return out;
+}
+
+function localWallClock(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
