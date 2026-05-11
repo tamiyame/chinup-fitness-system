@@ -6,8 +6,9 @@ import { hashPassword } from '../services/auth.js';
 import { createCoach, setCoachActive, getCoachByUser } from '../services/coachService.js';
 import { addRule, addException } from '../services/availabilityService.js';
 import { createBooking } from '../services/bookingService.js';
+import { adminGrant } from '../services/pointService.js';
 
-db.exec("DELETE FROM auth_sessions; DELETE FROM notifications; DELETE FROM registrations; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM users;");
+db.exec("DELETE FROM point_transactions; DELETE FROM auth_sessions; DELETE FROM notifications; DELETE FROM registrations; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM users;");
 
 const insertUser = db.prepare(
   'INSERT INTO users (name, email, phone, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?, ?)'
@@ -132,4 +133,21 @@ if (db.prepare('SELECT COUNT(*) AS c FROM coach_availability_rules WHERE coach_i
     try { createBooking({ coachId: coach.id, memberId, startAt: wedStr, note: '想練腿' }); } catch {}
   }
   console.log(`[seed] coach #${coach.id} rules + exception + demo booking ready`);
+}
+
+// Phase 2: seed initial points for demo members
+const ownerForSeed = db.prepare("SELECT id FROM users WHERE role IN ('owner', 'admin') ORDER BY role='owner' DESC LIMIT 1").get();
+if (ownerForSeed) {
+  const demoMembers = db.prepare("SELECT id FROM users WHERE role = 'user' AND email LIKE 'user%@chinup.local' ORDER BY id").all();
+  let granted = 0;
+  for (const m of demoMembers) {
+    // Skip if already seeded (idempotent)
+    const exists = db.prepare("SELECT 1 FROM point_transactions WHERE member_id = ? AND note = 'seed-demo points'").get(m.id);
+    if (!exists) {
+      adminGrant({ memberId: m.id, pool: 'one_on_one', amount: 5, note: 'seed-demo points', adminId: ownerForSeed.id });
+      adminGrant({ memberId: m.id, pool: 'group', amount: 10, note: 'seed-demo points', adminId: ownerForSeed.id });
+      granted++;
+    }
+  }
+  console.log(`[seed] granted points to ${granted} demo members (${demoMembers.length - granted} already seeded)`);
 }
