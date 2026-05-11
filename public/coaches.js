@@ -60,12 +60,22 @@ async function openCoach(id) {
 function renderSlotControls() {
   const ctrls = $('slot-controls');
   ctrls.innerHTML = `
-    <button class="btn-secondary" ${weekOffset <= 0 ? 'disabled' : ''} id="prev-week">← 上週</button>
+    <button class="btn-secondary" id="prev-week">← 上週</button>
     <span id="week-label" class="font-medium"></span>
     <button class="btn-secondary" id="next-week">下週 →</button>
   `;
-  $('prev-week').addEventListener('click', () => { if (weekOffset > 0) { weekOffset--; loadSlots(); } });
-  $('next-week').addEventListener('click', () => { weekOffset++; loadSlots(); });
+  $('prev-week').addEventListener('click', () => {
+    if (weekOffset > 0) { weekOffset--; updatePrevDisabled(); loadSlots(); }
+  });
+  $('next-week').addEventListener('click', () => {
+    weekOffset++; updatePrevDisabled(); loadSlots();
+  });
+  updatePrevDisabled();
+}
+
+function updatePrevDisabled() {
+  const btn = document.getElementById('prev-week');
+  if (btn) btn.disabled = weekOffset <= 0;
 }
 
 function weekRange(offset) {
