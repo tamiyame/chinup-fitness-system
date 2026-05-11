@@ -88,4 +88,63 @@ CREATE TABLE IF NOT EXISTS notifications (
   status TEXT NOT NULL DEFAULT 'sent',
   sent_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS coaches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  display_name TEXT NOT NULL,
+  specialty TEXT,
+  bio TEXT,
+  avatar_path TEXT,
+  is_active INTEGER NOT NULL DEFAULT 0 CHECK (is_active IN (0, 1)),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS coach_availability_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  coach_id INTEGER NOT NULL REFERENCES coaches(id) ON DELETE CASCADE,
+  day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  effective_from TEXT NOT NULL,
+  effective_to TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (start_time < end_time)
+);
+
+CREATE TABLE IF NOT EXISTS coach_availability_exceptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  coach_id INTEGER NOT NULL REFERENCES coaches(id) ON DELETE CASCADE,
+  exception_date TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('leave', 'extra')),
+  start_time TEXT,
+  end_time TEXT,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (type = 'leave' OR (start_time IS NOT NULL AND end_time IS NOT NULL AND start_time < end_time))
+);
+
+CREATE TABLE IF NOT EXISTS bookings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  coach_id INTEGER NOT NULL REFERENCES coaches(id),
+  member_id INTEGER NOT NULL REFERENCES users(id),
+  start_at TEXT NOT NULL,
+  end_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled')),
+  cancelled_at TEXT,
+  cancelled_by INTEGER REFERENCES users(id),
+  cancel_reason TEXT,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS bookings_coach_start_confirmed
+  ON bookings(coach_id, start_at) WHERE status = 'confirmed';
+
+CREATE INDEX IF NOT EXISTS idx_bookings_member ON bookings(member_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_coach_status ON bookings(coach_id, status);
+CREATE INDEX IF NOT EXISTS idx_availability_rules_coach ON coach_availability_rules(coach_id);
+CREATE INDEX IF NOT EXISTS idx_availability_exceptions_coach_date ON coach_availability_exceptions(coach_id, exception_date);
 `;
