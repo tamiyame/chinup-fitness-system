@@ -45,6 +45,46 @@
 - `docs/superpowers/specs/2026-05-11-one-on-one-booking-design.md`
 - `docs/superpowers/plans/2026-05-11-one-on-one-booking.md`
 
+## 點數系統（Phase 2）
+
+點數作為預約的「貨幣」，admin 手動加點、會員預約扣點、取消退點。
+
+### 兩個池子（獨立）
+
+- **一對一池子**：扣減於一對一預約 / 退於一對一取消
+- **團體池子**：扣減於團體報名（含候補）/ 退於團體取消、不成班自動退
+
+### 模型
+
+單一 `point_transactions` 表，每筆加減點是一個有號 row。當前餘額 = `SUM(amount) WHERE member_id = ? AND pool = ?`。所有寫入用 `tx() BEGIN IMMEDIATE`，post-insert 餘額 < 0 → rollback。
+
+### Admin 操作
+
+`/admin.html` 會員管理 section：
+- 看每人 PT/團體 餘額
+- 「加點」按鈕：pool 選一對一 / 團體、金額（可負）、必填備註
+- 「歷史」按鈕：看該會員最近 100 筆交易（含 source、actor、note）
+
+### 會員體驗
+
+- Navbar 右上角膠囊：`[PT N · 團 M]`，0 點時紅字
+- 預約 / 報名頁：餘額 0 → 確認鈕 disabled，提示「請聯絡管理員儲值」
+- 取消預約 / 報名 → 自動退點，無條件、無時限
+
+### 設計 / 計畫文件
+
+- `docs/superpowers/specs/2026-05-12-points-system-design.md`
+- `docs/superpowers/plans/2026-05-12-points-system.md`
+
+### Phase 2 部署 SOP（**一次性、僅限本次 dev 階段**）
+
+```bash
+# 在 Railway shell 跑
+rm -f data/app.db && node src/db/migrate.js && node src/db/seed-demo.js
+```
+
+下次 schema 變動必須走真正的 migration，**不能再清 DB**。
+
 ## 技術棧
 
 | 層 | 技術 |
