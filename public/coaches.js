@@ -1,4 +1,4 @@
-import { api, fmtDate, dow, toast } from './app.js';
+import { api, fmtDate, dow, toast, refreshAuthBar } from './app.js';
 
 const $ = (id) => document.getElementById(id);
 const views = { list: $('view-list'), detail: $('view-detail'), confirm: $('view-confirm') };
@@ -97,7 +97,7 @@ async function loadSlots() {
   }
 }
 
-function openConfirm(slotStr) {
+async function openConfirm(slotStr) {
   currentSlot = slotStr;
   const d = new Date(slotStr);
   $('confirm-summary').innerHTML = `
@@ -105,6 +105,32 @@ function openConfirm(slotStr) {
     <div><span class="text-slate-500">時間</span><br><strong>${fmtDate(slotStr)}（60 分鐘）</strong></div>
   `;
   $('note').value = '';
+
+  // Phase 2: check balance, disable confirm button if 0
+  try {
+    const bal = await api('/api/my/points/balance');
+    const btn = $('confirm-btn');
+    if (bal.one_on_one <= 0) {
+      btn.disabled = true;
+      btn.textContent = '點數不足，無法預約';
+      btn.classList.add('opacity-50');
+      let hint = document.getElementById('balance-hint');
+      if (!hint) {
+        hint = document.createElement('div');
+        hint.id = 'balance-hint';
+        hint.className = 'text-sm text-red-500 mt-2';
+        btn.parentNode.insertBefore(hint, btn.nextSibling);
+      }
+      hint.textContent = '目前一對一餘額 0 點，請聯絡管理員儲值。';
+    } else {
+      btn.disabled = false;
+      btn.textContent = '確認預約';
+      btn.classList.remove('opacity-50');
+      const hint = document.getElementById('balance-hint');
+      if (hint) hint.remove();
+    }
+  } catch {} // silent — if balance fetch fails, still let them try; backend will block
+
   show('confirm');
 }
 
@@ -119,9 +145,16 @@ $('confirm-btn').addEventListener('click', async () => {
       body: { coach_id: currentCoach.id, start_at: currentSlot, note: note || null },
     });
     toast('預約成功！', 'success');
+    await refreshAuthBar();
     setTimeout(() => location.href = '/my-bookings.html', 700);
   } catch (e) {
-    toast(e.data?.error === 'slot_taken' ? '此時段剛被預約走了' : `預約失敗：${e.message}`, 'error');
+    if (e.data?.error === 'slot_taken') {
+      toast('此時段剛被預約走了', 'error');
+    } else if (e.data?.error === 'insufficient_points') {
+      toast('點數不足，請聯絡管理員', 'error');
+    } else {
+      toast(`預約失敗：${e.message}`, 'error');
+    }
   }
 });
 

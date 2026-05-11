@@ -1,4 +1,4 @@
-import { api, toast, fmtDate, bootAuth, getUser } from '/app.js';
+import { api, toast, fmtDate, bootAuth, getUser, refreshAuthBar } from '/app.js';
 
 const user = await bootAuth();
 if (!user) throw new Error('__redirected_by_auth__');
@@ -173,11 +173,24 @@ function formatTime(dt) {
 async function handleRegister(sessionId) {
   if (!getUser()) return toast('請先選擇登入身分', 'error');
   try {
+    // Phase 2: check group balance before registering
+    const bal = await api('/api/my/points/balance');
+    if (bal.group <= 0) {
+      toast('團體課餘額 0 點，請聯絡管理員儲值', 'error');
+      return;
+    }
     const r = await api(`/api/sessions/${sessionId}/register`, { method: 'POST' });
     toast(r.status === 'confirmed' ? '🎉 報名成功（正取）' : `已進候補 第 ${r.position} 位`, 'success');
+    await refreshAuthBar();
     load();
   } catch (e) {
-    toast(e.data?.error === 'already_registered' ? '您已報名過' : `報名失敗：${e.message}`, 'error');
+    if (e.data?.error === 'already_registered') {
+      toast('您已報名過', 'error');
+    } else if (e.data?.error === 'insufficient_points') {
+      toast('點數不足，請聯絡管理員', 'error');
+    } else {
+      toast(`報名失敗：${e.message}`, 'error');
+    }
   }
 }
 
