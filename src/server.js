@@ -27,9 +27,12 @@ import {
   computeAvailableSlots as svcComputeSlots,
 } from './services/availabilityService.js';
 import {
+  createBooking as svcCreateBooking,
+  listMemberBookings as svcListMemberBookings,
   listCoachBookings as svcListCoachBookings,
   cancelBooking as svcCancelBooking,
 } from './services/bookingService.js';
+import { listActiveCoaches as svcListActive } from './services/coachService.js';
 import {
   login as authLogin,
   logout as authLogout,
@@ -541,6 +544,60 @@ app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler((req, r
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'missing_range' });
   res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
+}));
+
+// --- One-on-one: public + member endpoints ---
+
+app.get('/api/coaches', asyncHandler((req, res) => {
+  res.json(svcListActive());
+}));
+
+app.get('/api/coaches/:id', asyncHandler((req, res) => {
+  const coach = svcGetCoach(Number(req.params.id));
+  if (!coach || !coach.is_active) return res.status(404).json({ error: 'coach_not_found' });
+  res.json(coach);
+}));
+
+app.get('/api/coaches/:id/availability', asyncHandler((req, res) => {
+  const coach = svcGetCoach(Number(req.params.id));
+  if (!coach || !coach.is_active) return res.status(404).json({ error: 'coach_not_found' });
+  const { from, to } = req.query;
+  if (!from || !to) return res.status(400).json({ error: 'missing_range' });
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
+}));
+
+app.post('/api/bookings', requireUser, asyncHandler((req, res) => {
+  const { coach_id, start_at, note } = req.body || {};
+  if (!coach_id || !start_at) return res.status(400).json({ error: 'missing_fields' });
+  const result = svcCreateBooking({
+    coachId: Number(coach_id),
+    memberId: req.user.id,
+    startAt: start_at,
+    note: note || null,
+  });
+  res.status(201).json(result);
+}));
+
+app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
+  if (!booking) return res.status(404).json({ error: 'booking_not_found' });
+
+  const coach = db.prepare('SELECT * FROM coaches WHERE id = ?').get(booking.coach_id);
+  const actorIsCoach = coach && coach.user_id === req.user.id;
+  const { reason } = req.body || {};
+
+  svcCancelBooking({
+    bookingId: id,
+    actorUserId: req.user.id,
+    isCoach: actorIsCoach,
+    reason: actorIsCoach ? (reason || null) : null,
+  });
+  res.json({ ok: true });
+}));
+
+app.get('/api/my/bookings', requireUser, asyncHandler((req, res) => {
+  res.json(svcListMemberBookings(req.user.id));
 }));
 
 app.get('/api/admin/notifications', requireAdmin, asyncHandler((req, res) => {
