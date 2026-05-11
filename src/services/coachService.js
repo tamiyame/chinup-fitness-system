@@ -1,5 +1,25 @@
 import { db } from '../db/connection.js';
 import { ApiError } from './registration.js';
+import { mkdirSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomBytes } from 'node:crypto';
+
+const __serviceDir = dirname(fileURLToPath(import.meta.url));
+const AVATAR_DIR = resolve(__serviceDir, '../../data/avatars');
+mkdirSync(AVATAR_DIR, { recursive: true });
+
+const MAX_BYTES = 2 * 1024 * 1024;
+const MAGIC = {
+  jpg: [0xff, 0xd8, 0xff],
+  png: [0x89, 0x50, 0x4e, 0x47],
+};
+
+function detectKind(buf) {
+  if (buf.length >= 4 && buf[0] === MAGIC.png[0] && buf[1] === MAGIC.png[1]) return 'png';
+  if (buf.length >= 3 && buf[0] === MAGIC.jpg[0] && buf[1] === MAGIC.jpg[1] && buf[2] === MAGIC.jpg[2]) return 'jpg';
+  return null;
+}
 
 const insertCoach = db.prepare(`
   INSERT INTO coaches (user_id, display_name, specialty, bio, avatar_path, is_active, sort_order)
@@ -72,4 +92,29 @@ export function updateCoach(id, fields) {
   vals.push(id);
   db.prepare(`UPDATE coaches SET ${cols.join(', ')} WHERE id = ?`).run(...vals);
   return { ok: true };
+}
+
+export function saveAvatar({ coachId, base64 }) {
+  if (typeof base64 !== 'string') throw new ApiError(400, 'invalid_avatar');
+  const m = base64.match(/^data:image\/(png|jpeg|jpg);base64,(.+)$/i);
+  const payload = m ? m[2] : base64;
+  let buf;
+  try { buf = Buffer.from(payload, 'base64'); }
+  catch { throw new ApiError(400, 'invalid_base64'); }
+  if (buf.length === 0 || buf.length > MAX_BYTES) throw new ApiError(413, 'avatar_too_large');
+  const kind = detectKind(buf);
+  if (!kind) throw new ApiError(400, 'invalid_image_type');
+
+  const filename = `${coachId}-${randomBytes(8).toString('hex')}.${kind}`;
+  const fullPath = resolve(AVATAR_DIR, filename);
+  writeFileSync(fullPath, buf);
+
+  const current = getCoachStmt.get(coachId);
+  if (current && current.avatar_path) {
+    const old = resolve(AVATAR_DIR, current.avatar_path);
+    try { if (existsSync(old)) unlinkSync(old); } catch (e) { console.warn('[avatar] failed to delete old', e.message); }
+  }
+
+  updateCoach(coachId, { avatarPath: filename });
+  return { avatar_path: filename };
 }

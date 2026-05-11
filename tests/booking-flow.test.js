@@ -1,8 +1,11 @@
 // 核心流程驗證 — 一對一預約模組
 import { db } from '../src/db/connection.js';
 import {
-  createCoach, listActiveCoaches, getCoach, updateCoach, setCoachActive,
+  createCoach, listActiveCoaches, getCoach, updateCoach, setCoachActive, saveAvatar,
 } from '../src/services/coachService.js';
+import { existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   addRule, listRules, deleteRule,
   addException, listExceptions, deleteException,
@@ -12,6 +15,9 @@ import {
   createBooking, cancelBooking, listMemberBookings, listCoachBookings,
 } from '../src/services/bookingService.js';
 import assert from 'node:assert/strict';
+
+const __testDir = dirname(fileURLToPath(import.meta.url));
+const AVATAR_DIR = resolve(__testDir, '../data/avatars');
 
 function reset() {
   db.exec(`
@@ -264,3 +270,22 @@ expect('coach cancel requires reason', () => {
   const b4 = createBooking({ coachId: cD.id, memberId: m1, startAt: '2099-06-03T10:00:00' });
   assert.throws(() => cancelBooking({ bookingId: b4.id, actorUserId: uD, isCoach: true }), /missing_reason/);
 });
+
+// --- Case 5: avatar save ---
+
+console.log('[case 5] avatar save');
+
+reset();
+const uE = makeUser('coach-test-E@chinup.local', 'E');
+const cE = createCoach({ userId: uE, displayName: 'E' });
+
+// 1x1 PNG
+const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c63600100000005000158a4ffae0000000049454e44ae426082', 'hex');
+const result = saveAvatar({ coachId: cE.id, base64: png.toString('base64') });
+expect('avatar_path returned', () => assert(result.avatar_path.endsWith('.png')));
+expect('avatar file exists on disk', () => assert(existsSync(resolve(AVATAR_DIR, result.avatar_path))));
+
+const tooBig = Buffer.alloc(3 * 1024 * 1024).toString('base64');
+expect('avatar rejected if too large', () => assert.throws(() => saveAvatar({ coachId: cE.id, base64: tooBig }), /too_large/));
+
+expect('avatar rejected if not png/jpg', () => assert.throws(() => saveAvatar({ coachId: cE.id, base64: Buffer.from('not an image').toString('base64') }), /invalid_image_type/));

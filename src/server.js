@@ -32,7 +32,7 @@ import {
   listCoachBookings as svcListCoachBookings,
   cancelBooking as svcCancelBooking,
 } from './services/bookingService.js';
-import { listActiveCoaches as svcListActive } from './services/coachService.js';
+import { listActiveCoaches as svcListActive, saveAvatar as svcSaveAvatar } from './services/coachService.js';
 import {
   login as authLogin,
   logout as authLogout,
@@ -49,8 +49,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '3mb' }));
 app.use(express.static(resolve(__dirname, '../public')));
+app.use('/avatars', express.static(resolve(__dirname, '../data/avatars'), { maxAge: '7d' }));
 
 // --- 身分驗證：從 Authorization: Bearer <token> 取 token ---
 function getTokenFromReq(req) {
@@ -544,6 +545,14 @@ app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler((req, r
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'missing_range' });
   res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
+}));
+
+app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { avatar_base64 } = req.body || {};
+  const result = svcSaveAvatar({ coachId: coach.id, base64: avatar_base64 });
+  res.json(result);
 }));
 
 // --- One-on-one: public + member endpoints ---

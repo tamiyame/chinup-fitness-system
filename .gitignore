@@ -10,3 +10,4 @@ data/tpl*.json
 *.log
 .DS_Store
 Thumbs.db
+data/avatars/
