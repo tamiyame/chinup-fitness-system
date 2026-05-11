@@ -18,6 +18,9 @@ import {
   recordTransaction, getBalance, getBalances,
   adminGrant, listTransactionsForAdmin,
 } from '../src/services/pointService.js';
+import { createTemplate } from '../src/services/courseService.js';
+import { register, cancelRegistration } from '../src/services/registration.js';
+import { offsetLocal } from '../src/db/connection.js';
 import assert from 'node:assert/strict';
 
 const __testDir = dirname(fileURLToPath(import.meta.url));
@@ -25,13 +28,18 @@ const AVATAR_DIR = resolve(__testDir, '../data/avatars');
 
 function reset() {
   db.exec(`
+    DELETE FROM notifications;
     DELETE FROM point_transactions;
     DELETE FROM bookings;
+    DELETE FROM registrations;
+    DELETE FROM course_sessions;
+    DELETE FROM course_templates;
     DELETE FROM coach_availability_exceptions;
     DELETE FROM coach_availability_rules;
     DELETE FROM coaches;
     DELETE FROM users WHERE email LIKE 'coach-test-%';
     DELETE FROM users WHERE email = 'pm@chinup.local';
+    DELETE FROM users WHERE email LIKE 'gm%@chinup.local';
   `);
 }
 
@@ -410,3 +418,81 @@ const refund2 = db.prepare("SELECT * FROM point_transactions WHERE related_booki
 expect('coach-cancel refund actor_id = coach.user_id', () => assert.equal(refund2.actor_id, uPt2));
 expect('coach-cancel refund note contains reason', () => assert(refund2.note.includes('臨時生病')));
 expect('coach-cancel refund still goes to member', () => assert.equal(refund2.member_id, member));
+
+// --- Case 8a: group registration + points ---
+
+console.log('[case 8a] group register/cancel + points');
+
+reset();
+
+const adminIdC8 = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get().id;
+const memG1 = db.prepare("INSERT INTO users (name, email, role, notification_preference) VALUES ('grp-mem-1', 'gm1@chinup.local', 'user', 'email')").run().lastInsertRowid;
+const memG2 = db.prepare("INSERT INTO users (name, email, role, notification_preference) VALUES ('grp-mem-2', 'gm2@chinup.local', 'user', 'email')").run().lastInsertRowid;
+
+const tpl = createTemplate({
+  name: 'C8 測試課',
+  min_capacity: 2,
+  max_capacity: 2,
+  day_of_week: new Date().getDay(),
+  start_time: '14:00',
+  duration_minutes: 60,
+  recurrence: 'monthly',
+  cycle_start_date: '2099-01-01',
+  cycle_end_date: '2099-12-31',
+  registration_deadline_hours: 24,
+});
+const sessions = db.prepare('SELECT * FROM course_sessions WHERE template_id = ? ORDER BY start_at LIMIT 1').all(tpl.templateId);
+const sessionId = sessions[0].id;
+const futureStart = offsetLocal(72 * 60 * 60 * 1000);
+const futureEnd = offsetLocal(73 * 60 * 60 * 1000);
+const futureDl = offsetLocal(48 * 60 * 60 * 1000);
+db.prepare("UPDATE course_sessions SET start_at = ?, end_at = ?, registration_deadline = ? WHERE id = ?")
+  .run(futureStart, futureEnd, futureDl, sessionId);
+
+// 0 balance → register throws insufficient_points
+expect('register with 0 balance throws', () =>
+  assert.throws(() => register({ sessionId, userId: memG1 }), /insufficient_points/));
+
+adminGrant({ memberId: memG1, pool: 'group', amount: 3, note: 'seed', adminId: adminIdC8 });
+adminGrant({ memberId: memG2, pool: 'group', amount: 3, note: 'seed', adminId: adminIdC8 });
+
+const reg1 = register({ sessionId, userId: memG1 });
+expect('register deducts 1 group point', () => assert.equal(getBalance(memG1, 'group'), 2));
+expect('deduct row source=registration_deduct', () => {
+  const row = db.prepare("SELECT * FROM point_transactions WHERE related_registration_id = ?").get(reg1.registrationId);
+  assert.equal(row.source, 'registration_deduct');
+  assert.equal(row.amount, -1);
+});
+
+// Fill the session, second register goes to waitlist; still deducts
+const reg2 = register({ sessionId, userId: memG2 });
+expect('second register fills the session (confirmed=2/2)', () => assert.equal(reg2.status, 'confirmed'));
+
+const memG3 = db.prepare("INSERT INTO users (name, email, role, notification_preference) VALUES ('grp-mem-3', 'gm3@chinup.local', 'user', 'email')").run().lastInsertRowid;
+adminGrant({ memberId: memG3, pool: 'group', amount: 3, note: 'seed', adminId: adminIdC8 });
+
+const reg3 = register({ sessionId, userId: memG3 });
+expect('third register goes to waitlist', () => assert.equal(reg3.status, 'waitlisted'));
+expect('waitlisted also deducts 1 point', () => assert.equal(getBalance(memG3, 'group'), 2));
+
+// Cancel by waitlist member → refund
+cancelRegistration({ registrationId: reg3.registrationId, userId: memG3 });
+expect('cancel refunds the waitlist deduction', () => assert.equal(getBalance(memG3, 'group'), 3));
+expect('refund row source=registration_refund', () => {
+  const row = db.prepare("SELECT * FROM point_transactions WHERE related_registration_id = ? AND source = 'registration_refund'").get(reg3.registrationId);
+  assert.equal(row.amount, 1);
+});
+
+// Cancel a confirmed registration; waitlist (now empty since we cancelled reg3) — no auto-refund of others
+// Add reg4 to waitlist, then cancel reg1 — reg4 should be promoted, no point movement on promotion
+const memG4 = db.prepare("INSERT INTO users (name, email, role, notification_preference) VALUES ('grp-mem-4', 'gm4@chinup.local', 'user', 'email')").run().lastInsertRowid;
+adminGrant({ memberId: memG4, pool: 'group', amount: 3, note: 'seed', adminId: adminIdC8 });
+const reg4 = register({ sessionId, userId: memG4 });
+expect('reg4 waitlisted (after reg1+reg2 confirmed and reg3 cancelled)', () => assert.equal(reg4.status, 'waitlisted'));
+const beforeBalanceG4 = getBalance(memG4, 'group');
+
+cancelRegistration({ registrationId: reg1.registrationId, userId: memG1 });
+expect('reg1 cancel refunds memG1', () => assert.equal(getBalance(memG1, 'group'), 3));
+expect('reg4 promotion does NOT touch points', () => assert.equal(getBalance(memG4, 'group'), beforeBalanceG4));
+const reg4After = db.prepare('SELECT status FROM registrations WHERE id = ?').get(reg4.registrationId);
+expect('reg4 promoted to confirmed', () => assert.equal(reg4After.status, 'confirmed'));
