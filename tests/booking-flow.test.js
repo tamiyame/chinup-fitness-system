@@ -25,11 +25,13 @@ const AVATAR_DIR = resolve(__testDir, '../data/avatars');
 
 function reset() {
   db.exec(`
+    DELETE FROM point_transactions;
     DELETE FROM bookings;
     DELETE FROM coach_availability_exceptions;
     DELETE FROM coach_availability_rules;
     DELETE FROM coaches;
     DELETE FROM users WHERE email LIKE 'coach-test-%';
+    DELETE FROM users WHERE email = 'pm@chinup.local';
   `);
 }
 
@@ -202,6 +204,8 @@ const cC = createCoach({ userId: uC, displayName: 'C' });
 setCoachActive(cC.id, true);
 addRule({ coachId: cC.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00', effectiveFrom: '2099-01-01' });
 const memberId = db.prepare("SELECT id FROM users WHERE role='user' ORDER BY id LIMIT 1").get().id;
+// Phase 2 addition: seed points so createBooking doesn't fail
+adminGrant({ memberId, pool: 'one_on_one', amount: 5, note: 'test seed', adminId: db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get().id });
 createBooking({ coachId: cC.id, memberId, startAt: '2099-05-04T10:00:00' });
 const slotsC = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04', bookingWindowDays: 365 * 100 });
 expect('booked slot removed from availability', () => {
@@ -221,6 +225,9 @@ const uD = makeUser('coach-test-D@chinup.local', 'D');
 const cD = createCoach({ userId: uD, displayName: 'D' });
 setCoachActive(cD.id, true);
 const [m1, m2] = db.prepare("SELECT id FROM users WHERE role='user' ORDER BY id LIMIT 2").all().map(r => r.id);
+const adminIdC4 = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get().id;
+adminGrant({ memberId: m1, pool: 'one_on_one', amount: 10, note: 'test seed', adminId: adminIdC4 });
+adminGrant({ memberId: m2, pool: 'one_on_one', amount: 10, note: 'test seed', adminId: adminIdC4 });
 
 const b1 = createBooking({ coachId: cD.id, memberId: m1, startAt: '2099-06-01T10:00:00', note: '想練腿' });
 expect('booking created with end_at = +60min', () => assert.equal(b1.endAt, '2099-06-01T11:00:00'));
@@ -355,3 +362,51 @@ const onePool = listTransactionsForAdmin(uPt1, { pool: 'group' });
 expect('pool filter applied', () => assert(onePool.every(r => r.pool === 'group')));
 const limited = listTransactionsForAdmin(uPt1, { limit: 2 });
 expect('limit applied', () => assert.equal(limited.length, 2));
+
+// --- Case 7: booking + points integration ---
+
+console.log('[case 7] booking + points');
+
+reset();
+const uPt2 = makeUser('coach-test-pt2@chinup.local', 'PT2');
+const cPt2 = createCoach({ userId: uPt2, displayName: 'PT2 Coach' });
+setCoachActive(cPt2.id, true);
+const member = db.prepare("INSERT INTO users (name, email, role, notification_preference) VALUES ('point-mem', 'pm@chinup.local', 'user', 'email')").run().lastInsertRowid;
+const ownerForTx = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get().id;
+addRule({ coachId: cPt2.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00', effectiveFrom: '2099-01-01' });
+
+// 0 balance → createBooking throws
+expect('createBooking with 0 balance throws insufficient_points', () =>
+  assert.throws(() => createBooking({ coachId: cPt2.id, memberId: member, startAt: '2099-06-01T10:00:00' }), /insufficient_points/));
+
+// Booking row NOT persisted
+expect('no booking row left over from failed createBooking', () => {
+  const c = db.prepare("SELECT COUNT(*) AS c FROM bookings WHERE coach_id = ?").get(cPt2.id).c;
+  assert.equal(c, 0);
+});
+
+adminGrant({ memberId: member, pool: 'one_on_one', amount: 2, note: 'test seed', adminId: ownerForTx });
+
+const bk1 = createBooking({ coachId: cPt2.id, memberId: member, startAt: '2099-06-01T10:00:00' });
+expect('successful createBooking debits 1 point', () => assert.equal(getBalance(member, 'one_on_one'), 1));
+expect('booking deduct row has source booking_deduct', () => {
+  const row = db.prepare("SELECT * FROM point_transactions WHERE related_booking_id = ?").get(bk1.id);
+  assert.equal(row.source, 'booking_deduct');
+  assert.equal(row.amount, -1);
+});
+
+cancelBooking({ bookingId: bk1.id, actorUserId: member, isCoach: false });
+expect('cancelBooking refunds 1 point', () => assert.equal(getBalance(member, 'one_on_one'), 2));
+expect('refund row has source booking_refund', () => {
+  const row = db.prepare("SELECT * FROM point_transactions WHERE related_booking_id = ? AND source = 'booking_refund'").get(bk1.id);
+  assert.equal(row.amount, 1);
+  assert.equal(row.actor_id, member);
+});
+
+// Coach emergency cancel: actor_id = coach.user_id, refund still goes to the member
+const bk2 = createBooking({ coachId: cPt2.id, memberId: member, startAt: '2099-06-08T10:00:00' });
+cancelBooking({ bookingId: bk2.id, actorUserId: uPt2, isCoach: true, reason: '臨時生病' });
+const refund2 = db.prepare("SELECT * FROM point_transactions WHERE related_booking_id = ? AND source = 'booking_refund'").get(bk2.id);
+expect('coach-cancel refund actor_id = coach.user_id', () => assert.equal(refund2.actor_id, uPt2));
+expect('coach-cancel refund note contains reason', () => assert(refund2.note.includes('臨時生病')));
+expect('coach-cancel refund still goes to member', () => assert.equal(refund2.member_id, member));

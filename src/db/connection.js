@@ -69,7 +69,14 @@ export function offsetLocal(ms) {
 
 // 手動 transaction 包裝。node:sqlite 尚未內建 transaction API。
 // 使用 IMMEDIATE 以避免寫入競態 (serialise writes)。
+// 支援巢狀呼叫：內層 tx() 不會開新 transaction，直接執行並由外層管理提交／回滾。
+let _txDepth = 0;
 export function tx(fn) {
+  if (_txDepth > 0) {
+    // Already inside a transaction — run fn() directly; outer tx handles commit/rollback.
+    return fn();
+  }
+  _txDepth++;
   db.exec('BEGIN IMMEDIATE');
   try {
     const result = fn();
@@ -78,5 +85,7 @@ export function tx(fn) {
   } catch (e) {
     try { db.exec('ROLLBACK'); } catch {}
     throw e;
+  } finally {
+    _txDepth--;
   }
 }

@@ -1,5 +1,6 @@
 import { db, tx, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
+import { recordTransaction } from './pointService.js';
 
 const insertBookingStmt = db.prepare(`
   INSERT INTO bookings (coach_id, member_id, start_at, end_at, note)
@@ -38,13 +39,24 @@ export function createBooking({ coachId, memberId, startAt, note = null }) {
   if (!coach) throw new ApiError(404, 'coach_not_found');
   if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
   const endAt = addMinutes(startAt, 60);
-  try {
-    const info = insertBookingStmt.run(coachId, memberId, startAt, endAt, note);
-    return { id: info.lastInsertRowid, startAt, endAt };
-  } catch (e) {
-    if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
-    throw e;
-  }
+  return tx(() => {
+    let bookingId;
+    try {
+      const info = insertBookingStmt.run(coachId, memberId, startAt, endAt, note);
+      bookingId = info.lastInsertRowid;
+    } catch (e) {
+      if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
+      throw e;
+    }
+    recordTransaction({
+      memberId, pool: 'one_on_one', amount: -1,
+      note: `預約 #${bookingId}`,
+      actorId: memberId,
+      source: 'booking_deduct',
+      relatedBookingId: bookingId,
+    });
+    return { id: bookingId, startAt, endAt };
+  });
 }
 
 export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason = null }) {
@@ -62,6 +74,18 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
     }
 
     cancelBookingStmt.run(nowLocal(), actorUserId, reason, bookingId);
+
+    const refundNote = isCoach
+      ? `取消 #${bookingId}（教練：${reason}）`
+      : `取消 #${bookingId}`;
+    recordTransaction({
+      memberId: b.member_id, pool: 'one_on_one', amount: 1,
+      note: refundNote,
+      actorId: actorUserId,
+      source: 'booking_refund',
+      relatedBookingId: bookingId,
+    });
+
     return { ok: true };
   });
 }
