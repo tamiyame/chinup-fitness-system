@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>一對一預約 · CHINUP Performance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/colors_and_type.css">
+<link rel="stylesheet" href="/style.css">
+<style>body { visibility: hidden; }</style>
+</head>
+<body>
+<nav class="navbar sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <a href="/" class="brand-mark"><span class="brand-dot"><img src="/logo.png" alt="logo"></span> CHINUP Performance</a>
+    <div id="auth-bar" class="flex items-center gap-3"></div>
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-6 py-8">
+  <div id="view-list">
+    <h1 class="page-title">選擇教練</h1>
+    <div id="coach-list" class="grid sm:grid-cols-2 md:grid-cols-3 gap-4"></div>
+  </div>
+
+  <div id="view-detail" class="hidden">
+    <button id="back-to-list" class="text-sm text-sky-600 mb-3">← 回到教練列表</button>
+    <div id="coach-detail"></div>
+    <h2 class="section-title mt-6">可預約時段</h2>
+    <div id="slot-controls" class="flex items-center gap-3 mb-3"></div>
+    <div id="slot-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"></div>
+  </div>
+
+  <div id="view-confirm" class="hidden">
+    <button id="back-to-detail" class="text-sm text-sky-600 mb-3">← 選別的時段</button>
+    <h1 class="page-title">確認預約</h1>
+    <div id="confirm-summary" class="card mb-4"></div>
+    <label class="block mb-3">
+      <span class="text-sm text-slate-600">備註（選填）</span>
+      <textarea id="note" class="mt-1 w-full border rounded p-2 text-sm" rows="3" placeholder="例如：想加強核心訓練"></textarea>
+    </label>
+    <button id="confirm-btn" class="btn-primary w-full">確認預約</button>
+  </div>
+</main>
+
+<div id="toast" class="toast"></div>
+<script type="module" src="/coaches.js"></script>
+</body>
+</html>
