@@ -124,24 +124,16 @@ if (db.prepare('SELECT COUNT(*) AS c FROM coach_availability_rules WHERE coach_i
   const monStr = `${futureMon.getFullYear()}-${pad(futureMon.getMonth() + 1)}-${pad(futureMon.getDate())}`;
   addException({ coachId: coach.id, exceptionDate: monStr, type: 'leave', note: '個人事務' });
 
-  // One demo booking 2 weeks out on a Wednesday at 10:00
-  const futureWed = new Date(today.getTime() + 14 * 86400_000);
-  while (futureWed.getDay() !== 3) futureWed.setDate(futureWed.getDate() + 1);
-  const wedStr = `${futureWed.getFullYear()}-${pad(futureWed.getMonth() + 1)}-${pad(futureWed.getDate())}T10:00:00`;
-  const memberId = db.prepare("SELECT id FROM users WHERE email = 'user1@chinup.local'").get()?.id;
-  if (memberId) {
-    try { createBooking({ coachId: coach.id, memberId, startAt: wedStr, note: '想練腿' }); } catch {}
-  }
-  console.log(`[seed] coach #${coach.id} rules + exception + demo booking ready`);
+  console.log(`[seed] coach #${coach.id} rules + exception ready`);
 }
 
-// Phase 2: seed initial points for demo members
+// Phase 2: seed initial points for demo members. Must run BEFORE the demo booking
+// below, otherwise createBooking will silently fail (insufficient_points).
 const ownerForSeed = db.prepare("SELECT id FROM users WHERE role IN ('owner', 'admin') ORDER BY role='owner' DESC LIMIT 1").get();
 if (ownerForSeed) {
   const demoMembers = db.prepare("SELECT id FROM users WHERE role = 'user' AND email LIKE 'user%@chinup.local' ORDER BY id").all();
   let granted = 0;
   for (const m of demoMembers) {
-    // Skip if already seeded (idempotent)
     const exists = db.prepare("SELECT 1 FROM point_transactions WHERE member_id = ? AND note = 'seed-demo points'").get(m.id);
     if (!exists) {
       adminGrant({ memberId: m.id, pool: 'one_on_one', amount: 5, note: 'seed-demo points', adminId: ownerForSeed.id });
@@ -150,4 +142,20 @@ if (ownerForSeed) {
     }
   }
   console.log(`[seed] granted points to ${granted} demo members (${demoMembers.length - granted} already seeded)`);
+}
+
+// One demo booking 2 weeks out on a Wednesday at 10:00 (now after points are seeded)
+const coachForBooking = db.prepare("SELECT id FROM coaches WHERE display_name = '王教練'").get();
+if (coachForBooking) {
+  const today = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const futureWed = new Date(today.getTime() + 14 * 86400_000);
+  while (futureWed.getDay() !== 3) futureWed.setDate(futureWed.getDate() + 1);
+  const wedStr = `${futureWed.getFullYear()}-${pad(futureWed.getMonth() + 1)}-${pad(futureWed.getDate())}T10:00:00`;
+  const memberId = db.prepare("SELECT id FROM users WHERE email = 'user1@chinup.local'").get()?.id;
+  const alreadyBooked = memberId && db.prepare("SELECT 1 FROM bookings WHERE coach_id = ? AND member_id = ? AND start_at = ? AND status = 'confirmed'").get(coachForBooking.id, memberId, wedStr);
+  if (memberId && !alreadyBooked) {
+    try { createBooking({ coachId: coachForBooking.id, memberId, startAt: wedStr, note: '想練腿' }); } catch (e) { console.warn('[seed] demo booking skipped:', e.message); }
+    console.log(`[seed] demo booking for user1 with 王教練 at ${wedStr}`);
+  }
 }
