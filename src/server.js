@@ -10,6 +10,14 @@ import {
 } from './services/courseService.js';
 import { register, cancelRegistration, ApiError } from './services/registration.js';
 import {
+  createCoach as svcCreateCoach,
+  getCoach as svcGetCoach,
+  getCoachByUser as svcGetCoachByUser,
+  listAllCoaches as svcListAllCoaches,
+  setCoachActive as svcSetCoachActive,
+  updateCoach as svcUpdateCoach,
+} from './services/coachService.js';
+import {
   login as authLogin,
   logout as authLogout,
   userFromToken,
@@ -369,6 +377,62 @@ app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => 
 
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
   res.json({ ok: true, id: targetId, role });
+}));
+
+// --- One-on-one: admin coach management ---
+
+app.get('/api/admin/coaches', requireAdmin, asyncHandler((req, res) => {
+  const rows = db.prepare(`
+    SELECT c.*, u.name AS user_name, u.email AS user_email
+    FROM coaches c JOIN users u ON u.id = c.user_id
+    ORDER BY c.sort_order ASC, c.id ASC
+  `).all();
+  res.json(rows);
+}));
+
+app.post('/api/admin/coaches', requireAdmin, asyncHandler((req, res) => {
+  const { user_id, display_name, specialty, bio, sort_order } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: 'missing_user_id' });
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(user_id));
+  if (!user) return res.status(404).json({ error: 'user_not_found' });
+  if (svcGetCoachByUser(user.id)) return res.status(409).json({ error: 'coach_exists' });
+
+  tx(() => {
+    db.prepare("UPDATE users SET role = 'coach' WHERE id = ?").run(user.id);
+    svcCreateCoach({
+      userId: user.id,
+      displayName: display_name || user.name,
+      specialty,
+      bio,
+      sortOrder: sort_order || 0,
+    });
+  });
+  const created = svcGetCoachByUser(user.id);
+  res.status(201).json(created);
+}));
+
+app.patch('/api/admin/coaches/:id', requireAdmin, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const { display_name, specialty, bio, sort_order, is_active } = req.body || {};
+  const existing = svcGetCoach(id);
+  if (!existing) return res.status(404).json({ error: 'coach_not_found' });
+  svcUpdateCoach(id, { displayName: display_name, specialty, bio, sortOrder: sort_order });
+  if (typeof is_active === 'boolean' || is_active === 0 || is_active === 1) {
+    svcSetCoachActive(id, !!is_active);
+  }
+  res.json(svcGetCoach(id));
+}));
+
+app.delete('/api/admin/coaches/:id', requireAdmin, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const coach = svcGetCoach(id);
+  if (!coach) return res.status(404).json({ error: 'coach_not_found' });
+
+  tx(() => {
+    svcSetCoachActive(id, false);
+    db.prepare("UPDATE users SET role = 'user' WHERE id = ?").run(coach.user_id);
+  });
+  res.json({ ok: true, demoted_user_id: coach.user_id });
 }));
 
 app.get('/api/admin/notifications', requireAdmin, asyncHandler((req, res) => {
