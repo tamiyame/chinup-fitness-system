@@ -18,7 +18,7 @@ import {
   recordTransaction, getBalance, getBalances,
   adminGrant, listTransactionsForAdmin,
 } from '../src/services/pointService.js';
-import { createTemplate } from '../src/services/courseService.js';
+import { createTemplate, processDeadlines } from '../src/services/courseService.js';
 import { register, cancelRegistration } from '../src/services/registration.js';
 import { offsetLocal } from '../src/db/connection.js';
 import assert from 'node:assert/strict';
@@ -40,6 +40,7 @@ function reset() {
     DELETE FROM users WHERE email LIKE 'coach-test-%';
     DELETE FROM users WHERE email = 'pm@chinup.local';
     DELETE FROM users WHERE email LIKE 'gm%@chinup.local';
+    DELETE FROM users WHERE email LIKE 'sm%@chinup.local';
   `);
 }
 
@@ -496,3 +497,58 @@ expect('reg1 cancel refunds memG1', () => assert.equal(getBalance(memG1, 'group'
 expect('reg4 promotion does NOT touch points', () => assert.equal(getBalance(memG4, 'group'), beforeBalanceG4));
 const reg4After = db.prepare('SELECT status FROM registrations WHERE id = ?').get(reg4.registrationId);
 expect('reg4 promoted to confirmed', () => assert.equal(reg4After.status, 'confirmed'));
+
+// --- Case 8b: session auto-cancel refunds all participants ---
+
+console.log('[case 8b] session auto-cancel + refunds');
+
+reset();
+const memS1 = db.prepare("INSERT INTO users (name, email, role, notification_preference) VALUES ('sess-mem-1', 'sm1@chinup.local', 'user', 'email')").run().lastInsertRowid;
+const memS2 = db.prepare("INSERT INTO users (name, email, role, notification_preference) VALUES ('sess-mem-2', 'sm2@chinup.local', 'user', 'email')").run().lastInsertRowid;
+const adminIdS = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get().id;
+adminGrant({ memberId: memS1, pool: 'group', amount: 5, note: 'seed', adminId: adminIdS });
+adminGrant({ memberId: memS2, pool: 'group', amount: 5, note: 'seed', adminId: adminIdS });
+
+// Template needs min_capacity 3 to force "not reached" cancellation
+const tplB = createTemplate({
+  name: 'C8b 測試課（低參與）',
+  min_capacity: 3,
+  max_capacity: 10,
+  day_of_week: new Date().getDay(),
+  start_time: '15:00',
+  duration_minutes: 60,
+  recurrence: 'monthly',
+  cycle_start_date: '2099-01-01',
+  cycle_end_date: '2099-12-31',
+  registration_deadline_hours: 24,
+});
+const sessB = db.prepare('SELECT id FROM course_sessions WHERE template_id = ? ORDER BY start_at LIMIT 1').get(tplB.templateId).id;
+
+// Register two members (below min_capacity=3) — do this BEFORE setting deadline to past
+const regS1 = register({ sessionId: sessB, userId: memS1 });
+const regS2 = register({ sessionId: sessB, userId: memS2 });
+
+// Now move deadline to past so processDeadlines fires immediately
+const pastDl = offsetLocal(-60 * 60 * 1000);  // 1h ago
+const stillFutureStart = offsetLocal(20 * 60 * 60 * 1000);  // still in future, but past deadline
+db.prepare("UPDATE course_sessions SET start_at = ?, registration_deadline = ? WHERE id = ?")
+  .run(stillFutureStart, pastDl, sessB);
+expect('memS1 balance after register = 4', () => assert.equal(getBalance(memS1, 'group'), 4));
+expect('memS2 balance after register = 4', () => assert.equal(getBalance(memS2, 'group'), 4));
+
+processDeadlines();
+
+const sessAfter = db.prepare('SELECT status FROM course_sessions WHERE id = ?').get(sessB);
+expect('session cancelled by processDeadlines', () => assert.equal(sessAfter.status, 'cancelled'));
+
+expect('memS1 refunded (balance back to 5)', () => assert.equal(getBalance(memS1, 'group'), 5));
+expect('memS2 refunded (balance back to 5)', () => assert.equal(getBalance(memS2, 'group'), 5));
+
+expect('refund rows source=session_refund', () => {
+  const rows = db.prepare("SELECT * FROM point_transactions WHERE related_session_id = ? AND source = 'session_refund'").all(sessB);
+  assert.equal(rows.length, 2);
+});
+
+// processDeadlines is idempotent — running twice doesn't double-refund
+processDeadlines();
+expect('memS1 balance not double-refunded', () => assert.equal(getBalance(memS1, 'group'), 5));

@@ -2,6 +2,7 @@ import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { expandTemplate, RECURRENCES } from './schedule.js';
 import { notify } from './notifications.js';
 import { ApiError } from './registration.js';
+import { recordTransaction } from './pointService.js';
 
 const insertTemplate = db.prepare(`
   INSERT INTO course_templates
@@ -173,6 +174,19 @@ export function processDeadlines() {
         db.prepare("UPDATE course_sessions SET status = 'cancelled' WHERE id = ?").run(s.id);
         // 所有 confirmed / waitlisted 都要通知，並把狀態設為 rejected
         const regs = db.prepare("SELECT user_id, id FROM registrations WHERE session_id = ? AND status IN ('confirmed','waitlisted')").all(s.id);
+        // Refund each active participant BEFORE flipping statuses (idempotency: second run finds zero)
+        for (const reg of regs) {
+          recordTransaction({
+            memberId: reg.user_id,
+            pool: 'group',
+            amount: 1,
+            note: `場次未成班 #${s.id}`,
+            actorId: reg.user_id,
+            source: 'session_refund',
+            relatedRegistrationId: reg.id,
+            relatedSessionId: s.id,
+          });
+        }
         const upd = db.prepare("UPDATE registrations SET status = 'rejected' WHERE id = ?");
         for (const r of regs) {
           upd.run(r.id);
