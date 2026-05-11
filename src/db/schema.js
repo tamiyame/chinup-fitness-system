@@ -148,4 +148,43 @@ CREATE INDEX IF NOT EXISTS idx_bookings_member ON bookings(member_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_coach_status ON bookings(coach_id, status);
 CREATE INDEX IF NOT EXISTS idx_availability_rules_coach ON coach_availability_rules(coach_id);
 CREATE INDEX IF NOT EXISTS idx_availability_exceptions_coach_date ON coach_availability_exceptions(coach_id, exception_date);
+
+CREATE TABLE IF NOT EXISTS point_transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  member_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  pool TEXT NOT NULL CHECK (pool IN ('one_on_one', 'group')),
+  amount INTEGER NOT NULL,
+  note TEXT NOT NULL,
+  actor_id INTEGER NOT NULL REFERENCES users(id),
+  source TEXT NOT NULL CHECK (source IN (
+    'admin_grant',
+    'booking_deduct',
+    'booking_refund',
+    'registration_deduct',
+    'registration_refund',
+    'session_refund'
+  )),
+  related_booking_id INTEGER REFERENCES bookings(id),
+  related_session_id INTEGER REFERENCES course_sessions(id),
+  related_registration_id INTEGER REFERENCES registrations(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (amount != 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_point_tx_member_pool ON point_transactions(member_id, pool);
+CREATE INDEX IF NOT EXISTS idx_point_tx_created ON point_transactions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_point_tx_booking ON point_transactions(related_booking_id);
+CREATE INDEX IF NOT EXISTS idx_point_tx_registration ON point_transactions(related_registration_id);
+
+CREATE VIEW IF NOT EXISTS member_point_balance AS
+SELECT
+  u.id AS member_id,
+  u.name,
+  u.email,
+  COALESCE(SUM(CASE WHEN pt.pool = 'one_on_one' THEN pt.amount ELSE 0 END), 0) AS one_on_one_balance,
+  COALESCE(SUM(CASE WHEN pt.pool = 'group' THEN pt.amount ELSE 0 END), 0) AS group_balance
+FROM users u
+LEFT JOIN point_transactions pt ON pt.member_id = u.id
+WHERE u.role = 'user'
+GROUP BY u.id;
 `;
