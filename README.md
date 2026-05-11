@@ -12,6 +12,39 @@
 - **帳號系統**：Email + 密碼登入（scrypt 雜湊）、token session、角色分級（admin / user）。
 - **管理後台**：儀表板統計、範本 CRUD、場次名單、手動觸發截止與提醒、通知紀錄檢視。
 
+## 一對一預約模組（Phase 1）
+
+教練自助管理班表 + 會員瀏覽教練線上預約。
+
+### 新角色：coach
+
+- 介於 `admin` 和 `user` 之間
+- 自助登入後可改 profile、設可預約時段、看自己的預約、緊急取消
+- 不能管其他教練或會員（限 admin 以上）
+
+### 功能流程
+
+1. 註冊時勾選「我是教練」→ 帳號為 coach，待 admin 啟用
+2. Admin 在 `/admin.html` → 「教練管理」啟用、或把現有 user 升為教練
+3. 教練在 `/coach.html` 設可預約時段（每週基底 + 例外覆寫）
+4. 會員在 `/coaches.html` 瀏覽教練 → 點開詳細 → 選 60 分鐘時段 → 預約
+5. 會員 / 教練在 `/my-bookings.html` / `/coach.html` 看到預約並可取消
+
+### 設定預設值（Phase 1 寫死於程式碼）
+
+| 設定 | 值 |
+|---|---|
+| Slot 長度 | 60 分鐘 |
+| Buffer | 預約時不能選 < 2 小時後的時段 |
+| Window | 預約只能往後 30 天 |
+| 點數 | Phase 1 不接，Phase 2 再加 |
+| 取消 | 隨時可取消，policy 是無條件退點（Phase 1 純取消，無退點動作） |
+
+### 設計 / 計畫文件
+
+- `docs/superpowers/specs/2026-05-11-one-on-one-booking-design.md`
+- `docs/superpowers/plans/2026-05-11-one-on-one-booking.md`
+
 ## 技術棧
 
 | 層 | 技術 |
