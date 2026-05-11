@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Brand colors</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .row { display: flex; gap: 10px; width: 100%; }
+  .swatch {
+    flex: 1;
+    aspect-ratio: 1.15 / 1;
+    border-radius: 14px;
+    padding: 12px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid rgba(15,23,42,0.04);
+    color: var(--fg-1);
+    font-family: var(--font-sans);
+  }
+  .swatch.dark { color: #fff; }
+  .name { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: .8; }
+  .hex { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="card column">
+  <div class="row">
+    <div class="swatch" style="background:#f0f9ff;"><span class="name">Brand 50</span><span class="hex">#F0F9FF</span></div>
+    <div class="swatch" style="background:#e0f2fe;"><span class="name">Brand 100</span><span class="hex">#E0F2FE</span></div>
+    <div class="swatch dark" style="background:#38bdf8;"><span class="name">Brand 500</span><span class="hex">#38BDF8</span></div>
+    <div class="swatch dark" style="background:#0ea5e9;"><span class="name">Brand 600 ★</span><span class="hex">#0EA5E9</span></div>
+    <div class="swatch dark" style="background:#0284c7;"><span class="name">Brand 700</span><span class="hex">#0284C7</span></div>
+    <div class="swatch dark" style="background:#0c4a6e;"><span class="name">Brand 900</span><span class="hex">#0C4A6E</span></div>
+  </div>
+</div>
+</body>
+</html>

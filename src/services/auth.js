@@ -1,6 +1,7 @@
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { db } from '../db/connection.js';
 import { ApiError } from './registration.js';
+import { createCoach } from './coachService.js';
 
 const SCRYPT_N = 16384, SCRYPT_R = 8, SCRYPT_P = 1, KEY_LEN = 64;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -55,13 +56,15 @@ export function login({ email, password }) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function registerWithPassword({ email, password, name, phone, notification_preference }) {
+export function registerWithPassword({ email, password, name, phone, notification_preference, as_coach = false }) {
   if (!email || !EMAIL_RE.test(email)) throw new ApiError(400, 'invalid_email');
   if (!password || password.length < 8) throw new ApiError(400, 'password_too_short');
   if (!name || !name.trim()) throw new ApiError(400, 'missing_name');
 
   const existing = getUserByEmail.get(email);
   if (existing) throw new ApiError(409, 'email_exists');
+
+  const role = as_coach ? 'coach' : 'user';
 
   const info = db
     .prepare(
@@ -72,14 +75,19 @@ export function registerWithPassword({ email, password, name, phone, notificatio
       email.toLowerCase(),
       phone || null,
       hashPassword(password),
-      'user',
+      role,
       notification_preference || 'email'
     );
 
-  const user = getUserById.get(info.lastInsertRowid);
+  const userId = info.lastInsertRowid;
+
+  if (as_coach) {
+    createCoach({ userId, displayName: name.trim() });  // is_active=0; admin must activate
+  }
+
+  const user = getUserById.get(userId);
   const session = createSession(user.id);
-  console.log(`[auth] new user registered: ${user.email}`);
-  return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt };
+  return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt, pending_coach: as_coach };
 }
 
 // Google OAuth: upsert user by google_id, else link by email, else create.

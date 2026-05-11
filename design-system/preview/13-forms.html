@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Form fields</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { font-family: var(--font-sans); }
+  .field { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .label-up {
+    font-size: 12px; font-weight: 600; color: #475569;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .input, .select {
+    padding: 10px 12px; border-radius: 10px; border: 1px solid #e5e7eb;
+    background: #fff; font-size: 14px; font-family: inherit; color: #0f172a;
+  }
+  .input.focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+    outline: none;
+  }
+  .row { display: flex; gap: 14px; width: 100%; }
+</style>
+</head>
+<body>
+<div class="card column" style="justify-content:center;gap:14px;">
+  <div class="row">
+    <div class="field">
+      <label class="label-up">課程名稱</label>
+      <input class="input" placeholder="重量訓練" value="重量訓練 · 進階">
+    </div>
+    <div class="field">
+      <label class="label-up">電子郵件</label>
+      <input class="input focus" placeholder="you@example.com" value="hi@chinup.local">
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label class="label-up">人數下限</label>
+      <input class="input" value="3" style="max-width:120px;">
+    </div>
+    <div class="field">
+      <label class="label-up">重複週期</label>
+      <select class="select"><option>每週一次</option></select>
+    </div>
+  </div>
+</div>
+</body>
+</html>

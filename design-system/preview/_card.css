@@ -1,0 +1,33 @@
+@import url('../colors_and_type.css');
+
+/* re-declare @font-face with relative path that works from preview/ */
+@font-face {
+  font-family: 'LiHei Pro';
+  src: url('../fonts/LiHeiPro.ttf') format('truetype');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+html, body {
+  margin: 0;
+  background: #ffffff;
+  color: var(--fg-1);
+}
+body {
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  min-height: 100vh;
+}
+.card {
+  flex: 1;
+  display: flex;
+  padding: 22px 24px;
+  gap: 18px;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+.card.column { flex-direction: column; }
+.card.center { align-items: center; justify-content: center; }

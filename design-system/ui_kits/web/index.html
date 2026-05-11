@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHINUP Performance — UI kit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="style.css">
+<style>
+  body {
+    background-image:
+      radial-gradient(1200px 500px at -10% -20%, rgba(56, 189, 248, 0.08), transparent 60%),
+      radial-gradient(800px 400px at 110% 10%, rgba(14, 165, 233, 0.05), transparent 55%);
+    background-attachment: fixed;
+  }
+  /* extra login styles (mirrors login.html) */
+  .login-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 20px; padding: 36px;
+    box-shadow: var(--shadow-lg);
+    max-width: 440px; width: 100%;
+    margin: 60px auto 0;
+  }
+  .login-logo { width: 88px; height: 88px; margin: 0 auto 14px; display: block; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(14, 165, 233, 0.25)); }
+  .btn-google { display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:11px 18px;border:1px solid var(--line);border-radius:var(--radius-sm);background:white;color:#1f2937;font-weight:600;font-size:14px;text-decoration:none; }
+  .btn-google:hover { background:#f9fafb; }
+  .google-icon { width:18px; height:18px; flex-shrink:0; }
+  .divider { display:flex;align-items:center;gap:10px;color:var(--ink-mute);font-size:12px;margin:20px 0; }
+  .divider::before,.divider::after { content:'';flex:1;height:1px;background:var(--line); }
+  .tab-btn { flex:1;padding:10px 0;font-size:14px;font-weight:600;background:transparent;border:none;cursor:pointer;color:var(--ink-mute);border-bottom:2px solid transparent;transition:all 150ms; }
+  .tab-btn.active { color: var(--brand-700); border-bottom-color: var(--brand-600); }
+  .space-y-4 > * + * { margin-top: 1rem; }
+  .w-full { width: 100%; }
+
+  /* shell pager */
+  .shell-page { display: none; }
+  .shell-page.active { display: block; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="Nav.jsx"></script>
+  <script type="text/babel" src="Hero.jsx"></script>
+  <script type="text/babel" src="SessionCard.jsx"></script>
+  <script type="text/babel" src="CourseAccordion.jsx"></script>
+  <script type="text/babel" src="RegistrationRow.jsx"></script>
+  <script type="text/babel" src="LoginCard.jsx"></script>
+  <script type="text/babel" src="AdminStats.jsx"></script>
+  <script type="text/babel" src="Toast.jsx"></script>
+
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+
+    /* -------- fixture data -------- */
+    const COURSES = [
+      {
+        name: '重量訓練 · 進階', description: '三大項加上輔助動作，建議 6 個月以上訓練經驗',
+        min_capacity: 3, max_capacity: 8, duration_minutes: 60,
+        sessions: [
+          { id: 11, name: '重量訓練 · 進階', description: '三大項加上輔助動作，建議 6 個月以上訓練經驗', start_at: '2026-05-06T19:00:00', confirmed_count: 6, max_capacity: 8, min_capacity: 3, duration_minutes: 60, waitlist_count: 0, registration_deadline: '2026/05/05 19:00' },
+          { id: 12, name: '重量訓練 · 進階', description: '三大項加上輔助動作，建議 6 個月以上訓練經驗', start_at: '2026-05-13T19:00:00', confirmed_count: 8, max_capacity: 8, min_capacity: 3, duration_minutes: 60, waitlist_count: 2, registration_deadline: '2026/05/12 19:00' },
+          { id: 13, name: '重量訓練 · 進階', description: '三大項加上輔助動作，建議 6 個月以上訓練經驗', start_at: '2026-05-20T19:00:00', confirmed_count: 4, max_capacity: 8, min_capacity: 3, duration_minutes: 60, waitlist_count: 0, registration_deadline: '2026/05/19 19:00' },
+        ],
+      },
+      {
+        name: 'TRX 懸吊訓練', description: '全身核心啟動，新手友善',
+        min_capacity: 4, max_capacity: 10, duration_minutes: 50,
+        sessions: [
+          { id: 21, name: 'TRX 懸吊訓練', description: '全身核心啟動，新手友善', start_at: '2026-05-08T18:30:00', confirmed_count: 5, max_capacity: 10, min_capacity: 4, duration_minutes: 50, waitlist_count: 0, registration_deadline: '2026/05/07 18:30' },
+          { id: 22, name: 'TRX 懸吊訓練', description: '全身核心啟動，新手友善', start_at: '2026-05-15T18:30:00', confirmed_count: 3, max_capacity: 10, min_capacity: 4, duration_minutes: 50, waitlist_count: 0, registration_deadline: '2026/05/14 18:30' },
+        ],
+      },
+      {
+        name: '銀髮功能性訓練', description: '針對 55+ 設計，平衡、肌力、靈活度',
+        min_capacity: 4, max_capacity: 12, duration_minutes: 45,
+        sessions: [
+          { id: 31, name: '銀髮功能性訓練', description: '針對 55+ 設計，平衡、肌力、靈活度', start_at: '2026-05-09T10:00:00', confirmed_count: 7, max_capacity: 12, min_capacity: 4, duration_minutes: 45, waitlist_count: 0, registration_deadline: '2026/05/08 10:00' },
+        ],
+      },
+    ];
+
+    const MY_REGS_INIT = [
+      { id: 901, session_id: 11, course_name: '重量訓練 · 進階', start_at: '2026-05-06T19:00:00', status: 'confirmed', session_status: 'open' },
+      { id: 902, session_id: 12, course_name: '重量訓練 · 進階', start_at: '2026-05-13T19:00:00', status: 'waitlisted', session_status: 'open', position: 2 },
+      { id: 903, session_id: 99, course_name: 'HIIT 高強度間歇', start_at: '2026-04-14T19:00:00', status: 'confirmed', session_status: 'completed' },
+    ];
+
+    /* -------- App shell -------- */
+    function App() {
+      const [auth, setAuth] = useState(null); // null = logged out
+      const [page, setPage] = useState('courses');
+      const [mode, setMode] = useState('login');
+      const [myRegs, setMyRegs] = useState(MY_REGS_INIT);
+      const [toastState, setToastState] = useState({ msg: '', kind: 'info', show: false });
+
+      const flashToast = (msg, kind = 'success') => {
+        setToastState({ msg, kind, show: true });
+        setTimeout(() => setToastState(t => ({ ...t, show: false })), 2400);
+      };
+
+      const myRegsBySession = useMemo(
+        () => new Map(myRegs.filter(r => r.status === 'confirmed' || r.status === 'waitlisted').map(r => [r.session_id, r])),
+        [myRegs]
+      );
+
+      const handleLogin = (fd) => {
+        const email = fd.get('email');
+        const isAdmin = email === 'admin@chinup.local';
+        setAuth({ name: isAdmin ? '管理員' : '王小明', email, role: isAdmin ? 'admin' : 'user' });
+        setPage(isAdmin ? 'admin' : 'courses');
+      };
+
+      const handleRegister = (sid) => {
+        const session = COURSES.flatMap(c => c.sessions).find(s => s.id === sid);
+        if (!session) return;
+        const full = session.confirmed_count >= session.max_capacity;
+        const newReg = {
+          id: Date.now(),
+          session_id: sid,
+          course_name: session.name,
+          start_at: session.start_at,
+          status: full ? 'waitlisted' : 'confirmed',
+          session_status: 'open',
+          position: full ? 1 : undefined,
+        };
+        setMyRegs(prev => [newReg, ...prev]);
+        flashToast(full ? `已進候補 第 1 位` : '🎉 報名成功（正取）', 'success');
+      };
+
+      const handleCancel = (id) => {
+        setMyRegs(prev => prev.filter(r => r.id !== id));
+        flashToast('已取消報名', 'success');
+      };
+
+      if (!auth) {
+        return (
+          <>
+            <LoginCard mode={mode} onSwitch={setMode} onLogin={handleLogin} onRegister={handleLogin} />
+            <Toast {...toastState} />
+          </>
+        );
+      }
+
+      return (
+        <>
+          <Nav active={page} user={auth} onNav={setPage} onLogout={() => { setAuth(null); setMode('login'); }} />
+          <main className="max-w-6xl mx-auto px-6">
+            {page === 'courses' && (
+              <div className="shell-page active">
+                <Hero eyebrow="💪 2026 Spring Program" title="找到適合你的<br/>團體訓練課程" subtitle="由專業教練設計的循環課表，每月開課、彈性報名。額滿自動進入候補、成班與否都會通知你。" />
+                <section className="pb-16">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="section-title">可報名課程</h2>
+                    <span className="subtle">共 {COURSES.reduce((n, c) => n + c.sessions.length, 0)} 場</span>
+                  </div>
+                  <div className="grid gap-4">
+                    {COURSES.map((g, i) => (
+                      <CourseAccordion key={g.name} group={g} defaultOpen={i === 0} myRegs={myRegsBySession} onRegister={handleRegister} />
+                    ))}
+                  </div>
+                </section>
+              </div>
+            )}
+            {page === 'my' && (
+              <div className="shell-page active">
+                <Hero eyebrow="📋 Personal" title="我的報名" subtitle="檢視所有報名中、候補中、以及已完成的課程狀態。" />
+                <section className="pb-16">
+                  <div className="grid gap-3">
+                    {myRegs.length === 0
+                      ? <div className="empty-state"><span className="empty-state-icon">📭</span><p>尚未報名任何課程</p></div>
+                      : myRegs.map(r => <RegistrationRow key={r.id} reg={r} onCancel={handleCancel} />)}
+                  </div>
+                </section>
+              </div>
+            )}
+            {page === 'admin' && (
+              <div className="shell-page active">
+                <Hero eyebrow="⚙️ Admin Console" title="課程管理後台" subtitle="建立團體課程範本、檢視每場次報名狀態、並手動處理截止與寄送提醒。" />
+                <AdminStats templates={6} sessions={48} regs={186} waitlist={12} />
+                <section className="mb-10">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="section-title">課程範本</h2>
+                    <button className="btn btn-primary">＋ 新增範本</button>
+                  </div>
+                  <div className="grid gap-3">
+                    {COURSES.map(c => (
+                      <article key={c.name} className="card">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <h3 className="card-title">{c.name}</h3>
+                            <p className="card-desc">{c.description}</p>
+                            <div className="meta">
+                              <span className="meta-item">🗓 每週 · {c.sessions.length} 場已展開</span>
+                              <span className="meta-item">⏱ {c.duration_minutes} 分鐘</span>
+                              <span className="meta-item">👥 {c.min_capacity}–{c.max_capacity} 人</span>
+                            </div>
+                          </div>
+                          <button className="btn btn-ghost btn-sm">檢視名單</button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+                <section className="mb-10">
+                  <h2 className="section-title mb-4">系統操作</h2>
+                  <div className="card">
+                    <div className="flex flex-wrap gap-3 items-center">
+                      <button className="btn btn-dark" onClick={() => flashToast('已處理 3 場截止', 'success')}>⏰ 立即處理截止</button>
+                      <button className="btn btn-dark" onClick={() => flashToast('已寄送 12 則提醒', 'success')}>📣 寄送上課提醒</button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            )}
+          </main>
+          <Toast {...toastState} />
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

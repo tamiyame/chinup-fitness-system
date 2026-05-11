@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/colors_and_type.css">
 <link rel="stylesheet" href="/style.css">
 <style>body { visibility: hidden; }</style>
 </head>
@@ -21,8 +22,11 @@
       </a>
       <div class="hidden md:flex items-center gap-6">
         <a href="/" class="nav-link active">課程</a>
+        <a href="/coaches.html" class="nav-link">一對一預約</a>
+        <a href="/my-bookings.html" class="nav-link">我的一對一</a>
         <a href="/my.html" class="nav-link">我的報名</a>
         <a href="/admin.html" class="nav-link">管理後台</a>
+        <a href="/coach.html" id="coach-link" class="nav-link hidden">教練後台</a>
       </div>
     </div>
     <div id="auth-bar" class="flex items-center gap-3"></div>
@@ -38,6 +42,7 @@
   </section>
 
   <section class="pb-16">
+    <a href="/coaches.html" class="block sm:hidden mb-4 btn-primary w-full text-center">🏋️ 預約一對一</a>
     <div class="flex items-center justify-between mb-4">
       <h2 class="section-title">可報名課程</h2>
       <span id="count-badge" class="subtle"></span>
@@ -55,5 +60,10 @@
 
 <script type="module" src="/app.js"></script>
 <script type="module" src="/courses.js"></script>
+<script type="module">
+import { getUser } from '/app.js';
+const u = getUser();
+if (u && ['coach','admin','owner'].includes(u.role)) document.getElementById('coach-link')?.classList.remove('hidden');
+</script>
 </body>
 </html>

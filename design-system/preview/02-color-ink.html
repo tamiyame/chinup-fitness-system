@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ink &amp; surface</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; width: 100%; }
+  .sw {
+    aspect-ratio: 1.1 / 1;
+    border-radius: 12px;
+    padding: 10px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    border: 1px solid rgba(15,23,42,0.06);
+  }
+  .sw .n { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: .85; }
+  .sw .h { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="card column">
+  <div class="grid">
+    <div class="sw" style="background:#0f172a;color:#fff;"><span class="n">Ink</span><span class="h">#0F172A</span></div>
+    <div class="sw" style="background:#475569;color:#fff;"><span class="n">Ink-soft</span><span class="h">#475569</span></div>
+    <div class="sw" style="background:#94a3b8;color:#fff;"><span class="n">Ink-mute</span><span class="h">#94A3B8</span></div>
+    <div class="sw" style="background:#e5e7eb;color:#0f172a;"><span class="n">Line</span><span class="h">#E5E7EB</span></div>
+    <div class="sw" style="background:#f8faf9;color:#0f172a;"><span class="n">Canvas</span><span class="h">#F8FAF9</span></div>
+    <div class="sw" style="background:#ffffff;color:#0f172a;border-color:#e5e7eb;"><span class="n">Surface</span><span class="h">#FFFFFF</span></div>
+  </div>
+</div>
+</body>
+</html>

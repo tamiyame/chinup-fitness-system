@@ -85,13 +85,13 @@ export async function bootAuth({ requireAdmin = false } = {}) {
     return null;
   }
 
-  renderAuthBar(user);
+  await renderAuthBar(user);
   // Pages hide <body> via inline style until auth is confirmed. Reveal now.
   document.body.style.visibility = 'visible';
   return user;
 }
 
-function renderAuthBar(user) {
+async function renderAuthBar(user) {
   // Hide admin nav link for non-admin users
   document.querySelectorAll('a[href="/admin.html"]').forEach((el) => {
     el.style.display = ['admin', 'owner'].includes(user.role) ? '' : 'none';
@@ -105,8 +105,27 @@ function renderAuthBar(user) {
     user:  '<span class="badge badge-open" style="font-size:10px;">會員</span>',
   };
   const badge = badgeMap[user.role] || badgeMap.user;
+
+  // Fetch points balance for members only
+  let pillHtml = '';
+  if (user.role === 'user') {
+    try {
+      const bal = await api('/api/my/points/balance');
+      const low = bal.one_on_one <= 0 || bal.group <= 0;
+      pillHtml = `
+        <span class="badge ${low ? 'badge-cancelled' : 'badge-confirmed'}"
+              title="${low ? '某池餘額為 0，請聯絡管理員儲值' : '剩餘點數'}"
+              style="font-size:10px; margin-right:8px;">
+          PT ${bal.one_on_one} · 團 ${bal.group}
+        </span>`;
+    } catch {
+      pillHtml = '';
+    }
+  }
+
   el.innerHTML = `
     <div class="flex items-center gap-2">
+      ${pillHtml}
       ${badge}
       <span class="text-sm font-medium">${user.name}</span>
       <span class="subtle hidden md:inline">${user.email}</span>
@@ -118,4 +137,10 @@ function renderAuthBar(user) {
     clearAuth();
     location.href = '/login.html';
   });
+}
+
+export async function refreshAuthBar() {
+  const user = getUser();
+  if (!user) return;
+  await renderAuthBar(user);
 }

@@ -9,8 +9,8 @@
     "start": "node src/server.js",
     "migrate": "node src/db/migrate.js",
     "seed": "node src/db/seed.js",
-    "test:api": "node tests/api.test.js",
-    "test:flow": "node tests/flow.test.js"
+    "test:api": "node tests/api.test.js && node tests/booking-api.test.js",
+    "test:flow": "node tests/flow.test.js && node tests/booking-flow.test.js"
   },
   "dependencies": {
     "express": "^4.19.2",

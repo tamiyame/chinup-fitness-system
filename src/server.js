@@ -10,6 +10,30 @@ import {
 } from './services/courseService.js';
 import { register, cancelRegistration, ApiError } from './services/registration.js';
 import {
+  createCoach as svcCreateCoach,
+  getCoach as svcGetCoach,
+  getCoachByUser as svcGetCoachByUser,
+  listAllCoaches as svcListAllCoaches,
+  setCoachActive as svcSetCoachActive,
+  updateCoach as svcUpdateCoach,
+} from './services/coachService.js';
+import {
+  addRule as svcAddRule,
+  listRules as svcListRules,
+  deleteRule as svcDeleteRule,
+  addException as svcAddException,
+  listExceptions as svcListExceptions,
+  deleteException as svcDeleteException,
+  computeAvailableSlots as svcComputeSlots,
+} from './services/availabilityService.js';
+import {
+  createBooking as svcCreateBooking,
+  listMemberBookings as svcListMemberBookings,
+  listCoachBookings as svcListCoachBookings,
+  cancelBooking as svcCancelBooking,
+} from './services/bookingService.js';
+import { listActiveCoaches as svcListActive, saveAvatar as svcSaveAvatar } from './services/coachService.js';
+import {
   login as authLogin,
   logout as authLogout,
   userFromToken,
@@ -20,13 +44,19 @@ import {
 } from './services/auth.js';
 import { randomBytes } from 'node:crypto';
 import { startScheduler } from './scheduler.js';
+import {
+  getBalances as svcGetBalances,
+  adminGrant as svcAdminGrant,
+  listTransactionsForAdmin as svcListTx,
+} from './services/pointService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '3mb' }));
 app.use(express.static(resolve(__dirname, '../public')));
+app.use('/avatars', express.static(resolve(__dirname, '../data/avatars'), { maxAge: '7d' }));
 
 // --- 身分驗證：從 Authorization: Bearer <token> 取 token ---
 function getTokenFromReq(req) {
@@ -45,6 +75,15 @@ function requireUser(req, res, next) {
 function requireAdmin(req, res, next) {
   requireUser(req, res, () => {
     if (!['admin', 'owner'].includes(req.user.role)) return res.status(403).json({ error: 'admin_only' });
+    next();
+  });
+}
+
+function requireCoach(req, res, next) {
+  requireUser(req, res, () => {
+    if (!['coach', 'admin', 'owner'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'coach_only' });
+    }
     next();
   });
 }
@@ -245,13 +284,26 @@ app.delete('/api/admin/templates/:id', requireAdmin, asyncHandler((req, res) => 
     WHERE s.template_id = ?
   `).get(id).c;
 
-  // Wrap in transaction. Existing DBs may have notifications.session_id with
-  // no ON DELETE SET NULL (pre-existing FK) — manually null the refs first so
-  // the cascade doesn't trip a FOREIGN KEY constraint.
+  // Wrap in transaction. Several FKs reference course_sessions / registrations
+  // without ON DELETE SET NULL (point_transactions added by Phase 2; notifications
+  // pre-existing). Null those refs first so the template cascade doesn't trip
+  // a FOREIGN KEY constraint.
   tx(() => {
     db.prepare(`
       UPDATE notifications SET session_id = NULL
       WHERE session_id IN (SELECT id FROM course_sessions WHERE template_id = ?)
+    `).run(id);
+    db.prepare(`
+      UPDATE point_transactions SET related_session_id = NULL
+      WHERE related_session_id IN (SELECT id FROM course_sessions WHERE template_id = ?)
+    `).run(id);
+    db.prepare(`
+      UPDATE point_transactions SET related_registration_id = NULL
+      WHERE related_registration_id IN (
+        SELECT r.id FROM registrations r
+        JOIN course_sessions s ON s.id = r.session_id
+        WHERE s.template_id = ?
+      )
     `).run(id);
     // FK cascade: course_sessions.template_id ON DELETE CASCADE
     //             registrations.session_id   ON DELETE CASCADE
@@ -332,9 +384,13 @@ app.delete('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) =>
 // Admin + owner can see the roster. Only owner can change roles.
 app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
   const rows = db.prepare(`
-    SELECT id, name, email, phone, role, notification_preference,
-           (google_id IS NOT NULL) AS has_google, created_at
-    FROM users ORDER BY id ASC
+    SELECT u.id, u.name, u.email, u.phone, u.role, u.notification_preference,
+           (u.google_id IS NOT NULL) AS has_google, u.created_at,
+           COALESCE(b.one_on_one_balance, 0) AS one_on_one_balance,
+           COALESCE(b.group_balance, 0) AS group_balance
+    FROM users u
+    LEFT JOIN member_point_balance b ON b.member_id = u.id
+    ORDER BY u.id ASC
   `).all();
   res.json(rows);
 }));
@@ -342,7 +398,7 @@ app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
 app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => {
   const targetId = Number(req.params.id);
   const { role } = req.body || {};
-  if (!['user', 'admin', 'owner'].includes(role)) {
+  if (!['user', 'coach', 'admin', 'owner'].includes(role)) {
     return res.status(400).json({ error: 'invalid_role' });
   }
   if (targetId === req.user.id) {
@@ -360,6 +416,247 @@ app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => 
 
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
   res.json({ ok: true, id: targetId, role });
+}));
+
+app.get('/api/my/points/balance', requireUser, asyncHandler((req, res) => {
+  res.json(svcGetBalances(req.user.id));
+}));
+
+app.post('/api/admin/users/:id/points/grant', requireAdmin, asyncHandler((req, res) => {
+  const memberId = Number(req.params.id);
+  const { pool, amount, note } = req.body || {};
+  if (typeof amount !== 'number') return res.status(400).json({ error: 'invalid_amount' });
+  const result = svcAdminGrant({
+    memberId,
+    pool,
+    amount: Math.trunc(amount),
+    note,
+    adminId: req.user.id,
+  });
+  res.status(201).json(result);
+}));
+
+app.get('/api/admin/users/:id/points/transactions', requireAdmin, asyncHandler((req, res) => {
+  const memberId = Number(req.params.id);
+  const { pool, limit } = req.query;
+  const rows = svcListTx(memberId, {
+    pool: pool || null,
+    limit: limit ? Math.min(Number(limit), 500) : 100,
+  });
+  res.json(rows);
+}));
+
+// --- One-on-one: admin coach management ---
+
+app.get('/api/admin/coaches', requireAdmin, asyncHandler((req, res) => {
+  const rows = db.prepare(`
+    SELECT c.*, u.name AS user_name, u.email AS user_email
+    FROM coaches c JOIN users u ON u.id = c.user_id
+    ORDER BY c.sort_order ASC, c.id ASC
+  `).all();
+  res.json(rows);
+}));
+
+app.post('/api/admin/coaches', requireAdmin, asyncHandler((req, res) => {
+  const { user_id, display_name, specialty, bio, sort_order } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: 'missing_user_id' });
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(user_id));
+  if (!user) return res.status(404).json({ error: 'user_not_found' });
+  if (svcGetCoachByUser(user.id)) return res.status(409).json({ error: 'coach_exists' });
+
+  tx(() => {
+    db.prepare("UPDATE users SET role = 'coach' WHERE id = ?").run(user.id);
+    svcCreateCoach({
+      userId: user.id,
+      displayName: display_name || user.name,
+      specialty,
+      bio,
+      sortOrder: sort_order || 0,
+    });
+  });
+  const created = svcGetCoachByUser(user.id);
+  res.status(201).json(created);
+}));
+
+app.patch('/api/admin/coaches/:id', requireAdmin, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const { display_name, specialty, bio, sort_order, is_active } = req.body || {};
+  const existing = svcGetCoach(id);
+  if (!existing) return res.status(404).json({ error: 'coach_not_found' });
+  svcUpdateCoach(id, { displayName: display_name, specialty, bio, sortOrder: sort_order });
+  if (typeof is_active === 'boolean' || is_active === 0 || is_active === 1) {
+    svcSetCoachActive(id, !!is_active);
+  }
+  res.json(svcGetCoach(id));
+}));
+
+app.delete('/api/admin/coaches/:id', requireAdmin, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const coach = svcGetCoach(id);
+  if (!coach) return res.status(404).json({ error: 'coach_not_found' });
+
+  tx(() => {
+    svcSetCoachActive(id, false);
+    db.prepare("UPDATE users SET role = 'user' WHERE id = ?").run(coach.user_id);
+  });
+  res.json({ ok: true, demoted_user_id: coach.user_id });
+}));
+
+function loadCoachForUser(req, res) {
+  const coach = svcGetCoachByUser(req.user.id);
+  if (!coach) {
+    res.status(404).json({ error: 'coach_record_not_found' });
+    return null;
+  }
+  return coach;
+}
+
+// --- One-on-one: coach self-service ---
+
+app.get('/api/coach/me', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  res.json(coach);
+}));
+
+app.patch('/api/coach/me/profile', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { display_name, specialty, bio } = req.body || {};
+  svcUpdateCoach(coach.id, { displayName: display_name, specialty, bio });
+  res.json(svcGetCoach(coach.id));
+}));
+
+app.get('/api/coach/me/rules', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  res.json(svcListRules(coach.id));
+}));
+
+app.post('/api/coach/me/rules', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { day_of_week, start_time, end_time, effective_from, effective_to } = req.body || {};
+  const result = svcAddRule({
+    coachId: coach.id,
+    dayOfWeek: Number(day_of_week),
+    startTime: start_time,
+    endTime: end_time,
+    effectiveFrom: effective_from,
+    effectiveTo: effective_to,
+  });
+  res.status(201).json(result);
+}));
+
+app.delete('/api/coach/me/rules/:id', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  svcDeleteRule({ coachId: coach.id, ruleId: Number(req.params.id) });
+  res.json({ ok: true });
+}));
+
+app.get('/api/coach/me/exceptions', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  res.json(svcListExceptions(coach.id));
+}));
+
+app.post('/api/coach/me/exceptions', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { exception_date, type, start_time, end_time, note } = req.body || {};
+  const result = svcAddException({
+    coachId: coach.id,
+    exceptionDate: exception_date,
+    type,
+    startTime: start_time,
+    endTime: end_time,
+    note,
+  });
+  res.status(201).json(result);
+}));
+
+app.delete('/api/coach/me/exceptions/:id', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  svcDeleteException({ coachId: coach.id, exceptionId: Number(req.params.id) });
+  res.json({ ok: true });
+}));
+
+app.get('/api/coach/me/bookings', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  res.json(svcListCoachBookings(coach.id));
+}));
+
+app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { from, to } = req.query;
+  if (!from || !to) return res.status(400).json({ error: 'missing_range' });
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
+}));
+
+app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { avatar_base64 } = req.body || {};
+  const result = svcSaveAvatar({ coachId: coach.id, base64: avatar_base64 });
+  res.json(result);
+}));
+
+// --- One-on-one: public + member endpoints ---
+
+app.get('/api/coaches', asyncHandler((req, res) => {
+  res.json(svcListActive());
+}));
+
+app.get('/api/coaches/:id', asyncHandler((req, res) => {
+  const coach = svcGetCoach(Number(req.params.id));
+  if (!coach || !coach.is_active) return res.status(404).json({ error: 'coach_not_found' });
+  res.json(coach);
+}));
+
+app.get('/api/coaches/:id/availability', asyncHandler((req, res) => {
+  const coach = svcGetCoach(Number(req.params.id));
+  if (!coach || !coach.is_active) return res.status(404).json({ error: 'coach_not_found' });
+  const { from, to } = req.query;
+  if (!from || !to) return res.status(400).json({ error: 'missing_range' });
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
+}));
+
+app.post('/api/bookings', requireUser, asyncHandler((req, res) => {
+  const { coach_id, start_at, note } = req.body || {};
+  if (!coach_id || !start_at) return res.status(400).json({ error: 'missing_fields' });
+  const result = svcCreateBooking({
+    coachId: Number(coach_id),
+    memberId: req.user.id,
+    startAt: start_at,
+    note: note || null,
+  });
+  res.status(201).json(result);
+}));
+
+app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
+  if (!booking) return res.status(404).json({ error: 'booking_not_found' });
+
+  const coach = db.prepare('SELECT * FROM coaches WHERE id = ?').get(booking.coach_id);
+  const actorIsCoach = coach && coach.user_id === req.user.id;
+  const { reason } = req.body || {};
+
+  svcCancelBooking({
+    bookingId: id,
+    actorUserId: req.user.id,
+    isCoach: actorIsCoach,
+    reason: actorIsCoach ? (reason || null) : null,
+  });
+  res.json({ ok: true });
+}));
+
+app.get('/api/my/bookings', requireUser, asyncHandler((req, res) => {
+  res.json(svcListMemberBookings(req.user.id));
 }));
 
 app.get('/api/admin/notifications', requireAdmin, asyncHandler((req, res) => {

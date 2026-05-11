@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Logo</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { background: #ffffff; }
+  .row { display: flex; align-items: center; gap: 28px; width: 100%; justify-content: center; }
+  .item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  img { display: block; }
+  .lg { width: 160px; height: auto; }
+  .md { width: 64px; height: 64px; object-fit: contain; }
+  .sm { width: 32px; height: 32px; object-fit: contain; }
+  .name { font-family: var(--font-sans); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #475569; }
+  .wordmark { font-family: var(--font-sans); font-weight: 700; font-size: 17px; color: #000; letter-spacing: -0.01em; }
+  .lockup { display: inline-flex; align-items: center; gap: 8px; }
+</style>
+</head>
+<body>
+<div class="card center">
+  <div class="row">
+    <div class="item"><img src="../assets/logo.png" class="lg"><span class="name">Primary</span></div>
+    <div class="item"><img src="../assets/logo.png" class="md"><span class="name">App icon</span></div>
+    <div class="item"><div class="lockup"><img src="../assets/logo.png" class="sm">CHINUP Performance</div><span class="name">Nav lockup</span></div>
+  </div>
+</div>
+</body>
+</html>

@@ -418,3 +418,8 @@ details.session-row summary:hover { background: #f8faf9; }
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ============ Tabs (coach dashboard) ============ */
+.tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; color: #64748b; }
+.tab.tab-active { color: #0ea5e9; border-bottom-color: #0ea5e9; font-weight: 600; }
+.tab-panel { }

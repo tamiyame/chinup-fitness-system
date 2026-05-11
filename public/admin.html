@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/colors_and_type.css">
 <link rel="stylesheet" href="/style.css">
 <style>body { visibility: hidden; }</style>
 </head>
@@ -84,6 +85,68 @@
     <div class="card p-0 overflow-hidden">
       <div id="users-table"></div>
     </div>
+  </section>
+
+  <!-- grant modal -->
+  <dialog id="grant-modal" style="border:none; border-radius:8px; padding:0; max-width:400px; width:90%;">
+    <div style="padding:20px;">
+      <h3 style="font-weight:600; margin-bottom:12px;">加點：<span id="grant-target-name"></span></h3>
+      <form id="grant-form" method="dialog">
+        <div style="margin-bottom:10px;">
+          <label style="display:block; font-size:13px; margin-bottom:4px;">Pool</label>
+          <select name="pool" required style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px;">
+            <option value="one_on_one">一對一</option>
+            <option value="group">團體課</option>
+          </select>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="display:block; font-size:13px; margin-bottom:4px;">金額（可負）</label>
+          <input name="amount" type="number" step="1" required style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px;">
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-size:13px; margin-bottom:4px;">備註（必填）</label>
+          <input name="note" type="text" required maxlength="200" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px;" placeholder="例：PT 10 堂裝">
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button type="button" id="grant-cancel" class="btn btn-ghost btn-sm">取消</button>
+          <button type="submit" class="btn btn-primary btn-sm">送出</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- history modal -->
+  <dialog id="history-modal" style="border:none; border-radius:8px; padding:0; max-width:700px; width:95%; max-height:80vh; overflow:auto;">
+    <div style="padding:20px;">
+      <h3 style="font-weight:600; margin-bottom:8px;">點數紀錄：<span id="history-target-name"></span></h3>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;">Pool 篩選：</label>
+        <select id="history-pool-filter" style="padding:4px; border:1px solid #ccc; border-radius:4px;">
+          <option value="">全部</option>
+          <option value="one_on_one">一對一</option>
+          <option value="group">團體課</option>
+        </select>
+      </div>
+      <div id="history-list" style="font-family:monospace; font-size:12px; max-height:50vh; overflow:auto;"></div>
+      <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+        <button id="history-close" class="btn btn-ghost btn-sm">關閉</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- coach management -->
+  <section id="coach-mgmt" class="mb-10">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="section-title">教練管理</h2>
+    </div>
+    <div id="coach-mgmt-list"></div>
+    <details class="mt-3">
+      <summary class="text-sm cursor-pointer">+ 由現有 user 升級為教練</summary>
+      <form id="promote-coach-form" class="mt-2 flex gap-2 items-center">
+        <select name="user_id" id="user-to-promote" class="border rounded p-2 text-sm flex-1"></select>
+        <button class="btn btn-primary btn-sm">升為教練</button>
+      </form>
+    </details>
   </section>
 
   <!-- notifications -->

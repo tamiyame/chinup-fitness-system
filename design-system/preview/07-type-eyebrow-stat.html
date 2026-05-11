@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Eyebrow &amp; label</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { font-family: var(--font-sans); }
+  .col { display: flex; flex-direction: column; gap: 6px; }
+  .eyebrow {
+    align-self: flex-start;
+    display: inline-flex; align-items: center; gap: 6px;
+    color: #0284c7; font-weight: 600; font-size: 12px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    background: #f0f9ff;
+    padding: 6px 12px; border-radius: 9999px;
+    border: 1px solid rgba(56, 189, 248, 0.2);
+  }
+  .label-up {
+    font-size: 12px; font-weight: 600; color: #475569;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .stat { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: #0f172a; }
+  .meta { font-family: var(--font-mono); font-size: 10px; color: #94a3b8; margin-top: 4px; letter-spacing: 0.02em; }
+  .group { display: flex; gap: 28px; align-items: flex-start; }
+</style>
+</head>
+<body>
+<div class="card column" style="justify-content:center;gap:14px;">
+  <div class="group">
+    <div class="col">
+      <div class="eyebrow">💪 2026 Spring Program</div>
+      <div class="meta">.eyebrow · Inter 12/600 · 0.12em uppercase</div>
+    </div>
+  </div>
+  <div class="group">
+    <div class="col">
+      <div class="label-up">人數下限</div>
+      <div class="stat">24</div>
+      <div class="meta">.label-up + .stat</div>
+    </div>
+    <div class="col">
+      <div class="label-up">總場次</div>
+      <div class="stat">48</div>
+    </div>
+    <div class="col">
+      <div class="label-up">候補人次</div>
+      <div class="stat" style="color:#a16207;">12</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

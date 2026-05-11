@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Spacing scale</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { font-family: var(--font-sans); }
+  .row { display: flex; align-items: center; gap: 16px; padding: 5px 0; }
+  .name { width: 30px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #475569; }
+  .bar { height: 14px; background: #38bdf8; border-radius: 4px; }
+  .val { font-family: var(--font-mono); font-size: 11px; color: #94a3b8; }
+</style>
+</head>
+<body>
+<div class="card column" style="justify-content:center;">
+  <div class="row"><span class="name">1</span><span class="bar" style="width:4px;"></span><span class="val">4px</span></div>
+  <div class="row"><span class="name">2</span><span class="bar" style="width:8px;"></span><span class="val">8px</span></div>
+  <div class="row"><span class="name">3</span><span class="bar" style="width:12px;"></span><span class="val">12px</span></div>
+  <div class="row"><span class="name">4</span><span class="bar" style="width:16px;"></span><span class="val">16px</span></div>
+  <div class="row"><span class="name">5</span><span class="bar" style="width:20px;"></span><span class="val">20px</span></div>
+  <div class="row"><span class="name">6</span><span class="bar" style="width:24px;"></span><span class="val">24px</span></div>
+  <div class="row"><span class="name">8</span><span class="bar" style="width:32px;"></span><span class="val">32px</span></div>
+  <div class="row"><span class="name">10</span><span class="bar" style="width:40px;"></span><span class="val">40px</span></div>
+</div>
+</body>
+</html>

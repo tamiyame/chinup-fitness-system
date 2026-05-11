@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的一對一預約 · CHINUP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/colors_and_type.css">
+<link rel="stylesheet" href="/style.css">
+<style>body { visibility: hidden; }</style>
+</head>
+<body>
+<nav class="navbar sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <a href="/" class="brand-mark"><span class="brand-dot"><img src="/logo.png" alt="logo"></span> CHINUP Performance</a>
+    <div id="auth-bar" class="flex items-center gap-3"></div>
+  </div>
+</nav>
+<main class="max-w-3xl mx-auto px-6 py-8">
+  <h1 class="page-title">我的一對一預約</h1>
+  <div id="list" class="space-y-3"></div>
+</main>
+<div id="toast" class="toast"></div>
+<script type="module" src="/my-bookings.js"></script>
+</body>
+</html>

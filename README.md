@@ -12,6 +12,79 @@
 - **帳號系統**：Email + 密碼登入（scrypt 雜湊）、token session、角色分級（admin / user）。
 - **管理後台**：儀表板統計、範本 CRUD、場次名單、手動觸發截止與提醒、通知紀錄檢視。
 
+## 一對一預約模組（Phase 1）
+
+教練自助管理班表 + 會員瀏覽教練線上預約。
+
+### 新角色：coach
+
+- 介於 `admin` 和 `user` 之間
+- 自助登入後可改 profile、設可預約時段、看自己的預約、緊急取消
+- 不能管其他教練或會員（限 admin 以上）
+
+### 功能流程
+
+1. 註冊時勾選「我是教練」→ 帳號為 coach，待 admin 啟用
+2. Admin 在 `/admin.html` → 「教練管理」啟用、或把現有 user 升為教練
+3. 教練在 `/coach.html` 設可預約時段（每週基底 + 例外覆寫）
+4. 會員在 `/coaches.html` 瀏覽教練 → 點開詳細 → 選 60 分鐘時段 → 預約
+5. 會員 / 教練在 `/my-bookings.html` / `/coach.html` 看到預約並可取消
+
+### 設定預設值（Phase 1 寫死於程式碼）
+
+| 設定 | 值 |
+|---|---|
+| Slot 長度 | 60 分鐘 |
+| Buffer | 預約時不能選 < 2 小時後的時段 |
+| Window | 預約只能往後 30 天 |
+| 點數 | Phase 1 不接，Phase 2 再加 |
+| 取消 | 隨時可取消，policy 是無條件退點（Phase 1 純取消，無退點動作） |
+
+### 設計 / 計畫文件
+
+- `docs/superpowers/specs/2026-05-11-one-on-one-booking-design.md`
+- `docs/superpowers/plans/2026-05-11-one-on-one-booking.md`
+
+## 點數系統（Phase 2）
+
+點數作為預約的「貨幣」，admin 手動加點、會員預約扣點、取消退點。
+
+### 兩個池子（獨立）
+
+- **一對一池子**：扣減於一對一預約 / 退於一對一取消
+- **團體池子**：扣減於團體報名（含候補）/ 退於團體取消、不成班自動退
+
+### 模型
+
+單一 `point_transactions` 表，每筆加減點是一個有號 row。當前餘額 = `SUM(amount) WHERE member_id = ? AND pool = ?`。所有寫入用 `tx() BEGIN IMMEDIATE`，post-insert 餘額 < 0 → rollback。
+
+### Admin 操作
+
+`/admin.html` 會員管理 section：
+- 看每人 PT/團體 餘額
+- 「加點」按鈕：pool 選一對一 / 團體、金額（可負）、必填備註
+- 「歷史」按鈕：看該會員最近 100 筆交易（含 source、actor、note）
+
+### 會員體驗
+
+- Navbar 右上角膠囊：`[PT N · 團 M]`，0 點時紅字
+- 預約 / 報名頁：餘額 0 → 確認鈕 disabled，提示「請聯絡管理員儲值」
+- 取消預約 / 報名 → 自動退點，無條件、無時限
+
+### 設計 / 計畫文件
+
+- `docs/superpowers/specs/2026-05-12-points-system-design.md`
+- `docs/superpowers/plans/2026-05-12-points-system.md`
+
+### Phase 2 部署 SOP（**一次性、僅限本次 dev 階段**）
+
+```bash
+# 在 Railway shell 跑
+rm -f data/app.db && node src/db/migrate.js && node src/db/seed-demo.js
+```
+
+下次 schema 變動必須走真正的 migration，**不能再清 DB**。
+
 ## 技術棧
 
 | 層 | 技術 |
@@ -46,8 +119,10 @@ npm start                   # http://localhost:3000
 ### 測試
 
 ```bash
-node tests/flow.test.js     # 核心流程單元測試（12 項）
-node tests/api.test.js      # HTTP API 整合測試（17 項，需 server 先啟動）
+node tests/flow.test.js          # 團體課核心流程單元測試
+node tests/booking-flow.test.js  # 一對一 + 點數系統單元測試
+node tests/api.test.js           # 既有 HTTP API 整合測試（需 server 先啟動）
+node tests/booking-api.test.js   # 一對一 + 點數 HTTP 整合測試（同上）
 ```
 
 ## 架構

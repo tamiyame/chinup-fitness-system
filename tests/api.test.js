@@ -1,5 +1,7 @@
 // HTTP API 整合測試：對 running server 送 request
 import assert from 'node:assert/strict';
+import { db } from '../src/db/connection.js';
+import { adminGrant } from '../src/services/pointService.js';
 
 const BASE = process.env.BASE || 'http://localhost:3000';
 
@@ -38,6 +40,11 @@ for (let i = 1; i <= 7; i++) {
   memberAuths.push(await loginAs(`user${i}@chinup.local`, 'pass1234'));
 }
 const members = memberAuths.map(m => ({ ...m.user, token: m.token }));
+
+const adminIdAPI = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get().id;
+for (const m of members) {
+  adminGrant({ memberId: m.id, pool: 'group', amount: 30, note: 'api.test.js seed', adminId: adminIdAPI });
+}
 
 console.log('  ✓ login admin + 7 members');
 

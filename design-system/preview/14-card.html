@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Card anatomy</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { font-family: var(--font-sans); background: #f8faf9; }
+  .demo {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 14px;
+    padding: 18px; box-shadow: 0 4px 16px -4px rgba(15,23,42,0.08), 0 2px 4px -2px rgba(15,23,42,0.04);
+    flex: 1;
+  }
+  .ctitle { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: #0f172a; }
+  .cdesc { color: #475569; font-size: 14px; margin-top: 4px; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px;
+    font-size: 13px; color: #475569;
+  }
+  .meta-item { display: inline-flex; align-items: center; gap: 6px; }
+  .bar { height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; margin-top: 12px; }
+  .fill { height: 100%; background: linear-gradient(90deg, #38bdf8, #0284c7); width: 70%; border-radius: 3px; }
+  .row-bottom { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+  .subtle { color: #94a3b8; font-size: 13px; }
+  .btn {
+    padding: 9px 18px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; background: #0ea5e9; color: white;
+    border: none; box-shadow: 0 6px 24px -6px rgba(56,189,248,0.45);
+    font-family: inherit;
+  }
+</style>
+</head>
+<body>
+<div class="card center" style="padding:18px 20px;">
+  <div class="demo">
+    <div class="ctitle">重量訓練 · 進階</div>
+    <div class="cdesc">三大項加上輔助動作，建議 6 個月以上訓練經驗</div>
+    <div class="meta">
+      <span class="meta-item">🕐 19:00・60 分鐘</span>
+      <span class="meta-item">👥 6 / 8 人（需 3 人成班）</span>
+    </div>
+    <div class="bar"><div class="fill"></div></div>
+    <div class="row-bottom">
+      <span class="subtle">報名截止：2026/05/04 19:00</span>
+      <button class="btn">立即報名</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Logo accent palette</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .row { display: flex; gap: 8px; width: 100%; align-items: stretch; }
+  .sw {
+    flex: 1;
+    aspect-ratio: 1 / 1.4;
+    border-radius: 9999px;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 10px 8px;
+    color: white;
+  }
+  .n { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: .9; }
+  .h { font-family: var(--font-mono); font-size: 10px; font-weight: 600; opacity: .9; }
+  .note {
+    font-family: var(--font-sans);
+    font-size: 11px; color: var(--fg-3);
+    letter-spacing: 0.02em;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+<div class="card column" style="gap:10px;">
+  <div class="row">
+    <div class="sw" style="background:#ee4f7e;"><span class="n">Pink</span><span class="h">#EE4F7E</span></div>
+    <div class="sw" style="background:#ff8a3d;"><span class="n">Orange</span><span class="h">#FF8A3D</span></div>
+    <div class="sw" style="background:#ffc04a;color:#0f172a;"><span class="n">Yellow</span><span class="h">#FFC04A</span></div>
+    <div class="sw" style="background:#6ed26a;"><span class="n">Green</span><span class="h">#6ED26A</span></div>
+    <div class="sw" style="background:#34c8d8;"><span class="n">Cyan</span><span class="h">#34C8D8</span></div>
+    <div class="sw" style="background:#4f7cff;"><span class="n">Blue</span><span class="h">#4F7CFF</span></div>
+  </div>
+  <div class="note">Reserved for logo &amp; brand illustration only — never UI controls.</div>
+</div>
+</body>
+</html>

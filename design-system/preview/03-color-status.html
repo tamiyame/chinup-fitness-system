@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Status colors</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  .row { display: flex; gap: 12px; width: 100%; }
+  .col {
+    flex: 1;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 9999px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.01em;
+    border: 1px solid transparent; align-self: flex-start;
+    font-family: var(--font-sans);
+  }
+  .badge::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor; opacity: .85;
+  }
+  .stack {
+    display: flex; gap: 4px; align-items: center; height: 18px;
+  }
+  .stack span { width: 24px; height: 18px; border-radius: 4px; }
+  .label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--fg-3);
+  }
+</style>
+</head>
+<body>
+<div class="card column">
+  <div class="row">
+    <div class="col">
+      <span class="label">Open / Success</span>
+      <span class="badge" style="background:#ecfdf5;color:#047857;border-color:#a7f3d0;">開放報名</span>
+      <div class="stack">
+        <span style="background:#ecfdf5;border:1px solid #a7f3d0;"></span>
+        <span style="background:#a7f3d0;"></span>
+        <span style="background:#047857;"></span>
+      </div>
+    </div>
+    <div class="col">
+      <span class="label">Confirmed</span>
+      <span class="badge" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">已成班</span>
+      <div class="stack">
+        <span style="background:#eff6ff;border:1px solid #bfdbfe;"></span>
+        <span style="background:#bfdbfe;"></span>
+        <span style="background:#1d4ed8;"></span>
+      </div>
+    </div>
+    <div class="col">
+      <span class="label">Waitlist / Warn</span>
+      <span class="badge" style="background:#fffbeb;color:#a16207;border-color:#fcd34d;">候補中</span>
+      <div class="stack">
+        <span style="background:#fffbeb;border:1px solid #fcd34d;"></span>
+        <span style="background:#fcd34d;"></span>
+        <span style="background:#a16207;"></span>
+      </div>
+    </div>
+    <div class="col">
+      <span class="label">Cancel / Error</span>
+      <span class="badge" style="background:#fef2f2;color:#b91c1c;border-color:#fecaca;">未開課</span>
+      <div class="stack">
+        <span style="background:#fef2f2;border:1px solid #fecaca;"></span>
+        <span style="background:#fecaca;"></span>
+        <span style="background:#b91c1c;"></span>
+      </div>
+    </div>
+    <div class="col">
+      <span class="label">Neutral / Done</span>
+      <span class="badge" style="background:#f1f5f9;color:#334155;border-color:#cbd5e1;">已結束</span>
+      <div class="stack">
+        <span style="background:#f1f5f9;border:1px solid #cbd5e1;"></span>
+        <span style="background:#cbd5e1;"></span>
+        <span style="background:#334155;"></span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Buttons</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { font-family: var(--font-sans); background: #ffffff; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px 18px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; border: 1px solid transparent;
+    white-space: nowrap; font-family: inherit;
+  }
+  .btn-primary { background: #0ea5e9; color: white; box-shadow: 0 6px 24px -6px rgba(56,189,248,0.45); }
+  .btn-ghost { background: transparent; color: #0f172a; border-color: #e5e7eb; }
+  .btn-dark { background: #0f172a; color: white; }
+  .btn-danger { background: #ef4444; color: white; }
+  .btn-sm { padding: 7px 14px; font-size: 13px; }
+  .btn-disabled { background: #cbd5e1; color: #64748b; box-shadow: none; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="card column" style="justify-content:center;gap:12px;">
+  <div class="row">
+    <button class="btn btn-primary">立即報名</button>
+    <button class="btn btn-ghost">取消</button>
+    <button class="btn btn-dark">⏰ 立即處理截止</button>
+    <button class="btn btn-danger">取消報名</button>
+    <button class="btn btn-disabled">已加入</button>
+  </div>
+  <div class="row">
+    <button class="btn btn-primary btn-sm">＋ 新增範本</button>
+    <button class="btn btn-ghost btn-sm">＋ 新增分類</button>
+    <button class="btn btn-dark btn-sm">📣 寄送提醒</button>
+  </div>
+</div>
+</body>
+</html>

@@ -2,10 +2,11 @@
 import { db, nowLocal, offsetLocal } from '../src/db/connection.js';
 import { createTemplate, processDeadlines, listRegistrationsBySession } from '../src/services/courseService.js';
 import { register, cancelRegistration } from '../src/services/registration.js';
+import { adminGrant } from '../src/services/pointService.js';
 import assert from 'node:assert/strict';
 
 function reset() {
-  db.exec("DELETE FROM notifications; DELETE FROM registrations; DELETE FROM course_sessions; DELETE FROM course_templates;");
+  db.exec("DELETE FROM notifications; DELETE FROM point_transactions; DELETE FROM registrations; DELETE FROM course_sessions; DELETE FROM course_templates;");
 }
 
 function userIds(n) {
@@ -63,6 +64,11 @@ db.prepare("UPDATE course_sessions SET start_at = ?, end_at = ?, registration_de
   .run(futureStart, futureEnd, futureDeadline, firstSessionId);
 
 const [u1, u2, u3, u4, u5, u6, u7] = userIds(7);
+
+const adminIdFlow = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get().id;
+for (const uid of [u1, u2, u3, u4, u5, u6, u7]) {
+  adminGrant({ memberId: uid, pool: 'group', amount: 20, note: 'flow.test.js seed', adminId: adminIdFlow });
+}
 
 console.log('[case 2] register up to max then overflow');
 const r1 = register({ sessionId: firstSessionId, userId: u1 });
