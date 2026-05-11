@@ -8,7 +8,9 @@ import {
   addException, listExceptions, deleteException,
 } from '../src/services/availabilityService.js';
 import { computeAvailableSlots } from '../src/services/availabilityService.js';
-import { createBooking } from '../src/services/bookingService.js';
+import {
+  createBooking, cancelBooking, listMemberBookings, listCoachBookings,
+} from '../src/services/bookingService.js';
 import assert from 'node:assert/strict';
 
 function reset() {
@@ -199,3 +201,66 @@ expect('booked slot removed from availability', () => {
 // Verify bookingWindowDays default filter
 const farFutureRule = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04' });
 expect('default window blocks far-future slots', () => assert.equal(farFutureRule.length, 0));
+
+// --- Case 4: booking lifecycle ---
+
+console.log('[case 4] booking lifecycle');
+
+reset();
+const uD = makeUser('coach-test-D@chinup.local', 'D');
+const cD = createCoach({ userId: uD, displayName: 'D' });
+setCoachActive(cD.id, true);
+const [m1, m2] = db.prepare("SELECT id FROM users WHERE role='user' ORDER BY id LIMIT 2").all().map(r => r.id);
+
+const b1 = createBooking({ coachId: cD.id, memberId: m1, startAt: '2099-06-01T10:00:00', note: '想練腿' });
+expect('booking created with end_at = +60min', () => assert.equal(b1.endAt, '2099-06-01T11:00:00'));
+
+expect('double-booking same slot rejected', () => {
+  assert.throws(() => createBooking({ coachId: cD.id, memberId: m2, startAt: '2099-06-01T10:00:00' }), /slot_taken/);
+});
+
+const memberList = listMemberBookings(m1);
+expect('listMemberBookings returns the booking', () => {
+  assert.equal(memberList.length, 1);
+  assert.equal(memberList[0].id, b1.id);
+  assert.equal(memberList[0].coach_display_name, 'D');
+});
+
+const coachList = listCoachBookings(cD.id);
+expect('listCoachBookings returns the booking', () => {
+  assert.equal(coachList.length, 1);
+  assert.equal(coachList[0].member_name, db.prepare('SELECT name FROM users WHERE id = ?').get(m1).name);
+});
+
+cancelBooking({ bookingId: b1.id, actorUserId: m1, isCoach: false });
+const row = db.prepare('SELECT * FROM bookings WHERE id = ?').get(b1.id);
+expect('cancelled: status=cancelled, cancelled_by=member, cancelled_at set', () => {
+  assert.equal(row.status, 'cancelled');
+  assert.equal(row.cancelled_by, m1);
+  assert(row.cancelled_at);
+});
+
+expect('cannot cancel an already-cancelled booking', () => {
+  assert.throws(() => cancelBooking({ bookingId: b1.id, actorUserId: m1, isCoach: false }), /already_cancelled/);
+});
+
+const b2 = createBooking({ coachId: cD.id, memberId: m2, startAt: '2099-06-01T10:00:00' });
+expect('slot frees up after cancellation', () => assert(b2.id));
+
+const b3 = createBooking({ coachId: cD.id, memberId: m1, startAt: '2099-06-02T10:00:00' });
+expect('member cancelling another member booking fails', () => {
+  assert.throws(() => cancelBooking({ bookingId: b3.id, actorUserId: m2, isCoach: false }), /forbidden/);
+});
+
+cancelBooking({ bookingId: b3.id, actorUserId: uD, isCoach: true, reason: '臨時生病' });
+const b3Row = db.prepare('SELECT * FROM bookings WHERE id = ?').get(b3.id);
+expect('coach emergency cancel records reason + cancelled_by=coach_user_id', () => {
+  assert.equal(b3Row.status, 'cancelled');
+  assert.equal(b3Row.cancel_reason, '臨時生病');
+  assert.equal(b3Row.cancelled_by, uD);
+});
+
+expect('coach cancel requires reason', () => {
+  const b4 = createBooking({ coachId: cD.id, memberId: m1, startAt: '2099-06-03T10:00:00' });
+  assert.throws(() => cancelBooking({ bookingId: b4.id, actorUserId: uD, isCoach: true }), /missing_reason/);
+});

@@ -1,20 +1,77 @@
-import { db } from '../db/connection.js';
+import { db, tx, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
 
-const insertBooking = db.prepare(`
+const insertBookingStmt = db.prepare(`
   INSERT INTO bookings (coach_id, member_id, start_at, end_at, note)
   VALUES (?, ?, ?, ?, ?)
 `);
 
+const getBookingStmt = db.prepare('SELECT * FROM bookings WHERE id = ?');
+
+const cancelBookingStmt = db.prepare(`
+  UPDATE bookings
+  SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?, cancel_reason = ?
+  WHERE id = ? AND status = 'confirmed'
+`);
+
+const listMemberStmt = db.prepare(`
+  SELECT b.*, c.display_name AS coach_display_name, c.id AS coach_id
+  FROM bookings b
+  JOIN coaches c ON c.id = b.coach_id
+  WHERE b.member_id = ?
+  ORDER BY b.start_at DESC
+`);
+
+const listCoachStmt = db.prepare(`
+  SELECT b.*, u.name AS member_name, u.email AS member_email
+  FROM bookings b
+  JOIN users u ON u.id = b.member_id
+  WHERE b.coach_id = ?
+  ORDER BY b.start_at DESC
+`);
+
+const getCoachStmt = db.prepare('SELECT * FROM coaches WHERE id = ?');
+
 export function createBooking({ coachId, memberId, startAt, note = null }) {
+  if (!coachId || !memberId || !startAt) throw new ApiError(400, 'missing_fields');
+  const coach = getCoachStmt.get(coachId);
+  if (!coach) throw new ApiError(404, 'coach_not_found');
+  if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
   const endAt = addMinutes(startAt, 60);
   try {
-    const info = insertBooking.run(coachId, memberId, startAt, endAt, note);
+    const info = insertBookingStmt.run(coachId, memberId, startAt, endAt, note);
     return { id: info.lastInsertRowid, startAt, endAt };
   } catch (e) {
     if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
     throw e;
   }
+}
+
+export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason = null }) {
+  return tx(() => {
+    const b = getBookingStmt.get(bookingId);
+    if (!b) throw new ApiError(404, 'booking_not_found');
+    if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
+
+    if (isCoach) {
+      const coach = getCoachStmt.get(b.coach_id);
+      if (!coach || coach.user_id !== actorUserId) throw new ApiError(403, 'forbidden');
+      if (!reason || !reason.trim()) throw new ApiError(400, 'missing_reason');
+    } else {
+      if (b.member_id !== actorUserId) throw new ApiError(403, 'forbidden');
+    }
+
+    cancelBookingStmt.run(nowLocal(), actorUserId, reason, bookingId);
+    return { ok: true };
+  });
+}
+
+export function listMemberBookings(memberId) {
+  return listMemberStmt.all(memberId);
+}
+
+export function listCoachBookings(coachId) {
+  return listCoachStmt.all(coachId);
 }
 
 function addMinutes(localTs, minutes) {
