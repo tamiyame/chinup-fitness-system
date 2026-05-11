@@ -112,13 +112,14 @@ const listExceptionsForDate = db.prepare(`
  * Compute available 60-min slots for a coach within [fromDate, toDate] inclusive.
  * Returns local wall-clock strings 'YYYY-MM-DDTHH:MM:SS' sorted ascending.
  */
-export function computeAvailableSlots({ coachId, fromDate, toDate }) {
+export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindowDays = BOOKING_WINDOW_DAYS }) {
   if (!YYYYMMDD.test(fromDate) || !YYYYMMDD.test(toDate)) {
     throw new ApiError(400, 'invalid_date_range');
   }
 
   const now = new Date();
   const bufferMs = now.getTime() + BUFFER_HOURS * 3600_000;
+  const windowEndMs = now.getTime() + bookingWindowDays * 86400_000;
 
   const dates = enumerateDates(fromDate, toDate);
   const rawSlots = [];
@@ -146,6 +147,7 @@ export function computeAvailableSlots({ coachId, fromDate, toDate }) {
     if (s <= nowStr) return false;
     const slotMs = new Date(s).getTime();
     if (slotMs < bufferMs) return false;
+    if (slotMs > windowEndMs) return false;
     return true;
   });
   if (afterFilter.length === 0) return [];

@@ -122,7 +122,7 @@ addRule({ coachId: cA.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00', ef
 addRule({ coachId: cA.id, dayOfWeek: 3, startTime: '14:00', endTime: '16:00', effectiveFrom: '2099-01-01' });
 
 // 2099-05-04 is a Monday; 2099-05-06 is a Wednesday
-const slots = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-04', toDate: '2099-05-06' });
+const slots = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-04', toDate: '2099-05-06', bookingWindowDays: 365 * 100 });
 expect('Monday expands to 3 60-min slots (09,10,11)', () => {
   const mon = slots.filter(s => s.startsWith('2099-05-04'));
   assert.deepEqual(mon, ['2099-05-04T09:00:00', '2099-05-04T10:00:00', '2099-05-04T11:00:00']);
@@ -137,12 +137,12 @@ expect('Tuesday yields nothing', () => {
 
 // leave exception wipes the day
 addException({ coachId: cA.id, exceptionDate: '2099-05-04', type: 'leave' });
-const slots2 = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-04', toDate: '2099-05-04' });
+const slots2 = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-04', toDate: '2099-05-04', bookingWindowDays: 365 * 100 });
 expect('leave exception removes all slots that day', () => assert.equal(slots2.length, 0));
 
 // extra exception adds a window
 addException({ coachId: cA.id, exceptionDate: '2099-05-07', type: 'extra', startTime: '10:00', endTime: '12:00' });
-const slots3 = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-07', toDate: '2099-05-07' });
+const slots3 = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-07', toDate: '2099-05-07', bookingWindowDays: 365 * 100 });
 expect('extra exception adds 2 slots', () => {
   assert.deepEqual(slots3, ['2099-05-07T10:00:00', '2099-05-07T11:00:00']);
 });
@@ -153,15 +153,15 @@ const uB = makeUser('coach-test-B@chinup.local', 'B 教練');
 const cB = createCoach({ userId: uB, displayName: 'B' });
 setCoachActive(cB.id, true);
 addRule({ coachId: cB.id, dayOfWeek: 1, startTime: '09:00', endTime: '10:00', effectiveFrom: '2099-05-10' });
-const slotsBefore = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-04', toDate: '2099-05-04' });
-const slotsAfter  = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-11', toDate: '2099-05-11' });
+const slotsBefore = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-04', toDate: '2099-05-04', bookingWindowDays: 365 * 100 });
+const slotsAfter  = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-11', toDate: '2099-05-11', bookingWindowDays: 365 * 100 });
 expect('rule before effective_from yields nothing', () => assert.equal(slotsBefore.length, 0));
 expect('rule on/after effective_from yields slots', () => assert.equal(slotsAfter.length, 1));
 
 // effective_to honored
 addRule({ coachId: cB.id, dayOfWeek: 2, startTime: '09:00', endTime: '10:00', effectiveFrom: '2099-05-01', effectiveTo: '2099-05-05' });
-const tueIn = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-05', toDate: '2099-05-05' });
-const tueOut = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-12', toDate: '2099-05-12' });
+const tueIn = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-05', toDate: '2099-05-05', bookingWindowDays: 365 * 100 });
+const tueOut = computeAvailableSlots({ coachId: cB.id, fromDate: '2099-05-12', toDate: '2099-05-12', bookingWindowDays: 365 * 100 });
 expect('Tuesday within effective_to yields slot', () => assert.equal(tueIn.length, 1));
 expect('Tuesday after effective_to yields nothing', () => assert.equal(tueOut.length, 0));
 
@@ -191,7 +191,11 @@ setCoachActive(cC.id, true);
 addRule({ coachId: cC.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00', effectiveFrom: '2099-01-01' });
 const memberId = db.prepare("SELECT id FROM users WHERE role='user' ORDER BY id LIMIT 1").get().id;
 createBooking({ coachId: cC.id, memberId, startAt: '2099-05-04T10:00:00' });
-const slotsC = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04' });
+const slotsC = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04', bookingWindowDays: 365 * 100 });
 expect('booked slot removed from availability', () => {
   assert.deepEqual(slotsC, ['2099-05-04T09:00:00', '2099-05-04T11:00:00']);
 });
+
+// Verify bookingWindowDays default filter
+const farFutureRule = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04' });
+expect('default window blocks far-future slots', () => assert.equal(farFutureRule.length, 0));
