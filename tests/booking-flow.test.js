@@ -14,6 +14,10 @@ import { computeAvailableSlots } from '../src/services/availabilityService.js';
 import {
   createBooking, cancelBooking, listMemberBookings, listCoachBookings,
 } from '../src/services/bookingService.js';
+import {
+  recordTransaction, getBalance, getBalances,
+  adminGrant, listTransactionsForAdmin,
+} from '../src/services/pointService.js';
 import assert from 'node:assert/strict';
 
 const __testDir = dirname(fileURLToPath(import.meta.url));
@@ -289,3 +293,65 @@ const tooBig = Buffer.alloc(3 * 1024 * 1024).toString('base64');
 expect('avatar rejected if too large', () => assert.throws(() => saveAvatar({ coachId: cE.id, base64: tooBig }), /too_large/));
 
 expect('avatar rejected if not png/jpg', () => assert.throws(() => saveAvatar({ coachId: cE.id, base64: Buffer.from('not an image').toString('base64') }), /invalid_image_type/));
+
+// --- Case 6: pointService ---
+
+console.log('[case 6] pointService');
+
+reset();
+const uPt1 = makeUser('coach-test-pt1@chinup.local', 'PT 測試員');
+// makeUser sets role='coach'; for points testing we need a 'user' role member.
+db.prepare("UPDATE users SET role='user' WHERE id = ?").run(uPt1);
+
+const adminId = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get().id;
+
+const g1 = adminGrant({ memberId: uPt1, pool: 'one_on_one', amount: 10, note: 'PT 10 堂裝', adminId });
+expect('adminGrant returns balance=10', () => assert.equal(g1.balance, 10));
+expect('getBalance reflects insert', () => assert.equal(getBalance(uPt1, 'one_on_one'), 10));
+
+adminGrant({ memberId: uPt1, pool: 'group', amount: 5, note: 'group 5 堂', adminId });
+expect('getBalances returns both pools', () => {
+  const b = getBalances(uPt1);
+  assert.equal(b.one_on_one, 10);
+  assert.equal(b.group, 5);
+});
+
+// Negative grant down to 0 — ok
+const g2 = adminGrant({ memberId: uPt1, pool: 'one_on_one', amount: -10, note: 'reverse', adminId });
+expect('balance can hit exactly 0', () => assert.equal(g2.balance, 0));
+
+// Negative grant pulling below 0 — throws, rolled back
+expect('overdraft throws insufficient_points', () => {
+  assert.throws(() => adminGrant({ memberId: uPt1, pool: 'one_on_one', amount: -1, note: 'overdraft', adminId }),
+    /insufficient_points/);
+});
+expect('overdraft row not persisted', () => {
+  const rows = db.prepare("SELECT COUNT(*) AS c FROM point_transactions WHERE member_id = ? AND note = 'overdraft'").get(uPt1);
+  assert.equal(rows.c, 0);
+});
+expect('balance still 0 after rollback', () => assert.equal(getBalance(uPt1, 'one_on_one'), 0));
+
+// amount=0 rejected
+expect('amount=0 rejected', () => assert.throws(() => adminGrant({ memberId: uPt1, pool: 'one_on_one', amount: 0, note: 'zero', adminId }), /invalid_amount/));
+
+// empty note rejected
+expect('empty note rejected', () => assert.throws(() => adminGrant({ memberId: uPt1, pool: 'one_on_one', amount: 1, note: '', adminId }), /missing_note/));
+expect('whitespace note rejected', () => assert.throws(() => adminGrant({ memberId: uPt1, pool: 'one_on_one', amount: 1, note: '   ', adminId }), /missing_note/));
+
+// invalid pool rejected
+expect('invalid pool rejected', () => assert.throws(() => recordTransaction({ memberId: uPt1, pool: 'bad', amount: 1, note: 'x', actorId: adminId, source: 'admin_grant' }), /invalid_pool/));
+
+// listTransactionsForAdmin
+adminGrant({ memberId: uPt1, pool: 'one_on_one', amount: 3, note: 'top up', adminId });
+adminGrant({ memberId: uPt1, pool: 'group', amount: 2, note: 'group top', adminId });
+const allTx = listTransactionsForAdmin(uPt1);
+expect('listTransactionsForAdmin returns all rows DESC', () => {
+  assert(allTx.length >= 5);
+  // Most recent first
+  assert(allTx[0].created_at >= allTx[allTx.length - 1].created_at);
+});
+expect('listTransactionsForAdmin joins actor_name', () => assert(allTx[0].actor_name));
+const onePool = listTransactionsForAdmin(uPt1, { pool: 'group' });
+expect('pool filter applied', () => assert(onePool.every(r => r.pool === 'group')));
+const limited = listTransactionsForAdmin(uPt1, { limit: 2 });
+expect('limit applied', () => assert.equal(limited.length, 2));
