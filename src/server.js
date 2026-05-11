@@ -44,6 +44,11 @@ import {
 } from './services/auth.js';
 import { randomBytes } from 'node:crypto';
 import { startScheduler } from './scheduler.js';
+import {
+  getBalances as svcGetBalances,
+  adminGrant as svcAdminGrant,
+  listTransactionsForAdmin as svcListTx,
+} from './services/pointService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -366,9 +371,13 @@ app.delete('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) =>
 // Admin + owner can see the roster. Only owner can change roles.
 app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
   const rows = db.prepare(`
-    SELECT id, name, email, phone, role, notification_preference,
-           (google_id IS NOT NULL) AS has_google, created_at
-    FROM users ORDER BY id ASC
+    SELECT u.id, u.name, u.email, u.phone, u.role, u.notification_preference,
+           (u.google_id IS NOT NULL) AS has_google, u.created_at,
+           COALESCE(b.one_on_one_balance, 0) AS one_on_one_balance,
+           COALESCE(b.group_balance, 0) AS group_balance
+    FROM users u
+    LEFT JOIN member_point_balance b ON b.member_id = u.id
+    ORDER BY u.id ASC
   `).all();
   res.json(rows);
 }));
@@ -394,6 +403,34 @@ app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => 
 
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
   res.json({ ok: true, id: targetId, role });
+}));
+
+app.get('/api/my/points/balance', requireUser, asyncHandler((req, res) => {
+  res.json(svcGetBalances(req.user.id));
+}));
+
+app.post('/api/admin/users/:id/points/grant', requireAdmin, asyncHandler((req, res) => {
+  const memberId = Number(req.params.id);
+  const { pool, amount, note } = req.body || {};
+  if (typeof amount !== 'number') return res.status(400).json({ error: 'invalid_amount' });
+  const result = svcAdminGrant({
+    memberId,
+    pool,
+    amount: Math.trunc(amount),
+    note,
+    adminId: req.user.id,
+  });
+  res.status(201).json(result);
+}));
+
+app.get('/api/admin/users/:id/points/transactions', requireAdmin, asyncHandler((req, res) => {
+  const memberId = Number(req.params.id);
+  const { pool, limit } = req.query;
+  const rows = svcListTx(memberId, {
+    pool: pool || null,
+    limit: limit ? Math.min(Number(limit), 500) : 100,
+  });
+  res.json(rows);
 }));
 
 // --- One-on-one: admin coach management ---
