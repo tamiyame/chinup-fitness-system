@@ -472,7 +472,7 @@ details.session-row summary:hover { background: #f8faf9; }
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .course-meta { font-size: 11px; }
+  .course-meta { font-size: 11px !important; }
 }
 
 /* Mobile course-card layout (rendered inside .md:hidden wrapper) */
@@ -526,11 +526,11 @@ details.session-row summary:hover { background: #f8faf9; }
 .cc-deadline { font-size: 10px; color: var(--ink-mute); }
 
 .cc-action { margin-top: 10px; }
-.cc-action .btn { width: 100%; padding: 9px; font-size: 13px; }
+.cc-action .btn { width: 100%; padding: 11px 9px; font-size: 13px; }
 
 .cc-mine-link {
   display: block;
-  padding: 9px;
+  padding: 11px 9px;
   border-radius: 8px;
   text-align: center;
   font-size: 13px;
@@ -539,6 +539,10 @@ details.session-row summary:hover { background: #f8faf9; }
 }
 .cc-mine-link.mine-confirmed  { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
 .cc-mine-link.mine-waitlisted { background: #fffbeb; color: #a16207; border: 1px solid #fcd34d; }
+.cc-mine-link.mine-confirmed:hover,
+.cc-mine-link.mine-confirmed:active   { background: #d1fae5; }
+.cc-mine-link.mine-waitlisted:hover,
+.cc-mine-link.mine-waitlisted:active  { background: #fef3c7; }
 
 /* New badge variant for "almost full" — distinct from waitlist amber */
 .badge-warn { background: #fffbeb; color: #a16207; border-color: #fcd34d; }
