@@ -19,7 +19,7 @@ async function load() {
       try { myRegs = await api('/api/my/registrations'); } catch {}
     }
     // Only active registrations (confirmed/waitlisted) should dim the register button.
-    // Cancelled/rejected regs remain in history (visible in my.html) but must not
+    // Cancelled/rejected regs remain in history (visible in my-schedule) but must not
     // prevent re-registering on the courses page.
     const mySet = new Map(
       myRegs
@@ -196,7 +196,7 @@ async function handleRegister(sessionId) {
 
 load();
 
-// Refresh when navigating back from bfcache (e.g. user cancels on my.html
+// Refresh when navigating back from bfcache (e.g. user cancels on my-schedule
 // then hits browser Back) so the register button reflects current state.
 window.addEventListener('pageshow', (e) => {
   if (e.persisted) load();
