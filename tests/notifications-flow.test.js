@@ -77,8 +77,8 @@ notify({
 const row2 = db.prepare(
   'SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 1'
 ).get(unbound);
-expect('Unbound user → channel=console, status=sent', () =>
-  assert.equal(row2.channel, 'console') || assert.equal(row2.status, 'sent'));
+expect('Unbound user → channel=console', () => assert.equal(row2.channel, 'console'));
+expect('Unbound user → status=sent', () => assert.equal(row2.status, 'sent'));
 
 // --- [4] LINE_MOCK=fail → status=failed, retry_count=0, next_retry_at=+5min ---
 process.env.LINE_MOCK = 'fail';

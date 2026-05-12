@@ -143,10 +143,22 @@ function nextBackoffAt(newRetryCount) {
 // Public API
 // ─────────────────────────────────────────────────────────────────────
 
+// Re-entrancy guard: node-cron does NOT serialize overlapping invocations.
+// Single Node process is single-threaded so a plain boolean is safe.
+let _retryRunning = false;
+
 /**
  * notify — single entry point used by all callers.
  * Fire-and-forget: returns undefined synchronously, async delivery
  * happens in background. Errors are swallowed (recorded in DB).
+ *
+ * @note For LINE-bound users, deliverLine runs OUTSIDE the caller's
+ * transaction (so HTTP latency doesn't hold a DB lock). The notification
+ * row INSERT therefore commits independently of the caller's tx. For
+ * console fallback, the INSERT runs inside the caller's tx. Callers
+ * should treat notify() as fire-after-commit semantically — invoke it
+ * at the end of the tx (or after commit) to avoid sending a LINE
+ * message for a transaction that later rolls back.
  */
 export function notify({ userId, sessionId, type, vars = {} }) {
   const tpl = TEMPLATES[type];
@@ -190,27 +202,33 @@ function deliverConsole({ userId, sessionId, type, subject, body }) {
  * delivery via LINE, then updates status.
  */
 export async function processFailedNotifications() {
-  const due = selectDueFailed.all(nowLocal());
+  if (_retryRunning) return;
+  _retryRunning = true;
+  try {
+    const due = selectDueFailed.all(nowLocal());
 
-  for (const row of due) {
-    const user = getUserById.get(row.user_id);
-    if (!user?.line_user_id) {
-      // user removed binding (or was deleted) → no point retrying
-      updateFailedPermanent.run('user_not_bound', row.id);
-      continue;
-    }
+    for (const row of due) {
+      const user = getUserById.get(row.user_id);
+      if (!user?.line_user_id) {
+        // user removed binding (or was deleted) → no point retrying
+        updateFailedPermanent.run('user_not_bound', row.id);
+        continue;
+      }
 
-    const result = await sendMessage(user.line_user_id, row.body);
+      const result = await sendMessage(user.line_user_id, row.body);
 
-    if (result.ok) {
-      updateSent.run(row.id);
-    } else {
-      const newRetryCount = row.retry_count + 1;
-      if (newRetryCount > MAX_RETRIES) {
-        updateFailedPermanent.run(result.error, row.id);
+      if (result.ok) {
+        updateSent.run(row.id);
       } else {
-        updateFailedAgain.run(newRetryCount, nextBackoffAt(newRetryCount), result.error, row.id);
+        const newRetryCount = row.retry_count + 1;
+        if (newRetryCount > MAX_RETRIES) {
+          updateFailedPermanent.run(result.error, row.id);
+        } else {
+          updateFailedAgain.run(newRetryCount, nextBackoffAt(newRetryCount), result.error, row.id);
+        }
       }
     }
+  } finally {
+    _retryRunning = false;
   }
 }
