@@ -1,3 +1,4 @@
+process.env.LINE_MOCK = '1';
 // 核心流程驗證 — 一對一預約模組
 import { db } from '../src/db/connection.js';
 import {
@@ -216,6 +217,13 @@ const memberId = db.prepare("SELECT id FROM users WHERE role='user' ORDER BY id 
 // Phase 2 addition: seed points so createBooking doesn't fail
 adminGrant({ memberId, pool: 'one_on_one', amount: 5, note: 'test seed', adminId: db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get().id });
 createBooking({ coachId: cC.id, memberId, startAt: '2099-05-04T10:00:00' });
+expect('booking_created notification row exists', () => {
+  const r = db.prepare(
+    "SELECT * FROM notifications WHERE type='booking_created' ORDER BY id DESC LIMIT 1"
+  ).get();
+  assert(r, 'expected a booking_created notification row');
+  assert.equal(r.channel, 'console');  // test users are not LINE-bound
+});
 const slotsC = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04', bookingWindowDays: 365 * 100 });
 expect('booked slot removed from availability', () => {
   assert.deepEqual(slotsC, ['2099-05-04T09:00:00', '2099-05-04T11:00:00']);

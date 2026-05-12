@@ -1,6 +1,7 @@
 import { db, tx, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
 import { recordTransaction } from './pointService.js';
+import { notify, fmtDateForLine } from './notifications.js';
 
 const insertBookingStmt = db.prepare(`
   INSERT INTO bookings (coach_id, member_id, start_at, end_at, note)
@@ -55,6 +56,27 @@ export function createBooking({ coachId, memberId, startAt, note = null }) {
       source: 'booking_deduct',
       relatedBookingId: bookingId,
     });
+    // Phase 3C: notify coach + member
+    const coachRow = db.prepare(
+      'SELECT c.user_id, c.display_name FROM coaches c WHERE c.id = ?'
+    ).get(coachId);
+    const memberRow = db.prepare('SELECT name FROM users WHERE id = ?').get(memberId);
+
+    if (coachRow && memberRow) {
+      const startFmt = fmtDateForLine(startAt);
+      notify({
+        userId: coachRow.user_id,
+        sessionId: null,
+        type: 'booking_created',
+        vars: { member_name: memberRow.name, start_at: startFmt },
+      });
+      notify({
+        userId: memberId,
+        sessionId: null,
+        type: 'booking_confirmed',
+        vars: { coach_display_name: coachRow.display_name, start_at: startFmt },
+      });
+    }
     return { id: bookingId, startAt, endAt };
   });
 }
@@ -85,6 +107,32 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
       source: 'booking_refund',
       relatedBookingId: bookingId,
     });
+
+    // Phase 3C: notify the OTHER party (the one who didn't cancel)
+    const coachRow2 = db.prepare(
+      'SELECT c.user_id, c.display_name FROM coaches c WHERE c.id = ?'
+    ).get(b.coach_id);
+    const memberRow2 = db.prepare('SELECT name FROM users WHERE id = ?').get(b.member_id);
+
+    if (coachRow2 && memberRow2) {
+      const startFmt2 = fmtDateForLine(b.start_at);
+      const isCoachCancel = actorUserId === coachRow2.user_id;
+      if (isCoachCancel) {
+        notify({
+          userId: b.member_id,
+          sessionId: null,
+          type: 'booking_cancelled_by_coach',
+          vars: { coach_display_name: coachRow2.display_name, start_at: startFmt2 },
+        });
+      } else {
+        notify({
+          userId: coachRow2.user_id,
+          sessionId: null,
+          type: 'booking_cancelled_by_member',
+          vars: { member_name: memberRow2.name, start_at: startFmt2 },
+        });
+      }
+    }
 
     return { ok: true };
   });
