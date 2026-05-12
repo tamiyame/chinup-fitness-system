@@ -465,7 +465,7 @@ details.session-row summary:hover { background: #f8faf9; }
   .card { padding: 12px; }
   .day-group summary { padding: 14px; }
   .day-title h3 { font-size: 15px; }
-  .day-title p {
+  .day-title > p:not(.course-meta) {
     font-size: 12px;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -544,7 +544,9 @@ details.session-row summary:hover { background: #f8faf9; }
 .cc-mine-link.mine-waitlisted:hover,
 .cc-mine-link.mine-waitlisted:active  { background: #fef3c7; }
 
-/* New badge variant for "almost full" — distinct from waitlist amber */
+/* Badge variant for "almost full"; shares the waitlist amber palette
+ * since these states are mutually exclusive per card. Label
+ * (`快滿` vs `候補`) carries the semantic difference. */
 .badge-warn { background: #fffbeb; color: #a16207; border-color: #fcd34d; }
 
 /* New button variant for "進入候補" — amber, signals waitlist not confirmation */
