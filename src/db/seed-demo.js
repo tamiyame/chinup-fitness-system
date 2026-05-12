@@ -1,5 +1,5 @@
 // Seed with demo data: users + 3 templates + some registrations to illustrate UI states.
-import { db } from './connection.js';
+import { db, nowLocal } from './connection.js';
 import { createTemplate } from '../services/courseService.js';
 import { register } from '../services/registration.js';
 import { hashPassword } from '../services/auth.js';
@@ -73,9 +73,9 @@ if (ownerForSeed) {
 function firstSessionId(tplId) {
   return db.prepare(`
     SELECT id FROM course_sessions
-    WHERE template_id = ? AND registration_deadline > datetime('now')
+    WHERE template_id = ? AND registration_deadline > ?
     ORDER BY start_at ASC LIMIT 1
-  `).get(tplId).id;
+  `).get(tplId, nowLocal()).id;
 }
 
 const s1 = firstSessionId(t1.templateId);   // 週三 TRX 5月場

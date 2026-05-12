@@ -65,12 +65,10 @@ expect('user2 200', () => assert.equal(resp2.status, 200));
 const hasReg = resp2.data.items.some(x => x.kind === 'registration');
 expect('user2 has at least 1 registration', () => assert(hasReg));
 
-// 5. User isolation — user2 should not see user1's booking
-const user1BookingsForU2 = resp2.data.items.filter(x =>
-  x.kind === 'booking' && x.coach_display_name === '王教練'
-);
-// (user1 booked 王教練 in seed-demo; user2 should not see it)
-expect('user2 cannot see user1 booking', () => assert.equal(user1BookingsForU2.length, 0));
+// 5. User isolation — user2's items must not share any (kind, id) with user1's items
+const u1Keys = new Set(resp1.data.items.map(x => `${x.kind}:${x.id}`));
+const u2Overlap = resp2.data.items.filter(x => u1Keys.has(`${x.kind}:${x.id}`));
+expect('user2 items share no (kind, id) with user1', () => assert.equal(u2Overlap.length, 0));
 
 // 6. Booking item shape — registration-only fields null
 const bookingItem = resp1.data.items.find(x => x.kind === 'booking');
