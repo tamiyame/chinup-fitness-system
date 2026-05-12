@@ -44,6 +44,13 @@ expect('item has start_at', () => assert(typeof item.start_at === 'string' && it
 expect('item has is_past boolean', () => assert.equal(typeof item.is_past, 'boolean'));
 expect('item has can_cancel boolean', () => assert.equal(typeof item.can_cancel, 'boolean'));
 
+// Verify actual is_past value: user1's seeded booking is 14 days in the future
+const bookingFromSeed = resp1.data.items.find(x => x.kind === 'booking');
+if (bookingFromSeed) {
+  expect('seeded future booking is_past=false', () => assert.equal(bookingFromSeed.is_past, false));
+  expect('seeded future booking can_cancel=true', () => assert.equal(bookingFromSeed.can_cancel, true));
+}
+
 // 3. Sorted DESC by start_at
 if (resp1.data.items.length >= 2) {
   const a = resp1.data.items[0].start_at;
@@ -79,6 +86,24 @@ if (regItem) {
   expect('reg coach_id=null', () => assert.equal(regItem.coach_id, null));
   expect('reg note=null', () => assert.equal(regItem.note, null));
   expect('reg course_name truthy', () => assert(regItem.course_name));
+}
+
+// 8. Waitlisted registration carries position
+// seed-demo registers 8 users to TRX (max=6), so users 7 and 8 land on waitlist.
+// Try user8 first; fall back to user7.
+let waitlistedUser = null;
+for (const email of ['user8@chinup.local', 'user7@chinup.local']) {
+  const tok = await loginAs(email, 'pass1234');
+  const r = await req('GET', '/api/my/schedule', { token: tok.token });
+  const wl = r.data.items.find(x => x.kind === 'registration' && x.status === 'waitlisted');
+  if (wl) { waitlistedUser = { email, item: wl }; break; }
+}
+expect('found a waitlisted user from seed', () => assert(waitlistedUser, 'no waitlisted reg in seed — check seed-demo'));
+if (waitlistedUser) {
+  expect('waitlisted item position is a positive number',
+    () => assert(typeof waitlistedUser.item.position === 'number' && waitlistedUser.item.position > 0));
+  expect('waitlisted item can_cancel=true (session still open)',
+    () => assert.equal(waitlistedUser.item.can_cancel, true));
 }
 
 console.log('[my-schedule-api test] done');
