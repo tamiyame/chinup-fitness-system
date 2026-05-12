@@ -96,7 +96,8 @@ function renderCourseGroup(group, mySet) {
       <div class="day-title">
         <h3>${group.name} ${hotBadge}</h3>
         <p>${group.description || ''}</p>
-        <p class="course-meta">🗓 下次 ${nextLabel}・⏱ ${group.duration_minutes} 分鐘・👥 ${group.min_capacity}–${group.max_capacity} 人</p>
+        <p class="course-meta hidden md:block">🗓 下次 ${nextLabel}・⏱ ${group.duration_minutes} 分鐘・👥 ${group.min_capacity}–${group.max_capacity} 人</p>
+        <p class="course-meta md:hidden">🗓 下次 ${nextLabel}・⏱ ${group.duration_minutes} 分鐘</p>
       </div>
       ${chevron}
     </summary>
@@ -106,7 +107,26 @@ function renderCourseGroup(group, mySet) {
   </details>`;
 }
 
+function computeState(s, my) {
+  if (my?.status === 'confirmed')  return 'mine-confirmed';
+  if (my?.status === 'waitlisted') return 'mine-waitlisted';
+  const remaining = s.max_capacity - s.confirmed_count;
+  if (remaining === 0) return 'full';
+  if (remaining <= 2)  return 'warn';
+  return 'open';
+}
+
 function card(s, my) {
+  const state = computeState(s, my);
+  return `
+    <article class="card" data-session-id="${s.id}">
+      <div class="md:hidden">${cardMobile(s, my, state)}</div>
+      <div class="hidden md:block">${cardDesktop(s, my)}</div>
+    </article>
+  `;
+}
+
+function cardDesktop(s, my) {
   const dt = new Date(s.start_at);
   const dayLabel = `週${DOW_SHORT[dt.getDay()]}`;
   const pct = Math.min(100, Math.round((s.confirmed_count / s.max_capacity) * 100));
@@ -128,7 +148,6 @@ function card(s, my) {
     : `<button data-session-id="${s.id}" class="register-btn btn btn-primary">${full ? '進入候補' : '立即報名'}</button>`;
 
   return `
-  <article class="card">
     <div class="flex flex-col md:flex-row gap-5">
       <!-- date block -->
       <div class="flex md:flex-col items-center md:items-center md:justify-center md:min-w-[90px] md:border-r md:border-slate-100 md:pr-5">
@@ -159,7 +178,73 @@ function card(s, my) {
         </div>
       </div>
     </div>
-  </article>`;
+  `;
+}
+
+function cardMobile(s, my, state) {
+  const dt = new Date(s.start_at);
+  const dayLabel = `週${DOW_SHORT[dt.getDay()]}`;
+  const remaining = s.max_capacity - s.confirmed_count;
+  const pct = Math.min(100, Math.round((s.confirmed_count / s.max_capacity) * 100));
+
+  // Remaining-info text per state
+  const remainingLabel = (() => {
+    if (state === 'mine-confirmed')  return '✓ 已報名（正取）';
+    if (state === 'mine-waitlisted') return `⏳ 候補第 ${my.position} 位`;
+    if (state === 'full') return '已額滿';
+    if (state === 'warn') return `⚡ 剩 ${remaining} 位`;
+    return `剩 ${remaining} 位`;
+  })();
+
+  // Badge per state
+  const badgeMap = {
+    open:               { cls: 'badge-open',       label: '開放' },
+    warn:               { cls: 'badge-warn',       label: '快滿' },
+    full:               { cls: 'badge-cancelled',  label: '已額滿' },
+    'mine-confirmed':   { cls: 'badge-confirmed',  label: '已報名' },
+    'mine-waitlisted':  { cls: 'badge-waitlisted', label: '候補' },
+  };
+  const badge = badgeMap[state] ?? { cls: 'badge-open', label: state };
+  const badgeHtml = `<span class="badge ${badge.cls}">${badge.label}</span>`;
+
+  // Bar fill class + width (pct already caps at 100 via Math.min above)
+  const fillCls = state.startsWith('mine-') ? 'mine' : state;
+  const fillWidth = pct;
+
+  // Sub-deadline line (waitlist info prepended on full)
+  const waitlistInfo = (state === 'full' && s.waitlist_count > 0)
+    ? `候補 ${s.waitlist_count} 位 · ` : '';
+  const deadline = `${waitlistInfo}截止 ${fmtDate(s.registration_deadline)}`;
+
+  // Action inner (button or link). The .cc-action wrapper is added in the return below.
+  let actionInner;
+  if (state === 'mine-confirmed') {
+    actionInner = `<a href="/my-schedule" class="cc-mine-link mine-confirmed">✓ 已報名（正取）· 至我的課表 →</a>`;
+  } else if (state === 'mine-waitlisted') {
+    actionInner = `<a href="/my-schedule" class="cc-mine-link mine-waitlisted">⏳ 候補第 ${my.position} 位 · 至我的課表 →</a>`;
+  } else if (state === 'full') {
+    actionInner = `<button data-session-id="${s.id}" class="register-btn btn btn-warn">進入候補</button>`;
+  } else {
+    actionInner = `<button data-session-id="${s.id}" class="register-btn btn btn-primary">立即報名</button>`;
+  }
+
+  return `
+    <div class="cc-row1">
+      <div class="cc-date-chip">
+        <div class="cc-d">${String(dt.getDate()).padStart(2, '0')}</div>
+        <span class="cc-t">${dayLabel} ${formatTime(dt)}</span>
+      </div>
+      <div class="cc-cap">
+        <div class="cc-cap-head">
+          <span class="cc-remaining ${state}">${remainingLabel}</span>
+          ${badgeHtml}
+        </div>
+        <div class="cc-bar"><div class="cc-fill ${fillCls}" style="width:${fillWidth}%"></div></div>
+        <div class="cc-deadline">${deadline}</div>
+      </div>
+    </div>
+    <div class="cc-action">${actionInner}</div>
+  `;
 }
 
 function monthLabel(dt) {
