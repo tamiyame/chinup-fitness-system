@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的課表 · CHINUP Performance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/colors_and_type.css">
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { visibility: hidden; }
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    background: #f1f5f9;
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 16px;
+  }
+  .tab-btn {
+    flex: 1;
+    text-align: center;
+    padding: 8px 0;
+    font-size: 14px;
+    border-radius: 7px;
+    color: #64748b;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .tab-btn.active {
+    background: #fff;
+    color: #0f172a;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  }
+  .pill-kind {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .pill-1on1 { background: #dbeafe; color: #1e40af; }
+  .pill-group { background: #fce7f3; color: #9d174d; }
+  .past-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 0;
+    margin-top: 16px;
+    border-top: 1px solid #e2e8f0;
+    color: #64748b;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .past-list .card { opacity: 0.72; }
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin: 4px 0 10px;
+  }
+</style>
+</head>
+<body>
+<nav class="navbar sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a href="/" class="brand-mark">
+        <span class="brand-dot"><img src="/logo.png" alt="logo"></span> CHINUP Performance
+      </a>
+      <div class="hidden md:flex items-center gap-6">
+        <a href="/" class="nav-link">課程</a>
+        <a href="/coaches.html" class="nav-link">一對一預約</a>
+        <a href="/my-schedule" class="nav-link active">我的課表</a>
+        <a href="/admin.html" class="nav-link">管理後台</a>
+        <a href="/coach.html" id="coach-link" class="nav-link hidden">教練後台</a>
+      </div>
+    </div>
+    <div id="auth-bar" class="flex items-center gap-3"></div>
+  </div>
+</nav>
+
+<main class="max-w-3xl mx-auto px-6">
+  <section class="hero">
+    <span class="hero-eyebrow">📋 Personal</span>
+    <h1>我的課表</h1>
+    <p>一對一預約 + 團課報名，依時間排序。</p>
+  </section>
+
+  <section class="pb-16">
+    <div class="tab-bar" id="tab-bar">
+      <div class="tab-btn active" data-filter="all">全部</div>
+      <div class="tab-btn" data-filter="booking">一對一</div>
+      <div class="tab-btn" data-filter="registration">團課</div>
+    </div>
+
+    <div id="upcoming-section">
+      <div class="section-label">📅 即將到來</div>
+      <div id="upcoming-list" class="grid gap-3"></div>
+      <div id="upcoming-empty" class="empty-state" style="display:none;">
+        <span class="empty-state-icon" id="upcoming-empty-icon">📭</span>
+        <p id="upcoming-empty-msg">尚無預約</p>
+        <div id="upcoming-empty-ctas" class="flex gap-2 justify-center mt-3 flex-wrap">
+          <a href="/" class="btn btn-secondary">瀏覽課程</a>
+          <a href="/coaches.html" class="btn btn-primary">預約一對一</a>
+        </div>
+      </div>
+    </div>
+
+    <div id="past-toggle-wrap" style="display:none;">
+      <div class="past-toggle" id="past-toggle">
+        <span id="past-caret">▶</span>
+        <span>過去記錄（<span id="past-count">0</span>）</span>
+      </div>
+      <div id="past-list" class="past-list grid gap-3" style="display:none;"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script type="module" src="/app.js"></script>
+<script type="module" src="/my-schedule.js"></script>
+<script type="module">
+  import { getUser } from '/app.js';
+  const u = getUser();
+  if (u && ['coach','admin','owner'].includes(u.role)) {
+    document.getElementById('coach-link')?.classList.remove('hidden');
+  }
+</script>
+</body>
+</html>
