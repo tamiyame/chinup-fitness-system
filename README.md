@@ -207,3 +207,93 @@ tests/
 ## License
 
 MIT
+
+## Phase 3C: LINE 通知設定
+
+通知系統使用 LINE Messaging API 推播。Operator 一次性設定步驟：
+
+### 1. 在 LINE Developers 建立 Channel
+
+1. 登入 https://developers.line.biz/
+2. Create Provider（任意名稱，例：CHINUP Gym）
+3. 在該 Provider 下 Create a new channel → 選 **Messaging API**
+4. 填寫 channel 資訊（icon、display name 都會顯示給綁定的會員看）
+
+### 2. 取得三個值
+
+從 LINE Developers Console 該 channel 頁面取得：
+
+| 值 | 環境變數 |
+|---|---|
+| **Channel access token (long-lived)** ← 在 Messaging API 分頁底部 Issue | `LINE_CHANNEL_ACCESS_TOKEN` |
+| **Channel secret** ← 在 Basic settings 分頁 | `LINE_CHANNEL_SECRET` |
+| **Bot basic ID** (e.g. `@chinup`) ← Messaging API 分頁 | `LINE_OFFICIAL_ACCOUNT_ID` |
+
+### 3. 設定 webhook URL
+
+在 LINE Console 的 Messaging API 分頁：
+
+1. Webhook URL: `https://<your-domain>/api/line/webhook`
+2. 開啟 **Use webhook**
+3. **關閉** Auto-reply messages（避免 bot 自動覆蓋我們的 reply）
+4. **關閉** Greeting messages
+
+### 4. 下載 QR PNG
+
+在 LINE Console 同一分頁可下載 friend-add QR code。存成：
+
+```
+public/line-qr.png
+```
+
+（已加入 `.gitignore`，不會 commit。會員開啟 `/line.html` 時會看到此圖。）
+
+### 5. 設環境變數
+
+**本地 dev** — 建立 `.env`（已 gitignore）：
+
+```bash
+LINE_CHANNEL_ACCESS_TOKEN=...
+LINE_CHANNEL_SECRET=...
+LINE_OFFICIAL_ACCOUNT_ID=@yourbotid
+```
+
+`npm start` 會自動載入（Node 22+ `--env-file-if-exists`）。
+
+**Railway** — 在 dashboard 的 Variables 區設這三個。
+
+### 6. Smoke test
+
+1. `npm start`
+2. 登入會員（如 `user1@chinup.local`）
+3. 開 `/line.html`，照畫面三步驟綁定
+4. 在 `data/app.db` 用 sqlite3 看 `notifications` table，預期 `channel='line'` row 出現
+
+### Dev 環境跳過真實 LINE
+
+設 `LINE_MOCK=1` → `sendMessage` 直接 return success、`verifySignature` 直接 true。可以跑完整 `/line.html` 流程而不需要真實 LINE Channel。
+
+設 `LINE_MOCK=fail` → 永遠 return failure，方便測試 retry / 失敗 UI。
+
+### 失敗 retry 機制
+
+LINE Push 失敗的訊息會以 `status='failed'` 寫入 `notifications` table，retry 排程：
+
+| Attempt | 等待 | 累計時間 |
+|---|---|---|
+| 初次 (status=failed inserted) | — | 0 |
+| 第 1 次 retry | 5 分鐘後 | 5 分 |
+| 第 2 次 retry | 15 分鐘後 | 20 分 |
+| 第 3 次 retry | 45 分鐘後 | 65 分 |
+| 第 4 次（仍失敗）→ `failed_permanent` | 不再試 | — |
+
+由 `scheduler.js` 內 `*/5 * * * *` cron 觸發 `processFailedNotifications()`。
+
+查看 failed 訊息：
+
+```sql
+SELECT id, type, user_id, retry_count, next_retry_at, last_error
+FROM notifications
+WHERE status IN ('failed', 'failed_permanent')
+ORDER BY id DESC LIMIT 50;
+```
