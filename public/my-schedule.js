@@ -178,12 +178,31 @@ function bindPastToggle() {
 async function load() {
   try {
     const { items } = await api('/api/my/schedule');
-    state.items = items;
+    state.items = items ?? [];
+    hideLoadError();
     render();
   } catch (e) {
-    toast(`載入失敗：${e.message}`, 'error');
+    showLoadError(e);
   }
 }
+
+function showLoadError(e) {
+  document.getElementById('main-section').style.display = 'none';
+  const errBox = document.getElementById('load-error');
+  errBox.style.display = 'block';
+  document.getElementById('load-error-msg').textContent = `載入失敗：${e.message}`;
+  toast(`載入失敗：${e.message}`, 'error');
+}
+
+function hideLoadError() {
+  document.getElementById('main-section').style.display = '';
+  document.getElementById('load-error').style.display = 'none';
+}
+
+document.getElementById('load-error-retry').addEventListener('click', async () => {
+  hideLoadError();
+  await load();
+});
 
 bindTabs();
 bindPastToggle();

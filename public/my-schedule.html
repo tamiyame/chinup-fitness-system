@@ -95,7 +95,13 @@
     <p>一對一預約 + 團課報名，依時間排序。</p>
   </section>
 
-  <section class="pb-16">
+  <div id="load-error" class="empty-state" style="display:none;">
+    <span class="empty-state-icon">⚠️</span>
+    <p id="load-error-msg">載入失敗，請重新整理</p>
+    <button id="load-error-retry" class="btn btn-primary mt-3">重試</button>
+  </div>
+
+  <section id="main-section" class="pb-16">
     <div class="tab-bar" id="tab-bar">
       <div class="tab-btn active" data-filter="all">全部</div>
       <div class="tab-btn" data-filter="booking">一對一</div>
@@ -109,7 +115,7 @@
         <span class="empty-state-icon" id="upcoming-empty-icon">📭</span>
         <p id="upcoming-empty-msg">尚無預約</p>
         <div id="upcoming-empty-ctas" class="flex gap-2 justify-center mt-3 flex-wrap">
-          <a href="/" class="btn btn-secondary">瀏覽課程</a>
+          <a href="/" class="btn btn-ghost">瀏覽課程</a>
           <a href="/coaches.html" class="btn btn-primary">預約一對一</a>
         </div>
       </div>
