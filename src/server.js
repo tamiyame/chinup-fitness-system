@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { db, tx } from './db/connection.js';
+import { db, tx, nowLocal } from './db/connection.js';
 import {
   createTemplate, editTemplate, listTemplates, getTemplate,
   listOpenSessions, listRegistrationsBySession, listUserRegistrations,
@@ -50,12 +50,22 @@ import {
   listTransactionsForAdmin as svcListTx,
 } from './services/pointService.js';
 import { listMySchedule as svcListMySchedule } from './services/myScheduleService.js';
+import { verifySignature, reply as lineReply } from './services/lineClient.js';
+import {
+  generateBindCode,
+  consumeCode,
+  unbindByLineUserId,
+  unbindByUserId,
+} from './services/lineBindingService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '3mb' }));
+app.use(express.json({
+  limit: '3mb',
+  verify: (req, res, buf) => { req.rawBody = buf; },
+}));
 
 // Phase 3A · /my-schedule unification: redirect legacy URLs + serve canonical path
 app.get('/my.html', (req, res) => res.redirect(301, '/my-schedule'));
@@ -672,6 +682,110 @@ app.get('/api/my/schedule', requireUser, asyncHandler((req, res) => {
   const items = svcListMySchedule({ userId: req.user.id });
   res.json({ items });
 }));
+
+// ─── Phase 3C · LINE notification endpoints ───
+
+app.get('/api/my/line/binding', requireUser, asyncHandler((req, res) => {
+  const user = db.prepare(
+    'SELECT line_user_id, line_bind_code, line_bind_expires_at FROM users WHERE id = ?'
+  ).get(req.user.id);
+
+  const officialAccountId = process.env.LINE_OFFICIAL_ACCOUNT_ID || null;
+
+  if (user.line_user_id) {
+    return res.json({ bound: true, official_account_id: officialAccountId });
+  }
+
+  // Unbound: return existing valid code or auto-generate
+  const codeValid = user.line_bind_code &&
+                    user.line_bind_expires_at &&
+                    user.line_bind_expires_at > nowLocal();
+  if (codeValid) {
+    return res.json({
+      bound: false,
+      code: user.line_bind_code,
+      expires_at: user.line_bind_expires_at,
+      official_account_id: officialAccountId,
+    });
+  }
+  const fresh = generateBindCode(req.user.id);
+  res.json({
+    bound: false,
+    code: fresh.code,
+    expires_at: fresh.expires_at,
+    official_account_id: officialAccountId,
+  });
+}));
+
+app.post('/api/my/line/regenerate', requireUser, asyncHandler((req, res) => {
+  const fresh = generateBindCode(req.user.id);
+  res.json({ code: fresh.code, expires_at: fresh.expires_at });
+}));
+
+app.delete('/api/my/line', requireUser, asyncHandler((req, res) => {
+  unbindByUserId(req.user.id);
+  res.json({ ok: true });
+}));
+
+app.post('/api/line/webhook', (req, res) => {
+  // Verify HMAC signature (LINE_MOCK=1 bypasses inside verifySignature)
+  if (!verifySignature(req.rawBody, req.header('X-Line-Signature'))) {
+    return res.status(401).end();
+  }
+
+  const events = Array.isArray(req.body?.events) ? req.body.events : [];
+
+  for (const event of events) {
+    try {
+      if (event.type === 'message' && event.message?.type === 'text') {
+        handleLineTextMessage(event);
+      } else if (event.type === 'follow') {
+        lineReply(event.replyToken, '哈囉！請從 chinup 網站的 LINE 通知頁複製 6 位數綁定碼，貼到這裡。')
+          .catch((e) => console.error('[line follow reply]', e));
+      } else if (event.type === 'unfollow') {
+        unbindByLineUserId(event.source?.userId);
+      }
+    } catch (e) {
+      console.error('[line-webhook event handler]', e);
+    }
+  }
+
+  // Always 200 so LINE doesn't retry
+  res.status(200).end();
+});
+
+function handleLineTextMessage(event) {
+  const text = (event.message?.text || '').trim();
+  const lineUserId = event.source?.userId;
+  const replyToken = event.replyToken;
+  if (!lineUserId || !replyToken) return;
+
+  if (!/^\d{6}$/.test(text)) {
+    lineReply(replyToken, '哈囉！請從 chinup 網站的 LINE 通知頁複製 6 位數綁定碼，貼到這裡。')
+      .catch((e) => console.error('[line nonmatch reply]', e));
+    return;
+  }
+
+  const result = consumeCode(text, lineUserId);
+  let msg;
+  switch (result.outcome) {
+    case 'bound':
+      msg = '✅ 綁定成功！日後課程通知會送到這裡。';
+      break;
+    case 'invalid_code':
+      msg = '❌ 代碼無效或已過期，請回網站重新產生。';
+      break;
+    case 'this_line_already_bound':
+      msg = '此 LINE 帳號已綁定其他 chinup 帳號，請先解除。';
+      break;
+    case 'chinup_already_bound':
+      msg = '此 chinup 帳號已綁定其他 LINE，請先解除。';
+      break;
+    default:
+      msg = '處理中發生問題，請稍後再試。';
+  }
+  lineReply(replyToken, msg).catch((e) => console.error('[line bind reply]', e));
+}
 
 app.get('/api/admin/notifications', requireAdmin, asyncHandler((req, res) => {
   const rows = db.prepare(`
