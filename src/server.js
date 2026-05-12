@@ -56,6 +56,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '3mb' }));
+
+// Phase 3A · /my-schedule unification: redirect legacy URLs + serve canonical path
+app.get('/my.html', (req, res) => res.redirect(301, '/my-schedule'));
+app.get('/my-bookings.html', (req, res) => res.redirect(301, '/my-schedule'));
+app.get('/my-schedule', (req, res) =>
+  res.sendFile(resolve(__dirname, '../public/my-schedule.html'))
+);
+
 app.use(express.static(resolve(__dirname, '../public')));
 app.use('/avatars', express.static(resolve(__dirname, '../data/avatars'), { maxAge: '7d' }));
 
