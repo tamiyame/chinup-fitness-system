@@ -148,4 +148,18 @@ console.log('[5] cross-user isolation');
 const bItems = listMySchedule({ userId: memberB });
 expect('member B sees nothing of A', () => assert.equal(bItems.length, 0));
 
+// can_cancel=false negatives for registrations
+console.log('[6] registration can_cancel negatives');
+
+// Mark current reg as rejected → can_cancel should be false
+db.prepare("UPDATE registrations SET status = 'rejected' WHERE id = ?").run(reg.id);
+let neg = listMySchedule({ userId: memberA }).find(x => x.kind === 'registration');
+expect('rejected reg can_cancel=false', () => assert.equal(neg.can_cancel, false));
+
+// Restore reg status and instead mark session as cancelled → can_cancel should be false
+db.prepare("UPDATE registrations SET status = 'confirmed' WHERE id = ?").run(reg.id);
+db.prepare("UPDATE course_sessions SET status = 'cancelled' WHERE id = ?").run(session.id);
+neg = listMySchedule({ userId: memberA }).find(x => x.kind === 'registration');
+expect('session_status=cancelled → reg can_cancel=false', () => assert.equal(neg.can_cancel, false));
+
 console.log('[my-schedule-service test] done');

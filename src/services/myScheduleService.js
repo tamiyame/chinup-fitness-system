@@ -62,10 +62,13 @@ function mapRegistration(r, now) {
   };
 }
 
+const listBookingsStmt = db.prepare(BOOKINGS_SQL);
+const listRegistrationsStmt = db.prepare(REGISTRATIONS_SQL);
+
 export function listMySchedule({ userId }) {
   const now = nowLocal();
-  const bookings = db.prepare(BOOKINGS_SQL).all(userId);
-  const registrations = db.prepare(REGISTRATIONS_SQL).all(userId);
+  const bookings = listBookingsStmt.all(userId);
+  const registrations = listRegistrationsStmt.all(userId);
 
   const items = [
     ...bookings.map(b => mapBooking(b, now)),
