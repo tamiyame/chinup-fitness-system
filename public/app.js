@@ -68,6 +68,34 @@ function consumeOAuthHash() {
 }
 consumeOAuthHash();
 
+function bindMobileNav() {
+  const toggle = document.getElementById('nav-toggle');
+  const panel = document.getElementById('nav-mobile');
+  if (!toggle || !panel) return;
+
+  function close() {
+    panel.classList.add('hidden');
+    toggle.setAttribute('aria-expanded', 'false');
+  }
+  function open() {
+    panel.classList.remove('hidden');
+    toggle.setAttribute('aria-expanded', 'true');
+  }
+
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (panel.classList.contains('hidden')) open(); else close();
+  });
+  panel.querySelectorAll('a').forEach((a) => a.addEventListener('click', close));
+  document.addEventListener('click', (e) => {
+    if (!panel.classList.contains('hidden') && !panel.contains(e.target) && !toggle.contains(e.target)) close();
+  });
+  window.addEventListener('resize', () => {
+    if (window.matchMedia('(min-width: 768px)').matches) close();
+  });
+}
+bindMobileNav();
+
 export async function bootAuth({ requireAdmin = false } = {}) {
   const token = getToken();
   if (!token) { redirectToLogin(); return null; }
@@ -95,6 +123,13 @@ async function renderAuthBar(user) {
   // Hide admin nav link for non-admin users
   document.querySelectorAll('a[href="/admin.html"]').forEach((el) => {
     el.style.display = ['admin', 'owner'].includes(user.role) ? '' : 'none';
+  });
+
+  // Show coach nav link only for coach/admin/owner
+  const showCoach = ['coach', 'admin', 'owner'].includes(user.role);
+  document.querySelectorAll('.coach-only').forEach((el) => {
+    if (showCoach) el.classList.remove('hidden');
+    else el.classList.add('hidden');
   });
 
   const el = document.getElementById('auth-bar');

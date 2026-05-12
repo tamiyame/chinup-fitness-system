@@ -81,10 +81,22 @@
         <a href="/coaches.html" class="nav-link">一對一預約</a>
         <a href="/my-schedule" class="nav-link active">我的課表</a>
         <a href="/admin.html" class="nav-link">管理後台</a>
-        <a href="/coach.html" id="coach-link" class="nav-link hidden">教練後台</a>
+        <a href="/coach.html" class="nav-link coach-only hidden">教練後台</a>
       </div>
     </div>
-    <div id="auth-bar" class="flex items-center gap-3"></div>
+    <div class="flex items-center gap-2">
+      <div id="auth-bar" class="flex items-center gap-3"></div>
+      <button id="nav-toggle" class="md:hidden nav-toggle-btn" aria-label="選單" aria-expanded="false">☰</button>
+    </div>
+  </div>
+  <div id="nav-mobile" class="hidden md:hidden">
+    <div class="max-w-6xl mx-auto px-6 py-2 flex flex-col">
+      <a href="/" class="nav-link-mobile">課程</a>
+      <a href="/coaches.html" class="nav-link-mobile">一對一預約</a>
+      <a href="/my-schedule" class="nav-link-mobile active">我的課表</a>
+      <a href="/admin.html" class="nav-link-mobile">管理後台</a>
+      <a href="/coach.html" class="nav-link-mobile coach-only hidden">教練後台</a>
+    </div>
   </div>
 </nav>
 
@@ -135,12 +147,5 @@
 
 <script type="module" src="/app.js"></script>
 <script type="module" src="/my-schedule.js"></script>
-<script type="module">
-  import { getUser } from '/app.js';
-  const u = getUser();
-  if (u && ['coach','admin','owner'].includes(u.role)) {
-    document.getElementById('coach-link')?.classList.remove('hidden');
-  }
-</script>
 </body>
 </html>

@@ -423,3 +423,35 @@ details.session-row summary:hover { background: #f8faf9; }
 .tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; color: #64748b; }
 .tab.tab-active { color: #0ea5e9; border-bottom-color: #0ea5e9; font-weight: 600; }
 .tab-panel { }
+
+/* Phase 3A · Mobile navbar toggle + dropdown */
+.nav-toggle-btn {
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.nav-toggle-btn:hover { background: #f1f5f9; }
+.nav-toggle-btn[aria-expanded="true"] { background: #f1f5f9; }
+
+#nav-mobile {
+  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.nav-link-mobile {
+  display: block;
+  padding: 12px 4px;
+  color: #0f172a;
+  text-decoration: none;
+  font-size: 15px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.nav-link-mobile:last-child { border-bottom: 0; }
+.nav-link-mobile:hover { color: var(--brand-700); }
+.nav-link-mobile.active { color: var(--brand-700); font-weight: 600; }
