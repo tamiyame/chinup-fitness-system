@@ -195,6 +195,11 @@ WHERE u.role = 'user'
 GROUP BY u.id;
 `;
 
+// Indexes for Phase 3C columns are kept OUT of the SCHEMA string so that
+// existing DBs (whose columns are added later via addColumnIfMissing) can
+// create the indexes AFTER migrations run. Fresh DBs get the indexes
+// from PHASE_3C_INDEXES on first boot after the columns are created via
+// the CREATE TABLE blocks above.
 export const PHASE_3C_INDEXES = `
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_line_user_id
   ON users(line_user_id) WHERE line_user_id IS NOT NULL;

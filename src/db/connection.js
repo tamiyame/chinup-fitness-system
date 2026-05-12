@@ -17,9 +17,8 @@ db.exec('PRAGMA foreign_keys = ON;');
 // Ensures services' top-level `db.prepare(...)` statements have tables available.
 db.exec(SCHEMA);
 
-// Phase 3C: idempotent column additions for existing DBs.
-// Fresh DBs already have these columns from the CREATE TABLE above,
-// so the PRAGMA check finds them and skips the ALTER.
+// Unified helper for idempotent column additions. Used for both legacy
+// migrations and Phase 3C column additions below.
 function addColumnIfMissing(table, column, definition) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   if (!cols.includes(column)) {
@@ -27,6 +26,15 @@ function addColumnIfMissing(table, column, definition) {
   }
 }
 
+// Legacy migration: google_id column added after initial schema was deployed.
+addColumnIfMissing('users', 'google_id', 'TEXT');
+db.exec(
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL'
+);
+
+// Phase 3C: idempotent column additions for existing DBs.
+// Fresh DBs already have these columns from the CREATE TABLE above,
+// so the PRAGMA check finds them and skips the ALTER.
 addColumnIfMissing('users', 'line_user_id', 'TEXT');
 addColumnIfMissing('users', 'line_bind_code', 'TEXT');
 addColumnIfMissing('users', 'line_bind_expires_at', 'TEXT');
@@ -35,20 +43,6 @@ addColumnIfMissing('notifications', 'next_retry_at', 'TEXT');
 addColumnIfMissing('notifications', 'last_error', 'TEXT');
 
 db.exec(PHASE_3C_INDEXES);
-
-// In-place migrations for schema evolution. Each step must be idempotent so
-// running against a fresh DB or an older DB both end in the same state.
-function columnExists(table, column) {
-  const rows = db.prepare(`PRAGMA table_info(${table})`).all();
-  return rows.some((r) => r.name === column);
-}
-
-if (!columnExists('users', 'google_id')) {
-  db.exec('ALTER TABLE users ADD COLUMN google_id TEXT');
-}
-db.exec(
-  'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL'
-);
 
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
