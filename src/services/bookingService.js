@@ -33,6 +33,7 @@ const listCoachStmt = db.prepare(`
 `);
 
 const getCoachStmt = db.prepare('SELECT * FROM coaches WHERE id = ?');
+const getUserNameStmt = db.prepare('SELECT name FROM users WHERE id = ?');
 
 export function createBooking({ coachId, memberId, startAt, note = null }) {
   if (!coachId || !memberId || !startAt) throw new ApiError(400, 'missing_fields');
@@ -57,15 +58,11 @@ export function createBooking({ coachId, memberId, startAt, note = null }) {
       relatedBookingId: bookingId,
     });
     // Phase 3C: notify coach + member
-    const coachRow = db.prepare(
-      'SELECT c.user_id, c.display_name FROM coaches c WHERE c.id = ?'
-    ).get(coachId);
-    const memberRow = db.prepare('SELECT name FROM users WHERE id = ?').get(memberId);
-
-    if (coachRow && memberRow) {
+    const memberRow = getUserNameStmt.get(memberId);
+    if (memberRow) {
       const startFmt = fmtDateForLine(startAt);
       notify({
-        userId: coachRow.user_id,
+        userId: coach.user_id,
         sessionId: null,
         type: 'booking_created',
         vars: { member_name: memberRow.name, start_at: startFmt },
@@ -74,7 +71,7 @@ export function createBooking({ coachId, memberId, startAt, note = null }) {
         userId: memberId,
         sessionId: null,
         type: 'booking_confirmed',
-        vars: { coach_display_name: coachRow.display_name, start_at: startFmt },
+        vars: { coach_display_name: coach.display_name, start_at: startFmt },
       });
     }
     return { id: bookingId, startAt, endAt };
@@ -87,8 +84,9 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
     if (!b) throw new ApiError(404, 'booking_not_found');
     if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
 
+    const coach = getCoachStmt.get(b.coach_id);
+
     if (isCoach) {
-      const coach = getCoachStmt.get(b.coach_id);
       if (!coach || coach.user_id !== actorUserId) throw new ApiError(403, 'forbidden');
       if (!reason || !reason.trim()) throw new ApiError(400, 'missing_reason');
     } else {
@@ -109,27 +107,23 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
     });
 
     // Phase 3C: notify the OTHER party (the one who didn't cancel)
-    const coachRow2 = db.prepare(
-      'SELECT c.user_id, c.display_name FROM coaches c WHERE c.id = ?'
-    ).get(b.coach_id);
-    const memberRow2 = db.prepare('SELECT name FROM users WHERE id = ?').get(b.member_id);
-
-    if (coachRow2 && memberRow2) {
-      const startFmt2 = fmtDateForLine(b.start_at);
-      const isCoachCancel = actorUserId === coachRow2.user_id;
+    const memberRow = getUserNameStmt.get(b.member_id);
+    if (coach && memberRow) {
+      const startFmt = fmtDateForLine(b.start_at);
+      const isCoachCancel = actorUserId === coach.user_id;
       if (isCoachCancel) {
         notify({
           userId: b.member_id,
           sessionId: null,
           type: 'booking_cancelled_by_coach',
-          vars: { coach_display_name: coachRow2.display_name, start_at: startFmt2 },
+          vars: { coach_display_name: coach.display_name, start_at: startFmt },
         });
       } else {
         notify({
-          userId: coachRow2.user_id,
+          userId: coach.user_id,
           sessionId: null,
           type: 'booking_cancelled_by_member',
-          vars: { member_name: memberRow2.name, start_at: startFmt2 },
+          vars: { member_name: memberRow.name, start_at: startFmt },
         });
       }
     }
