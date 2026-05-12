@@ -49,6 +49,7 @@ import {
   adminGrant as svcAdminGrant,
   listTransactionsForAdmin as svcListTx,
 } from './services/pointService.js';
+import { listMySchedule as svcListMySchedule } from './services/myScheduleService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -657,6 +658,11 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
 
 app.get('/api/my/bookings', requireUser, asyncHandler((req, res) => {
   res.json(svcListMemberBookings(req.user.id));
+}));
+
+app.get('/api/my/schedule', requireUser, asyncHandler((req, res) => {
+  const items = svcListMySchedule({ userId: req.user.id });
+  res.json({ items });
 }));
 
 app.get('/api/admin/notifications', requireAdmin, asyncHandler((req, res) => {
