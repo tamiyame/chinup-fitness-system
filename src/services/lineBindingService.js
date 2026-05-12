@@ -39,10 +39,17 @@ function randomSixDigit() {
 export function generateBindCode(userId) {
   return tx(() => {
     let code;
+    let found = false;
     for (let attempt = 0; attempt < CODE_GEN_RETRY; attempt++) {
       code = randomSixDigit();
       const dup = getByCode.get(code);
-      if (!dup) break;
+      if (!dup) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw new Error('bind code generation exhausted retries; another user holds every candidate');
     }
     const expiresAt = offsetLocal(BIND_TTL_MINUTES * 60 * 1000);
     updateBindCode.run(code, expiresAt, userId);
