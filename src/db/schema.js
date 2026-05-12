@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS users (
   google_id TEXT,
   role TEXT NOT NULL DEFAULT 'user',
   notification_preference TEXT NOT NULL DEFAULT 'email',
+  line_user_id TEXT,
+  line_bind_code TEXT,
+  line_bind_expires_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -86,6 +89,9 @@ CREATE TABLE IF NOT EXISTS notifications (
   subject TEXT,
   body TEXT,
   status TEXT NOT NULL DEFAULT 'sent',
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  next_retry_at TEXT,
+  last_error TEXT,
   sent_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -187,4 +193,12 @@ FROM users u
 LEFT JOIN point_transactions pt ON pt.member_id = u.id
 WHERE u.role = 'user'
 GROUP BY u.id;
+`;
+
+export const PHASE_3C_INDEXES = `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_line_user_id
+  ON users(line_user_id) WHERE line_user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_notifications_retry
+  ON notifications(status, next_retry_at) WHERE status = 'failed';
 `;
