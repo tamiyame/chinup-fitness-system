@@ -685,10 +685,12 @@ app.get('/api/my/schedule', requireUser, asyncHandler((req, res) => {
 
 // ─── Phase 3C · LINE notification endpoints ───
 
+const getLineBindingState = db.prepare(
+  'SELECT line_user_id, line_bind_code, line_bind_expires_at FROM users WHERE id = ?'
+);
+
 app.get('/api/my/line/binding', requireUser, asyncHandler((req, res) => {
-  const user = db.prepare(
-    'SELECT line_user_id, line_bind_code, line_bind_expires_at FROM users WHERE id = ?'
-  ).get(req.user.id);
+  const user = getLineBindingState.get(req.user.id);
 
   const officialAccountId = process.env.LINE_OFFICIAL_ACCOUNT_ID || null;
 
