@@ -204,7 +204,7 @@ function cardMobile(s, my, state) {
     'mine-confirmed':   { cls: 'badge-confirmed',  label: '已報名' },
     'mine-waitlisted':  { cls: 'badge-waitlisted', label: '候補' },
   };
-  const badge = badgeMap[state];
+  const badge = badgeMap[state] ?? { cls: 'badge-open', label: state };
   const badgeHtml = `<span class="badge ${badge.cls}">${badge.label}</span>`;
 
   // Bar fill class + width (pct already caps at 100 via Math.min above)
