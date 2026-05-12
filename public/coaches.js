@@ -156,7 +156,7 @@ $('confirm-btn').addEventListener('click', async () => {
     });
     toast('預約成功！', 'success');
     await refreshAuthBar();
-    setTimeout(() => location.href = '/my-bookings.html', 700);
+    setTimeout(() => location.href = '/my-schedule', 700);
   } catch (e) {
     if (e.data?.error === 'slot_taken') {
       toast('此時段剛被預約走了', 'error');

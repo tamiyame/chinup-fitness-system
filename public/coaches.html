@@ -15,8 +15,31 @@
 <body>
 <nav class="navbar sticky top-0 z-20">
   <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-    <a href="/" class="brand-mark"><span class="brand-dot"><img src="/logo.png" alt="logo"></span> CHINUP Performance</a>
-    <div id="auth-bar" class="flex items-center gap-3"></div>
+    <div class="flex items-center gap-8">
+      <a href="/" class="brand-mark">
+        <span class="brand-dot"><img src="/logo.png" alt="logo"></span> CHINUP Performance
+      </a>
+      <div class="hidden md:flex items-center gap-6">
+        <a href="/" class="nav-link">課程</a>
+        <a href="/coaches.html" class="nav-link active">一對一預約</a>
+        <a href="/my-schedule" class="nav-link">我的課表</a>
+        <a href="/admin.html" class="nav-link">管理後台</a>
+        <a href="/coach.html" class="nav-link coach-only hidden">教練後台</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <div id="auth-bar" class="flex items-center gap-3"></div>
+      <button id="nav-toggle" class="md:hidden nav-toggle-btn" aria-label="選單" aria-expanded="false">☰</button>
+    </div>
+  </div>
+  <div id="nav-mobile" class="hidden md:hidden">
+    <div class="max-w-6xl mx-auto px-6 py-2 flex flex-col">
+      <a href="/" class="nav-link-mobile">課程</a>
+      <a href="/coaches.html" class="nav-link-mobile active">一對一預約</a>
+      <a href="/my-schedule" class="nav-link-mobile">我的課表</a>
+      <a href="/admin.html" class="nav-link-mobile">管理後台</a>
+      <a href="/coach.html" class="nav-link-mobile coach-only hidden">教練後台</a>
+    </div>
   </div>
 </nav>
 

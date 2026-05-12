@@ -49,12 +49,21 @@ import {
   adminGrant as svcAdminGrant,
   listTransactionsForAdmin as svcListTx,
 } from './services/pointService.js';
+import { listMySchedule as svcListMySchedule } from './services/myScheduleService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '3mb' }));
+
+// Phase 3A · /my-schedule unification: redirect legacy URLs + serve canonical path
+app.get('/my.html', (req, res) => res.redirect(301, '/my-schedule'));
+app.get('/my-bookings.html', (req, res) => res.redirect(301, '/my-schedule'));
+app.get('/my-schedule', (req, res) =>
+  res.sendFile(resolve(__dirname, '../public/my-schedule.html'))
+);
+
 app.use(express.static(resolve(__dirname, '../public')));
 app.use('/avatars', express.static(resolve(__dirname, '../data/avatars'), { maxAge: '7d' }));
 
@@ -657,6 +666,11 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
 
 app.get('/api/my/bookings', requireUser, asyncHandler((req, res) => {
   res.json(svcListMemberBookings(req.user.id));
+}));
+
+app.get('/api/my/schedule', requireUser, asyncHandler((req, res) => {
+  const items = svcListMySchedule({ userId: req.user.id });
+  res.json({ items });
 }));
 
 app.get('/api/admin/notifications', requireAdmin, asyncHandler((req, res) => {
