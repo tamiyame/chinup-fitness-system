@@ -52,9 +52,30 @@ const t3 = createTemplate({
   registration_deadline_hours: 24,
 });
 
+// Phase 2: seed initial points for demo members. Must run BEFORE the demo booking
+// and BEFORE group registrations, otherwise register() throws insufficient_points.
+const ownerForSeed = db.prepare("SELECT id FROM users WHERE role IN ('owner', 'admin') ORDER BY role='owner' DESC LIMIT 1").get();
+if (ownerForSeed) {
+  const demoMembers = db.prepare("SELECT id FROM users WHERE role = 'user' AND email LIKE 'user%@chinup.local' ORDER BY id").all();
+  let granted = 0;
+  for (const m of demoMembers) {
+    const exists = db.prepare("SELECT 1 FROM point_transactions WHERE member_id = ? AND note = 'seed-demo points'").get(m.id);
+    if (!exists) {
+      adminGrant({ memberId: m.id, pool: 'one_on_one', amount: 5, note: 'seed-demo points', adminId: ownerForSeed.id });
+      adminGrant({ memberId: m.id, pool: 'group', amount: 10, note: 'seed-demo points', adminId: ownerForSeed.id });
+      granted++;
+    }
+  }
+  console.log(`[seed] granted points to ${granted} demo members (${demoMembers.length - granted} already seeded)`);
+}
+
 // 為第一個場次製造滿員 + 候補
 function firstSessionId(tplId) {
-  return db.prepare('SELECT id FROM course_sessions WHERE template_id = ? ORDER BY start_at ASC LIMIT 1').get(tplId).id;
+  return db.prepare(`
+    SELECT id FROM course_sessions
+    WHERE template_id = ? AND registration_deadline > datetime('now')
+    ORDER BY start_at ASC LIMIT 1
+  `).get(tplId).id;
 }
 
 const s1 = firstSessionId(t1.templateId);   // 週三 TRX 5月場
@@ -127,24 +148,7 @@ if (db.prepare('SELECT COUNT(*) AS c FROM coach_availability_rules WHERE coach_i
   console.log(`[seed] coach #${coach.id} rules + exception ready`);
 }
 
-// Phase 2: seed initial points for demo members. Must run BEFORE the demo booking
-// below, otherwise createBooking will silently fail (insufficient_points).
-const ownerForSeed = db.prepare("SELECT id FROM users WHERE role IN ('owner', 'admin') ORDER BY role='owner' DESC LIMIT 1").get();
-if (ownerForSeed) {
-  const demoMembers = db.prepare("SELECT id FROM users WHERE role = 'user' AND email LIKE 'user%@chinup.local' ORDER BY id").all();
-  let granted = 0;
-  for (const m of demoMembers) {
-    const exists = db.prepare("SELECT 1 FROM point_transactions WHERE member_id = ? AND note = 'seed-demo points'").get(m.id);
-    if (!exists) {
-      adminGrant({ memberId: m.id, pool: 'one_on_one', amount: 5, note: 'seed-demo points', adminId: ownerForSeed.id });
-      adminGrant({ memberId: m.id, pool: 'group', amount: 10, note: 'seed-demo points', adminId: ownerForSeed.id });
-      granted++;
-    }
-  }
-  console.log(`[seed] granted points to ${granted} demo members (${demoMembers.length - granted} already seeded)`);
-}
-
-// One demo booking 2 weeks out on a Wednesday at 10:00 (now after points are seeded)
+// One demo booking 2 weeks out on a Wednesday at 10:00 (points already seeded above)
 const coachForBooking = db.prepare("SELECT id FROM coaches WHERE display_name = '王教練'").get();
 if (coachForBooking) {
   const today = new Date();
