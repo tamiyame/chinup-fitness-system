@@ -50,6 +50,25 @@ export function pruneOldBackups(dir = DEFAULT_DIR, keep = KEEP) {
   }
 }
 
-// Placeholders for Tasks 3+5 — keep exports importable now to avoid breaking test imports
-export function listBackups(dir = DEFAULT_DIR) { throw new Error('not implemented'); }
-export function safeBackupPath(file, dir = DEFAULT_DIR) { throw new Error('not implemented'); }
+export function listBackups(dir = DEFAULT_DIR) {
+  if (!existsSync(dir)) return { files: [], lastError: null };
+  const files = readdirSync(dir)
+    .filter((f) => FILE_RE.test(f))
+    .map((f) => {
+      const s = statSync(resolve(dir, f));
+      return { file: f, createdAt: s.mtime.toISOString(), size: s.size };
+    })
+    .sort((a, b) => b.file.localeCompare(a.file));
+  const errorFile = resolve(dir, LAST_ERROR_NAME);
+  const lastError = existsSync(errorFile) ? readFileSync(errorFile, 'utf8').trim() : null;
+  return { files, lastError };
+}
+
+export function safeBackupPath(file, dir = DEFAULT_DIR) {
+  if (typeof file !== 'string') return null;
+  if (!FILE_RE.test(file)) return null;
+  const full = resolve(dir, file);
+  if (dirname(full) !== resolve(dir)) return null;
+  if (!existsSync(full)) return null;
+  return full;
+}
