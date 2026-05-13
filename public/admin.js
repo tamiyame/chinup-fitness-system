@@ -91,6 +91,88 @@ async function loadNotifs() {
   }
 }
 
+function fmtSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function downloadBackup(file) {
+  try {
+    const { getToken } = await import('/app.js');
+    const res = await fetch(`/api/admin/backups/${encodeURIComponent(file)}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast(`下載失敗：${e.message}`, 'error');
+  }
+}
+
+async function loadBackups() {
+  const tbody = document.getElementById('backup-list');
+  const errBox = document.getElementById('backup-last-error');
+  try {
+    const r = await api('/api/admin/backups');
+    if (r.lastError) {
+      errBox.textContent = `上次備份失敗：${r.lastError}`;
+      errBox.classList.remove('hidden');
+    } else {
+      errBox.classList.add('hidden');
+      errBox.textContent = '';
+    }
+    if (!r.files.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-gray-400">尚無備份</td></tr>';
+      return;
+    }
+    tbody.innerHTML = r.files.map((f) => `
+      <tr class="border-b">
+        <td class="py-2 font-mono text-xs">${f.file}</td>
+        <td class="py-2">${fmtDate(f.createdAt)}</td>
+        <td class="py-2 text-right">${fmtSize(f.size)}</td>
+        <td class="py-2 text-right"><button class="link" data-dl="${f.file}">下載</button></td>
+      </tr>
+    `).join('');
+    tbody.querySelectorAll('[data-dl]').forEach((btn) => {
+      btn.addEventListener('click', () => downloadBackup(btn.dataset.dl));
+    });
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-red-600">載入失敗：${e.message}</td></tr>`;
+  }
+}
+
+function bindBackupButton() {
+  const btn = document.getElementById('btn-backup-now');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = '備份中…';
+    try {
+      const r = await api('/api/admin/backups/run', { method: 'POST' });
+      if (r.ok) {
+        toast(`備份完成：${r.file}`, 'success');
+        loadBackups();
+      } else {
+        toast(`備份失敗：${r.error}`, 'error');
+      }
+    } catch (e) {
+      toast(`備份失敗：${e.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '立即備份';
+    }
+  });
+}
+
 function typeBadge(t) {
   if (t === 'course_confirmed' || t === 'registered_confirmed' || t === 'promoted') return 'confirmed';
   if (t === 'registered_waitlisted') return 'waitlisted';
@@ -517,6 +599,8 @@ loadTemplates();
 loadUsers();
 loadNotifs();
 loadCoachMgmt();
+loadBackups();
+bindBackupButton();
 
 function openGrantModal(userId, userName) {
   const dlg = document.getElementById('grant-modal');

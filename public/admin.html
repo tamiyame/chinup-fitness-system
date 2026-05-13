@@ -170,6 +170,31 @@
       <div id="notifs" class="max-h-96 overflow-auto"></div>
     </div>
   </section>
+
+  <!-- backup -->
+  <section class="card mt-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-bold">資料備份</h2>
+      <button id="btn-backup-now" class="btn">立即備份</button>
+    </div>
+    <div id="backup-last-error" class="hidden mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2"></div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left border-b">
+            <th class="py-2">檔名</th>
+            <th class="py-2">建立時間</th>
+            <th class="py-2 text-right">大小</th>
+            <th class="py-2 text-right"></th>
+          </tr>
+        </thead>
+        <tbody id="backup-list">
+          <tr><td colspan="4" class="py-4 text-center text-gray-400">載入中…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-3 text-xs text-gray-500">每週日 03:00 自動備份；保留最近 8 份。建議每週一上班時下載最新一份到本機保管。</p>
+  </section>
 </main>
 
 <!-- Modal -->
