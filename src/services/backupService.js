@@ -17,16 +17,28 @@ function tsForFile(d = new Date()) {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
-export function runBackup(dir = DEFAULT_DIR) {
-  mkdirSync(dir, { recursive: true });
-  const file = `app-${tsForFile()}.db`;
-  const fullPath = resolve(dir, file);
-  const sqlPath = fullPath.replace(/'/g, "''");
-  db.exec(`VACUUM INTO '${sqlPath}'`);
+export function runBackup(dir = DEFAULT_DIR, tsFn = tsForFile) {
   const errorFile = resolve(dir, LAST_ERROR_NAME);
-  if (existsSync(errorFile)) unlinkSync(errorFile);
-  pruneOldBackups(dir, KEEP);
-  return { ok: true, file, size: statSync(fullPath).size };
+  let file, fullPath;
+  try {
+    mkdirSync(dir, { recursive: true });
+    file = `app-${tsFn()}.db`;
+    fullPath = resolve(dir, file);
+    const sqlPath = fullPath.replace(/'/g, "''");
+    db.exec(`VACUUM INTO '${sqlPath}'`);
+    if (existsSync(errorFile)) unlinkSync(errorFile);
+    pruneOldBackups(dir, KEEP);
+    return { ok: true, file, size: statSync(fullPath).size };
+  } catch (e) {
+    const msg = `[${new Date().toISOString()}] ${e.message}\n`;
+    try {
+      if (existsSync(dir)) writeFileSync(errorFile, msg);
+    } catch (writeErr) {
+      // If we can't even write the error file (e.g., dir is a file), there's nothing more to do.
+    }
+    console.error('[backup] failed:', e.message);
+    return { ok: false, error: e.message };
+  }
 }
 
 export function pruneOldBackups(dir = DEFAULT_DIR, keep = KEEP) {
