@@ -118,6 +118,30 @@ async function downloadBackup(file) {
   }
 }
 
+async function loadBackupSummary() {
+  const el = document.getElementById('backup-summary');
+  const errEl = document.getElementById('backup-summary-error');
+  if (!el) return;
+  try {
+    const r = await api('/api/admin/backups');
+    if (r.lastError) {
+      errEl.textContent = `上次備份失敗：${r.lastError}`;
+      errEl.classList.remove('hidden');
+    } else {
+      errEl.classList.add('hidden');
+      errEl.textContent = '';
+    }
+    if (!r.files.length) {
+      el.innerHTML = '資料備份：<span class="text-gray-500">尚無備份</span>';
+    } else {
+      const latest = r.files[0];
+      el.innerHTML = `上次備份 <span class="font-medium">${fmtDate(latest.createdAt)}</span> · 共 ${r.files.length} 份`;
+    }
+  } catch (e) {
+    el.textContent = `資料備份：載入失敗（${e.message}）`;
+  }
+}
+
 async function loadBackups() {
   const tbody = document.getElementById('backup-list');
   const errBox = document.getElementById('backup-last-error');
@@ -150,7 +174,14 @@ async function loadBackups() {
   }
 }
 
-function bindBackupButton() {
+function bindBackupHandlers() {
+  const dlg = document.getElementById('backup-modal');
+  document.getElementById('btn-backup-manage')?.addEventListener('click', () => {
+    loadBackups();
+    dlg?.showModal();
+  });
+  document.getElementById('backup-close')?.addEventListener('click', () => dlg?.close());
+
   const btn = document.getElementById('btn-backup-now');
   if (!btn) return;
   btn.addEventListener('click', async () => {
@@ -161,6 +192,7 @@ function bindBackupButton() {
       if (r.ok) {
         toast(`備份完成：${r.file}`, 'success');
         loadBackups();
+        loadBackupSummary();
       } else {
         toast(`備份失敗：${r.error}`, 'error');
       }
@@ -599,8 +631,8 @@ loadTemplates();
 loadUsers();
 loadNotifs();
 loadCoachMgmt();
-loadBackups();
-bindBackupButton();
+loadBackupSummary();
+bindBackupHandlers();
 
 function openGrantModal(userId, userName) {
   const dlg = document.getElementById('grant-modal');
