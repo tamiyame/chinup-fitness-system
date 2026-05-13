@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, basename } from 'node:path';
 import { db, tx } from './db/connection.js';
 import {
   createTemplate, editTemplate, listTemplates, getTemplate,
@@ -50,6 +50,8 @@ import {
   listTransactionsForAdmin as svcListTx,
 } from './services/pointService.js';
 import { listMySchedule as svcListMySchedule } from './services/myScheduleService.js';
+import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
+import { createReadStream } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -689,6 +691,23 @@ app.post('/api/admin/jobs/process-deadlines', requireAdmin, asyncHandler((req, r
 
 app.post('/api/admin/jobs/send-reminders', requireAdmin, asyncHandler((req, res) => {
   res.json({ sent: processReminders() });
+}));
+
+app.get('/api/admin/backups', requireAdmin, asyncHandler((req, res) => {
+  res.json(listBackups());
+}));
+
+app.post('/api/admin/backups/run', requireAdmin, asyncHandler((req, res) => {
+  const r = runBackup();
+  res.status(r.ok ? 200 : 500).json(r);
+}));
+
+app.get('/api/admin/backups/:file', requireAdmin, asyncHandler((req, res) => {
+  const full = safeBackupPath(req.params.file);
+  if (!full) return res.status(404).json({ error: 'not_found' });
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${basename(full)}"`);
+  createReadStream(full).pipe(res);
 }));
 
 const PORT = Number(process.env.PORT || 3000);
