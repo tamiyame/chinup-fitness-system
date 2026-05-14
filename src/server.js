@@ -59,11 +59,17 @@ import {
 } from './services/lineBindingService.js';
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
+import { createRateLimiter } from './middleware/rateLimit.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+// Railway / 任何 reverse proxy 後面要設 trust proxy 才能從 X-Forwarded-For 取真 client IP（rate limiter 需要）
+app.set('trust proxy', 1);
 app.use(cors());
+
+const loginLimiter = createRateLimiter({ name: 'login', windowMs: 15 * 60_000, max: 10 });
+const registerLimiter = createRateLimiter({ name: 'register', windowMs: 60 * 60_000, max: 5 });
 app.use(express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; },
@@ -141,14 +147,14 @@ function handleError(e, res) {
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 // --- Auth ---
-app.post('/api/auth/login', asyncHandler((req, res) => {
+app.post('/api/auth/login', loginLimiter, asyncHandler((req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'missing_credentials' });
   const result = authLogin({ email, password });
   res.json(result);
 }));
 
-app.post('/api/auth/register', asyncHandler((req, res) => {
+app.post('/api/auth/register', registerLimiter, asyncHandler((req, res) => {
   const result = registerWithPassword(req.body || {});
   res.status(201).json(result);
 }));
