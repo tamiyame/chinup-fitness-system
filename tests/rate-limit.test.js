@@ -22,25 +22,25 @@ console.log('[rate-limit test] start');
 const LOGIN_IP = '10.99.0.1';
 const REGISTER_IP = '10.99.0.2';
 
-console.log('[1] login: 10 attempts allowed within 15-min window, 11th rate-limited');
+console.log('[1] login: 30 attempts allowed within 15-min window, 31st rate-limited');
 {
   let last;
-  for (let i = 1; i <= 10; i++) {
+  for (let i = 1; i <= 30; i++) {
     last = await req('POST', '/api/auth/login', {
       body: { email: 'nobody@example.com', password: 'wrong' },
       headers: { 'X-Forwarded-For': LOGIN_IP },
     });
   }
-  expect('attempt #10 is 401 (still allowed, wrong creds)', () => assert.equal(last.status, 401));
+  expect('attempt #30 is 401 (still allowed, wrong creds)', () => assert.equal(last.status, 401));
 
-  const eleventh = await req('POST', '/api/auth/login', {
+  const overLimit = await req('POST', '/api/auth/login', {
     body: { email: 'nobody@example.com', password: 'wrong' },
     headers: { 'X-Forwarded-For': LOGIN_IP },
   });
-  expect('attempt #11 is 429', () => assert.equal(eleventh.status, 429));
-  expect('429 body has rate_limited error', () => assert.equal(eleventh.data.error, 'rate_limited'));
-  expect('429 body has retry_after_seconds', () => assert.ok(typeof eleventh.data.retry_after_seconds === 'number' && eleventh.data.retry_after_seconds > 0));
-  expect('Retry-After header set', () => assert.ok(eleventh.headers.get('Retry-After')));
+  expect('attempt #31 is 429', () => assert.equal(overLimit.status, 429));
+  expect('429 body has rate_limited error', () => assert.equal(overLimit.data.error, 'rate_limited'));
+  expect('429 body has retry_after_seconds', () => assert.ok(typeof overLimit.data.retry_after_seconds === 'number' && overLimit.data.retry_after_seconds > 0));
+  expect('Retry-After header set', () => assert.ok(overLimit.headers.get('Retry-After')));
 }
 
 console.log('[2] register: 5 attempts allowed within 1-hr window, 6th rate-limited');
