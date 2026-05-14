@@ -1,4 +1,4 @@
-import { api, toast, fmtDate, dow, bootAuth } from '/app.js';
+import { api, toast, fmtDate, dow, bootAuth, escapeHtml } from '/app.js';
 
 const user = await bootAuth({ requireAdmin: true });
 // If bootAuth redirected, halt module execution so no admin content renders.
@@ -524,11 +524,6 @@ async function loadCategories() {
   } catch (e) {
     el.innerHTML = `<div class="p-6 text-red-500">${e.message}</div>`;
   }
-}
-
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 async function newCategory() {
