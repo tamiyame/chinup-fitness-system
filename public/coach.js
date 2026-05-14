@@ -1,4 +1,4 @@
-import { api, fmtDate, dow, toast, getUser } from './app.js';
+import { api, fmtDate, dow, toast, getUser, escapeHtml } from './app.js';
 
 const $ = (id) => document.getElementById(id);
 const DOW_LABELS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
@@ -240,7 +240,6 @@ async function renderProfile() {
   });
 }
 
-function escapeHtml(s) { if (s==null) return ''; return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function escapeAttr(s) { return escapeHtml(s); }
 
 await init();

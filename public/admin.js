@@ -44,10 +44,10 @@ async function loadTemplates() {
         <div class="flex items-start justify-between gap-4 flex-wrap">
           <div class="flex-1 min-w-[260px]">
             <div class="flex items-center gap-2 mb-1">
-              <h3 class="card-title">${t.name}</h3>
-              <span class="badge badge-${t.status === 'published' ? 'confirmed' : 'completed'}">${t.status === 'published' ? '已發布' : t.status}</span>
+              <h3 class="card-title">${escapeHtml(t.name)}</h3>
+              <span class="badge badge-${t.status === 'published' ? 'confirmed' : 'completed'}">${t.status === 'published' ? '已發布' : escapeHtml(t.status)}</span>
             </div>
-            <p class="card-desc">${t.description || ''}</p>
+            <p class="card-desc">${escapeHtml(t.description || '')}</p>
             <div class="meta">
               <span class="meta-item">📅 ${dow(t.day_of_week)} ${t.start_time}</span>
               <span class="meta-item">⏱ ${t.duration_minutes} 分</span>
@@ -81,13 +81,13 @@ async function loadNotifs() {
       rows.map(r => `
         <tr>
           <td class="subtle">${fmtDate(r.sent_at)}</td>
-          <td>${r.email}</td>
+          <td>${escapeHtml(r.email)}</td>
           <td><span class="badge badge-${typeBadge(r.type)}">${typeLabel(r.type)}</span></td>
-          <td>${r.channel}</td>
-          <td>${r.subject}</td>
+          <td>${escapeHtml(r.channel)}</td>
+          <td>${escapeHtml(r.subject)}</td>
         </tr>`).join('') + '</tbody></table>';
   } catch (e) {
-    document.getElementById('notifs').innerHTML = `<div class="p-6 text-red-500">${e.message}</div>`;
+    document.getElementById('notifs').innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -170,7 +170,7 @@ async function loadBackups() {
       btn.addEventListener('click', () => downloadBackup(btn.dataset.dl));
     });
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-red-600">載入失敗：${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-red-600">載入失敗：${escapeHtml(e.message)}</td></tr>`;
   }
 }
 
@@ -346,8 +346,8 @@ async function openDrawer(templateId) {
         inner.innerHTML = list.map(r => `
           <div class="reg-row">
             <div>
-              <div class="font-medium">${r.user_name}</div>
-              <div class="subtle text-xs">${r.email}</div>
+              <div class="font-medium">${escapeHtml(r.user_name)}</div>
+              <div class="subtle text-xs">${escapeHtml(r.email)}</div>
             </div>
             <div class="flex items-center gap-2">
               <span class="badge badge-${r.status}">${REG_STATUS_LABEL[r.status]}</span>
@@ -358,7 +358,7 @@ async function openDrawer(templateId) {
       });
     });
   } catch (e) {
-    c.innerHTML = `<div class="text-red-500">${e.message}</div>`;
+    c.innerHTML = `<div class="text-red-500">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -419,7 +419,7 @@ async function loadUsers() {
           const newRole = sel.value;
           try {
             await api(`/api/admin/users/${id}/role`, { method: 'PATCH', body: { role: newRole } });
-            toast(`已更新：${sel.dataset.name} → ${ROLE_LABEL[newRole]}`, 'success');
+            toast(`已更新：${escapeHtml(sel.dataset.name)} → ${ROLE_LABEL[newRole]}`, 'success');
             loadUsers();
           } catch (err) {
             const msgs = {
@@ -440,7 +440,7 @@ async function loadUsers() {
       btn.addEventListener('click', () => openHistoryModal(Number(btn.dataset.id), btn.dataset.name));
     });
   } catch (e) {
-    el.innerHTML = `<div class="p-6 text-red-500">${e.message}</div>`;
+    el.innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -452,25 +452,25 @@ function renderUserRow(r, canEdit) {
 
   // Edit controls: owner can change others' roles, but not own
   const roleCell = canEdit && !isSelf
-    ? `<select class="role-select form-select" style="padding:4px 8px;font-size:13px;" data-id="${r.id}" data-name="${r.name}" data-original="${r.role}">
+    ? `<select class="role-select form-select" style="padding:4px 8px;font-size:13px;" data-id="${r.id}" data-name="${escapeHtml(r.name)}" data-original="${r.role}">
          <option value="user" ${r.role==='user'?'selected':''}>會員</option>
          <option value="admin" ${r.role==='admin'?'selected':''}>管理者</option>
          <option value="owner" ${r.role==='owner'?'selected':''}>擁有者</option>
        </select>`
-    : `<span class="badge badge-${ROLE_BADGE[r.role] || 'open'}">${ROLE_LABEL[r.role] || r.role}</span>${isSelf ? ' <span class="subtle text-xs">(你)</span>' : ''}`;
+    : `<span class="badge badge-${ROLE_BADGE[r.role] || 'open'}">${ROLE_LABEL[r.role] || escapeHtml(r.role)}</span>${isSelf ? ' <span class="subtle text-xs">(你)</span>' : ''}`;
 
   return `
     <tr>
       <td class="subtle">#${r.id}</td>
-      <td><span class="font-medium">${r.name}</span></td>
-      <td class="subtle">${r.email}</td>
+      <td><span class="font-medium">${escapeHtml(r.name)}</span></td>
+      <td class="subtle">${escapeHtml(r.email)}</td>
       <td>${loginBadge}</td>
       <td>${roleCell}</td>
       <td>${r.one_on_one_balance ?? 0}</td>
       <td>${r.group_balance ?? 0}</td>
       <td>
-        <button class="btn btn-ghost btn-sm grant-btn" data-id="${r.id}" data-name="${r.name}">加點</button>
-        <button class="btn btn-ghost btn-sm history-btn" data-id="${r.id}" data-name="${r.name}">歷史</button>
+        <button class="btn btn-ghost btn-sm grant-btn" data-id="${r.id}" data-name="${escapeHtml(r.name)}">加點</button>
+        <button class="btn btn-ghost btn-sm history-btn" data-id="${r.id}" data-name="${escapeHtml(r.name)}">歷史</button>
       </td>
       <td class="subtle">${fmtDate(r.created_at)}</td>
     </tr>`;
@@ -522,7 +522,7 @@ async function loadCategories() {
     el.querySelectorAll('.cat-edit').forEach(b => b.addEventListener('click', () => editCategory(Number(b.dataset.id))));
     el.querySelectorAll('.cat-del').forEach(b => b.addEventListener('click', () => deleteCategory(Number(b.dataset.id))));
   } catch (e) {
-    el.innerHTML = `<div class="p-6 text-red-500">${e.message}</div>`;
+    el.innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -584,8 +584,8 @@ async function loadCoachMgmt() {
     row.className = 'card flex items-center justify-between gap-3 mb-2';
     row.innerHTML = `
       <div>
-        <div class="font-semibold">${c.display_name} <span class="text-xs ${c.is_active ? 'text-green-600' : 'text-amber-600'}">${c.is_active ? '啟用中' : '待啟用'}</span></div>
-        <div class="text-xs text-slate-500">${c.user_email} · ${c.specialty || ''}</div>
+        <div class="font-semibold">${escapeHtml(c.display_name)} <span class="text-xs ${c.is_active ? 'text-green-600' : 'text-amber-600'}">${c.is_active ? '啟用中' : '待啟用'}</span></div>
+        <div class="text-xs text-slate-500">${escapeHtml(c.user_email)} · ${escapeHtml(c.specialty || '')}</div>
       </div>
       <div class="flex gap-2">
         <button data-id="${c.id}" data-active="${c.is_active}" class="btn btn-ghost btn-sm toggle-active">${c.is_active ? '停用' : '啟用'}</button>
@@ -607,7 +607,7 @@ async function loadCoachMgmt() {
   const sel = document.getElementById('user-to-promote');
   sel.innerHTML = users
     .filter(u => u.role === 'user')
-    .map(u => `<option value="${u.id}">${u.name}（${u.email}）</option>`)
+    .map(u => `<option value="${u.id}">${escapeHtml(u.name)}（${escapeHtml(u.email)}）</option>`)
     .join('');
 }
 
@@ -707,6 +707,6 @@ async function loadHistory(userId, pool) {
       </div>`;
     }).join('');
   } catch (err) {
-    list.innerHTML = `<div style="color:red;">載入失敗：${err.message}</div>`;
+    list.innerHTML = `<div style="color:red;">載入失敗：${escapeHtml(err.message)}</div>`;
   }
 }

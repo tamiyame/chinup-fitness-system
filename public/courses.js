@@ -1,4 +1,4 @@
-import { api, toast, fmtDate, bootAuth, getUser, refreshAuthBar } from '/app.js';
+import { api, toast, fmtDate, bootAuth, getUser, refreshAuthBar, escapeHtml } from '/app.js';
 
 const user = await bootAuth();
 if (!user) throw new Error('__redirected_by_auth__');
@@ -94,8 +94,8 @@ function renderCourseGroup(group, mySet) {
     <summary>
       <div class="day-chip">${group.sessions.length}<span class="day-chip-unit">場</span></div>
       <div class="day-title">
-        <h3>${group.name} ${hotBadge}</h3>
-        <p>${group.description || ''}</p>
+        <h3>${escapeHtml(group.name)} ${hotBadge}</h3>
+        <p>${escapeHtml(group.description || '')}</p>
         <p class="course-meta hidden md:block">🗓 下次 ${nextLabel}・⏱ ${group.duration_minutes} 分鐘・👥 ${group.min_capacity}–${group.max_capacity} 人</p>
         <p class="course-meta md:hidden">🗓 下次 ${nextLabel}・⏱ ${group.duration_minutes} 分鐘</p>
       </div>
@@ -161,8 +161,8 @@ function cardDesktop(s, my) {
       <div class="flex-1">
         <div class="flex items-start justify-between gap-3">
           <div>
-            <h3 class="card-title">${s.name}</h3>
-            <p class="card-desc">${s.description || ''}</p>
+            <h3 class="card-title">${escapeHtml(s.name)}</h3>
+            <p class="card-desc">${escapeHtml(s.description || '')}</p>
           </div>
           ${statusChip}
         </div>
