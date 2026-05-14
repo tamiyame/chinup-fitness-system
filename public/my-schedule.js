@@ -1,4 +1,4 @@
-import { api, fmtDate, toast, bootAuth } from './app.js';
+import { api, fmtDate, toast, bootAuth, escapeHtml } from './app.js';
 
 const user = await bootAuth();
 if (!user) throw new Error('__redirected_by_auth__');
@@ -11,11 +11,6 @@ const state = {
 
 const LABEL_BOOKING_STATUS = { confirmed: '已預約', cancelled: '已取消' };
 const LABEL_REG_STATUS = { confirmed: '正取', waitlisted: '候補', cancelled: '已取消', rejected: '未開課' };
-
-function escapeHtml(s) {
-  if (s == null) return '';
-  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
 
 function dateBlock(start_at) {
   const dt = new Date(start_at);
