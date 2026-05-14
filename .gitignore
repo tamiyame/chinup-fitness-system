@@ -12,3 +12,4 @@ data/tpl*.json
 Thumbs.db
 data/avatars/
 public/line-qr.png
+data/backups/

@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { processDeadlines, processReminders } from './services/courseService.js';
 import { processFailedNotifications } from './services/notifications.js';
+import { runBackup } from './services/backupService.js';
 
 export function startScheduler() {
   // 每小時整點跑截止判定
@@ -23,6 +24,7 @@ export function startScheduler() {
     }
   });
 
+  // 每 5 分鐘重試失敗的 LINE 通知
   cron.schedule('*/5 * * * *', async () => {
     try {
       await processFailedNotifications();
@@ -30,6 +32,17 @@ export function startScheduler() {
       console.error('[cron] processFailedNotifications failed:', e);
     }
   });
+
+  // 每週日 03:00 (Asia/Taipei) 跑 SQLite VACUUM INTO 快照
+  cron.schedule('0 3 * * 0', () => {
+    try {
+      const r = runBackup();
+      if (r.ok) console.log('[scheduler] backup ok:', r.file, r.size, 'bytes');
+      // 失敗時 backupService 內部已 console.error + 寫 .last-error.txt
+    } catch (e) {
+      console.error('[scheduler] backup throw:', e);
+    }
+  }, { timezone: 'Asia/Taipei' });
 
   console.log('[scheduler] cron jobs registered');
 }
