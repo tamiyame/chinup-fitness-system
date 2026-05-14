@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { processDeadlines, processReminders } from './services/courseService.js';
+import { processFailedNotifications } from './services/notifications.js';
 import { runBackup } from './services/backupService.js';
 
 export function startScheduler() {
@@ -20,6 +21,15 @@ export function startScheduler() {
       if (r.length) console.log('[scheduler] reminders sent:', r);
     } catch (e) {
       console.error('[scheduler] reminder error:', e);
+    }
+  });
+
+  // 每 5 分鐘重試失敗的 LINE 通知
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      await processFailedNotifications();
+    } catch (e) {
+      console.error('[cron] processFailedNotifications failed:', e);
     }
   });
 

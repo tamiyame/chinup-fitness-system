@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { mkdirSync } from 'node:fs';
-import { SCHEMA } from './schema.js';
+import { SCHEMA, PHASE_3C_INDEXES } from './schema.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH || resolve(__dirname, '../../data/app.db');
@@ -17,19 +17,32 @@ db.exec('PRAGMA foreign_keys = ON;');
 // Ensures services' top-level `db.prepare(...)` statements have tables available.
 db.exec(SCHEMA);
 
-// In-place migrations for schema evolution. Each step must be idempotent so
-// running against a fresh DB or an older DB both end in the same state.
-function columnExists(table, column) {
-  const rows = db.prepare(`PRAGMA table_info(${table})`).all();
-  return rows.some((r) => r.name === column);
+// Unified helper for idempotent column additions. Used for both legacy
+// migrations and Phase 3C column additions below.
+function addColumnIfMissing(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!cols.includes(column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
-if (!columnExists('users', 'google_id')) {
-  db.exec('ALTER TABLE users ADD COLUMN google_id TEXT');
-}
+// Legacy migration: google_id column added after initial schema was deployed.
+addColumnIfMissing('users', 'google_id', 'TEXT');
 db.exec(
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL'
 );
+
+// Phase 3C: idempotent column additions for existing DBs.
+// Fresh DBs already have these columns from the CREATE TABLE above,
+// so the PRAGMA check finds them and skips the ALTER.
+addColumnIfMissing('users', 'line_user_id', 'TEXT');
+addColumnIfMissing('users', 'line_bind_code', 'TEXT');
+addColumnIfMissing('users', 'line_bind_expires_at', 'TEXT');
+addColumnIfMissing('notifications', 'retry_count', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('notifications', 'next_retry_at', 'TEXT');
+addColumnIfMissing('notifications', 'last_error', 'TEXT');
+
+db.exec(PHASE_3C_INDEXES);
 
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get

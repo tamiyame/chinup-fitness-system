@@ -1,9 +1,20 @@
-import { db } from '../db/connection.js';
+// Phase 3C notifications dispatcher.
+// Single entry point notify({ userId, type, vars }) — internally picks
+// a delivery channel based on the user's binding state:
+//   user.line_user_id present → LINE Push (via lineClient.sendMessage)
+//   otherwise                  → console.log fallback (dev / unbound user)
+//
+// Failed LINE pushes are stored with status='failed' + a backoff schedule
+// and retried by processFailedNotifications() (called from scheduler cron).
+import { db, nowLocal, offsetLocal } from '../db/connection.js';
+import { sendMessage } from './lineClient.js';
 
-// Notification stub — real system would push to a queue for SMS/SMTP providers.
-// 這裡用 DB log + console 輸出模擬寄送，方便測試時檢視。
+// ─────────────────────────────────────────────────────────────────────
+// Templates
+// ─────────────────────────────────────────────────────────────────────
 
 const TEMPLATES = {
+  // === existing 7 (group class) ===
   registered_confirmed: {
     subject: '報名成功 - {{course_name}}',
     body: '您已成功報名 {{course_name}}（{{start_at}}），期待與您相見！',
@@ -32,30 +43,192 @@ const TEMPLATES = {
     subject: '報名已取消 - {{course_name}}',
     body: '您已成功取消 {{course_name}}（{{start_at}}）的報名。',
   },
+
+  // === new 4 (Phase 3C, 1-on-1 booking) ===
+  booking_created: {  // 寄給教練
+    subject: '新一對一預約 - {{member_name}}',
+    body: '🏋️ {{member_name}} 預約了 {{start_at}} 的一對一課程。',
+  },
+  booking_confirmed: {  // 寄給會員
+    subject: '一對一預約成功 - {{coach_display_name}}',
+    body: '✅ 已成功預約 {{coach_display_name}} 教練的 {{start_at}} 課程。',
+  },
+  booking_cancelled_by_member: {  // 寄給教練
+    subject: '會員取消預約 - {{member_name}}',
+    body: '⚠️ {{member_name}} 取消了 {{start_at}} 的一對一預約。',
+  },
+  booking_cancelled_by_coach: {  // 寄給會員
+    subject: '教練取消預約 - {{coach_display_name}}',
+    body: '⚠️ {{coach_display_name}} 教練取消了你 {{start_at}} 的預約，點數已退回。',
+  },
 };
 
 function render(template, vars) {
   return template.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? '');
 }
 
-const insertNotif = db.prepare(
-  'INSERT INTO notifications (user_id, session_id, type, channel, subject, body) VALUES (?, ?, ?, ?, ?, ?)'
-);
-const getUser = db.prepare('SELECT * FROM users WHERE id = ?');
+// ─────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────
 
-export function notify({ userId, sessionId, type, vars = {}, channelOverride = null }) {
+const DOW_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
+
+/**
+ * Format a local-wall-clock datetime ('2026-05-20T14:30:00') for LINE:
+ * "5/20（週三）14:30"
+ */
+export function fmtDateForLine(localStr) {
+  // localStr is "YYYY-MM-DDTHH:MM:SS" — parse manually (don't rely on Date
+  // timezone behavior since the stored value is wall-clock).
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(localStr || '');
+  if (!m) return localStr || '';
+  const [, , month, day, hh, mm] = m;
+  // Compute day-of-week via UTC midnight (matches schedule.js convention)
+  const dt = new Date(`${m[1]}-${month}-${day}T00:00:00Z`);
+  const dow = DOW_SHORT[dt.getUTCDay()];
+  return `${Number(month)}/${Number(day)}（週${dow}）${hh}:${mm}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Prepared statements
+// ─────────────────────────────────────────────────────────────────────
+
+const getUserById = db.prepare('SELECT id, line_user_id FROM users WHERE id = ?');
+
+const insertNotif = db.prepare(`
+  INSERT INTO notifications
+    (user_id, session_id, type, channel, subject, body, status, retry_count, next_retry_at, last_error)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const selectDueFailed = db.prepare(`
+  SELECT id, user_id, session_id, type, body, retry_count
+  FROM notifications
+  WHERE status = 'failed' AND next_retry_at <= ?
+  ORDER BY next_retry_at ASC
+  LIMIT 100
+`);
+
+const updateSent = db.prepare(`
+  UPDATE notifications
+  SET status = 'sent', next_retry_at = NULL, last_error = NULL
+  WHERE id = ?
+`);
+
+const updateFailedAgain = db.prepare(`
+  UPDATE notifications
+  SET retry_count = ?, next_retry_at = ?, last_error = ?
+  WHERE id = ?
+`);
+
+const updateFailedPermanent = db.prepare(`
+  UPDATE notifications
+  SET status = 'failed_permanent', next_retry_at = NULL, last_error = ?
+  WHERE id = ?
+`);
+
+// ─────────────────────────────────────────────────────────────────────
+// Retry policy
+// ─────────────────────────────────────────────────────────────────────
+
+const BACKOFF_MINUTES = [5, 15, 45];  // for retry_count 1, 2, 3
+const MAX_RETRIES = 3;
+
+function nextBackoffAt(newRetryCount) {
+  const minutes = BACKOFF_MINUTES[newRetryCount - 1];
+  return offsetLocal(minutes * 60 * 1000);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────
+
+// Re-entrancy guard: node-cron does NOT serialize overlapping invocations.
+// Single Node process is single-threaded so a plain boolean is safe.
+let _retryRunning = false;
+
+/**
+ * notify — single entry point used by all callers.
+ * Fire-and-forget: returns undefined synchronously, async delivery
+ * happens in background. Errors are swallowed (recorded in DB).
+ *
+ * @note For LINE-bound users, deliverLine runs OUTSIDE the caller's
+ * transaction (so HTTP latency doesn't hold a DB lock). The notification
+ * row INSERT therefore commits independently of the caller's tx. For
+ * console fallback, the INSERT runs inside the caller's tx. Callers
+ * should treat notify() as fire-after-commit semantically — invoke it
+ * at the end of the tx (or after commit) to avoid sending a LINE
+ * message for a transaction that later rolls back.
+ */
+export function notify({ userId, sessionId, type, vars = {} }) {
   const tpl = TEMPLATES[type];
   if (!tpl) throw new Error(`unknown notification type: ${type}`);
+
   const subject = render(tpl.subject, vars);
   const body = render(tpl.body, vars);
-  const user = getUser.get(userId);
-  if (!user) return;
 
-  const pref = channelOverride || user.notification_preference;
-  const channels = pref === 'both' ? ['email', 'sms'] : [pref];
+  const user = getUserById.get(userId);
+  if (!user) return;  // deleted user → silent skip
 
-  for (const ch of channels) {
-    insertNotif.run(userId, sessionId, type, ch, subject, body);
-    console.log(`[notify] → ${user.email} [${ch}] ${subject}`);
+  if (user.line_user_id) {
+    // async — don't block caller. Caller (e.g. registration.js) is already
+    // in a tx; we don't await so the tx isn't held open during the HTTP call.
+    deliverLine({ userId, sessionId, type, subject, body, lineUserId: user.line_user_id })
+      .catch((e) => console.error('[notify deliverLine threw]', e));
+  } else {
+    deliverConsole({ userId, sessionId, type, subject, body });
+  }
+}
+
+async function deliverLine({ userId, sessionId, type, subject, body, lineUserId }) {
+  const result = await sendMessage(lineUserId, body);
+  if (result.ok) {
+    insertNotif.run(userId, sessionId, type, 'line', subject, body, 'sent', 0, null, null);
+  } else {
+    insertNotif.run(
+      userId, sessionId, type, 'line', subject, body,
+      'failed', 0, offsetLocal(BACKOFF_MINUTES[0] * 60 * 1000), result.error
+    );
+  }
+}
+
+function deliverConsole({ userId, sessionId, type, subject, body }) {
+  insertNotif.run(userId, sessionId, type, 'console', subject, body, 'sent', 0, null, null);
+  console.log(`[notify→console] user=${userId} type=${type} ${subject}`);
+}
+
+/**
+ * Cron worker. Picks failed rows whose next_retry_at is past, attempts
+ * delivery via LINE, then updates status.
+ */
+export async function processFailedNotifications() {
+  if (_retryRunning) return;
+  _retryRunning = true;
+  try {
+    const due = selectDueFailed.all(nowLocal());
+
+    for (const row of due) {
+      const user = getUserById.get(row.user_id);
+      if (!user?.line_user_id) {
+        // user removed binding (or was deleted) → no point retrying
+        updateFailedPermanent.run('user_not_bound', row.id);
+        continue;
+      }
+
+      const result = await sendMessage(user.line_user_id, row.body);
+
+      if (result.ok) {
+        updateSent.run(row.id);
+      } else {
+        const newRetryCount = row.retry_count + 1;
+        if (newRetryCount > MAX_RETRIES) {
+          updateFailedPermanent.run(result.error, row.id);
+        } else {
+          updateFailedAgain.run(newRetryCount, nextBackoffAt(newRetryCount), result.error, row.id);
+        }
+      }
+    }
+  } finally {
+    _retryRunning = false;
   }
 }

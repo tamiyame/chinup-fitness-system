@@ -11,4 +11,5 @@ data/tpl*.json
 .DS_Store
 Thumbs.db
 data/avatars/
+public/line-qr.png
 data/backups/
