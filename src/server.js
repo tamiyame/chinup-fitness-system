@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, basename } from 'node:path';
 import { db, tx, nowLocal } from './db/connection.js';
@@ -66,7 +65,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 // Railway / 任何 reverse proxy 後面要設 trust proxy 才能從 X-Forwarded-For 取真 client IP（rate limiter 需要）
 app.set('trust proxy', 1);
-app.use(cors());
 
 const loginLimiter = createRateLimiter({ name: 'login', windowMs: 15 * 60_000, max: 10 });
 const registerLimiter = createRateLimiter({ name: 'register', windowMs: 60 * 60_000, max: 5 });
