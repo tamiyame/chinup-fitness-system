@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, basename } from 'node:path';
 import { db, tx, nowLocal } from './db/connection.js';
@@ -59,11 +58,21 @@ import {
 } from './services/lineBindingService.js';
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
+import { createRateLimiter } from './middleware/rateLimit.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
-app.use(cors());
+// Railway / 任何 reverse proxy 後面要設 trust proxy 才能從 X-Forwarded-For 取真 client IP（rate limiter 需要）
+app.set('trust proxy', 1);
+
+// Login: 30 / 15min — 業界 brute-force 防禦的 lenient end（嚴格端是 5–10），考量到
+//   (a) 同辦公室 / 同網路使用者共用 NAT 出口 IP
+//   (b) test suite 連跑時容易誤觸
+//   選 30 仍然把暴力破解速率壓到 120/小時，配合 scrypt 雜湊已足夠
+// Register: 5 / 1hr — 註冊頻率本來就低，嚴格擋濫用註冊
+const loginLimiter = createRateLimiter({ name: 'login', windowMs: 15 * 60_000, max: 30 });
+const registerLimiter = createRateLimiter({ name: 'register', windowMs: 60 * 60_000, max: 5 });
 app.use(express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; },
@@ -141,14 +150,14 @@ function handleError(e, res) {
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 // --- Auth ---
-app.post('/api/auth/login', asyncHandler((req, res) => {
+app.post('/api/auth/login', loginLimiter, asyncHandler((req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'missing_credentials' });
   const result = authLogin({ email, password });
   res.json(result);
 }));
 
-app.post('/api/auth/register', asyncHandler((req, res) => {
+app.post('/api/auth/register', registerLimiter, asyncHandler((req, res) => {
   const result = registerWithPassword(req.body || {});
   res.status(201).json(result);
 }));
