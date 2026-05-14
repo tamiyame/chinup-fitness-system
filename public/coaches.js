@@ -1,4 +1,4 @@
-import { api, fmtDate, dow, toast, refreshAuthBar } from './app.js';
+import { api, fmtDate, dow, toast, refreshAuthBar, escapeHtml } from './app.js';
 
 const $ = (id) => document.getElementById(id);
 const views = { list: $('view-list'), detail: $('view-detail'), confirm: $('view-confirm') };
@@ -167,11 +167,6 @@ $('confirm-btn').addEventListener('click', async () => {
     }
   }
 });
-
-function escapeHtml(s) {
-  if (s == null) return '';
-  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
 
 await loadCoachList();
 document.body.style.visibility = 'visible';
