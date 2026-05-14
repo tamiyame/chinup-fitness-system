@@ -169,8 +169,8 @@ async function renderAuthBar(user) {
     <div class="flex items-center gap-2">
       ${pillHtml}
       ${badge}
-      <span class="text-sm font-medium">${user.name}</span>
-      <span class="subtle hidden md:inline">${user.email}</span>
+      <span class="text-sm font-medium">${escapeHtml(user.name)}</span>
+      <span class="subtle hidden md:inline">${escapeHtml(user.email)}</span>
     </div>
     <button id="logout-btn" class="btn btn-ghost btn-sm">登出</button>
   `;
