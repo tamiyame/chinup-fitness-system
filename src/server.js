@@ -30,6 +30,7 @@ import {
   listMemberBookings as svcListMemberBookings,
   listCoachBookings as svcListCoachBookings,
   cancelBooking as svcCancelBooking,
+  getMostRecentCoachForUser as svcGetMostRecentCoachForUser,
 } from './services/bookingService.js';
 import { listActiveCoaches as svcListActive, saveAvatar as svcSaveAvatar } from './services/coachService.js';
 import {
@@ -281,6 +282,17 @@ app.post('/api/sessions/:id/register', requireUser, asyncHandler((req, res) => {
 app.delete('/api/registrations/:id', requireUser, asyncHandler((req, res) => {
   const result = cancelRegistration({ registrationId: Number(req.params.id), userId: req.user.id });
   res.json(result);
+}));
+
+// Returns the requester's most recent non-cancelled 1-on-1 coach so the
+// /coaches page can surface a "你最近的教練" pinned card. Always 200 with
+// { coach: null } for non-members or members with no booking history — that
+// lets the front-end use a single "if (coach) renderSection()" branch.
+app.get('/api/my/recent-coach', requireUser, asyncHandler((req, res) => {
+  if (req.user.role !== 'user') {
+    return res.json({ coach: null, last_session_date: null, days_ago: null });
+  }
+  res.json(svcGetMostRecentCoachForUser(req.user.id));
 }));
 
 // --- Admin ---
