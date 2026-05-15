@@ -144,13 +144,16 @@ async function renderAuthBar(user) {
   const badgeMap = {
     owner: '<span class="badge badge-waitlisted" style="font-size:10px;">擁有者</span>',
     admin: '<span class="badge badge-confirmed" style="font-size:10px;">管理者</span>',
+    coach: '<span class="badge badge-coach" style="font-size:10px;">教練</span>',
     user:  '<span class="badge badge-open" style="font-size:10px;">會員</span>',
   };
   const badge = badgeMap[user.role] || badgeMap.user;
 
+  const isMember = user.role === 'user';
+
   // Fetch points balance for members only
   let pillHtml = '';
-  if (user.role === 'user') {
+  if (isMember) {
     try {
       const bal = await api('/api/my/points/balance');
       const low = bal.one_on_one <= 0 || bal.group <= 0;
@@ -165,12 +168,17 @@ async function renderAuthBar(user) {
     }
   }
 
+  // Only members see name + email — owner/admin/coach are identified by their role badge.
+  const nameHtml = isMember
+    ? `<span class="text-sm font-medium">${escapeHtml(user.name)}</span>
+       <span class="subtle hidden md:inline">${escapeHtml(user.email)}</span>`
+    : '';
+
   el.innerHTML = `
     <div class="flex items-center gap-2">
       ${pillHtml}
       ${badge}
-      <span class="text-sm font-medium">${escapeHtml(user.name)}</span>
-      <span class="subtle hidden md:inline">${escapeHtml(user.email)}</span>
+      ${nameHtml}
     </div>
     <button id="logout-btn" class="btn btn-ghost btn-sm">登出</button>
   `;

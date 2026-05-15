@@ -50,16 +50,19 @@
 
   <section class="hero">
     <span class="hero-eyebrow">💪 2026 Spring Program</span>
-    <h1>找到適合你的<br>團體訓練課程</h1>
-    <p>由專業教練設計的循環課表，每月開課、彈性報名。額滿自動進入候補、成班與否都會通知你。</p>
   </section>
 
   <section class="pb-16">
-    <a href="/coaches.html" class="block sm:hidden mb-4 btn-primary w-full text-center">🏋️ 預約一對一</a>
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="section-title">可報名課程</h2>
+    <a href="/coaches.html" class="btn-pill-outline flex w-full sm:hidden mb-4">
+      <span>🏋️</span>
+      <span>預約一對一教練課</span>
+      <span aria-hidden="true">→</span>
+    </a>
+    <div class="flex items-center justify-between mb-2 gap-3">
+      <h1 class="text-[22px] font-extrabold leading-tight whitespace-nowrap text-slate-900">找到適合你的團體訓練課程</h1>
       <span id="count-badge" class="subtle"></span>
     </div>
+    <p class="section-desc">由專業教練設計的循環課表，每月開課、彈性報名。額滿自動進入候補、成班與否都會通知你。</p>
     <div id="sessions" class="grid gap-4"></div>
     <div id="empty" class="empty-state" style="display:none;">
       <span class="empty-state-icon">🗓️</span>
