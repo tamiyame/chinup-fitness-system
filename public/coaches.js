@@ -84,7 +84,7 @@ function expandSkeletonHtml(coach) {
     <div class="slot-area" data-coach-id="${coach.id}">
       <div class="slot-empty">載入中…</div>
     </div>
-    <a href="#" class="book-cta" data-coach-id="${coach.id}">預約${escapeHtml(coach.display_name)} →</a>
+    <button type="button" class="book-cta" data-coach-id="${coach.id}">預約${escapeHtml(coach.display_name)} →</button>
   `;
 }
 
@@ -92,10 +92,7 @@ function renderExpand(targetEl, coach) {
   targetEl.className = 'ccard-expand';
   targetEl.innerHTML = expandSkeletonHtml(coach);
   const cta = targetEl.querySelector('.book-cta');
-  cta.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    openCoach(coach.id);
-  });
+  cta.addEventListener('click', () => openCoach(coach.id));
 }
 
 function renderSlotsInto(slotArea, slots, coachId) {
@@ -199,18 +196,20 @@ async function loadRecentSection() {
 
   allCoachesById.set(data.coach.id, data.coach);
 
-  const cardWrap = $('recent-card');
-  cardWrap.innerHTML = cardHtml(data.coach, { pinned: true, expanded: true });
-  attachCardHandlers(cardWrap);
+  // Render the pinned card AND its expand panel as true siblings inside
+  // #recent-mount so the generic accordion logic (collapseCurrent /
+  // expandCard) handles the pinned card identically to bottom-list cards.
+  const mount = $('recent-mount');
+  mount.innerHTML = cardHtml(data.coach, { pinned: true, expanded: true });
+  attachCardHandlers(mount);
 
-  const expandWrap = $('recent-expand');
-  expandWrap.innerHTML = '';
+  const cardEl = mount.querySelector('.ccard');
   const expandEl = document.createElement('div');
   expandEl.setAttribute('data-for-coach', String(data.coach.id));
-  expandWrap.appendChild(expandEl);
+  cardEl.insertAdjacentElement('afterend', expandEl);
   renderExpand(expandEl, data.coach);
-  currentlyExpandedId = data.coach.id;
 
+  currentlyExpandedId = data.coach.id;
   ensureSlotsLoaded(data.coach.id, expandEl.querySelector('.slot-area'));
 }
 
