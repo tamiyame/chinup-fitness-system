@@ -145,6 +145,7 @@ body {
 .badge-completed { background: #f1f5f9; color: #334155; border-color: #cbd5e1; }
 .badge-waitlisted { background: #fffbeb; color: #a16207; border-color: #fcd34d; }
 .badge-rejected { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.badge-coach { background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
 .badge::before {
   content: ''; width: 6px; height: 6px; border-radius: 50%;
   background: currentColor; opacity: 0.8;
@@ -179,6 +180,19 @@ body {
 .btn-danger:hover { background: #dc2626; }
 
 .btn-sm { padding: 7px 14px; font-size: 13px; }
+
+.btn-pill-outline {
+  align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 18px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid #bfdbfe;
+  background: #f8fbff;
+  color: #1d4ed8;
+  font-size: 14px; font-weight: 700;
+  text-decoration: none;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.btn-pill-outline:hover { background: #eff6ff; border-color: #93c5fd; }
 
 /* ============ Capacity bar ============ */
 .capacity-bar {
@@ -273,6 +287,12 @@ body {
   font-size: 20px; font-weight: 700; letter-spacing: -0.01em;
 }
 .subtle { color: var(--ink-mute); font-size: 13px; }
+.section-desc {
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin: 4px 0 14px;
+}
 
 .empty-state {
   padding: 60px 24px; text-align: center;
