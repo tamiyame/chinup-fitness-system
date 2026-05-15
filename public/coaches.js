@@ -1,4 +1,4 @@
-import { api, fmtDate, dow, toast, refreshAuthBar, escapeHtml } from './app.js';
+import { api, fmtDate, dow, toast, refreshAuthBar, escapeHtml, getUser } from './app.js';
 
 const $ = (id) => document.getElementById(id);
 const views = { list: $('view-list'), detail: $('view-detail'), confirm: $('view-confirm') };
@@ -181,6 +181,10 @@ function attachCardHandlers(rootEl) {
 // --- Recent-coach section -------------------------------------------------
 
 async function loadRecentSection() {
+  // Skip silently for logged-out visitors — the pinned section needs an
+  // authenticated user. Hitting /api/my/recent-coach would 401, which the
+  // shared api() helper escalates into a forced redirect to /login.
+  if (!getUser()) return;
   let data;
   try {
     data = await api('/api/my/recent-coach');
@@ -211,6 +215,17 @@ async function loadRecentSection() {
 
   currentlyExpandedId = data.coach.id;
   ensureSlotsLoaded(data.coach.id, expandEl.querySelector('.slot-area'));
+
+  // Dedupe: the same coach was just rendered in #coach-list by loadCoachList.
+  // Keeping only the pinned instance avoids two confusing UX gotchas:
+  //  - clicking the bottom duplicate triggers a collapse-only path (since
+  //    currentlyExpandedId already matches), making the pinned collapse out
+  //    of viewport with no visible feedback;
+  //  - after collapsing pinned, clicking the bottom duplicate would re-expand
+  //    next to the pinned (first querySelector match), not where the user
+  //    clicked.
+  const bottomDup = $('coach-list').querySelector(`.ccard[data-coach-id="${data.coach.id}"]`);
+  if (bottomDup) bottomDup.remove();
 }
 
 // --- Full coach list ------------------------------------------------------
