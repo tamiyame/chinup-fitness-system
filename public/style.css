@@ -181,6 +181,9 @@ body {
 
 .btn-sm { padding: 7px 14px; font-size: 13px; }
 
+/* Display/width intentionally omitted — apply Tailwind `flex w-full` on the
+   element so `sm:hidden` can still hide it at desktop. style.css loads after
+   the Tailwind CDN, so setting display here would override sm:hidden. */
 .btn-pill-outline {
   align-items: center; justify-content: center; gap: 8px;
   padding: 12px 18px;
