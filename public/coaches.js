@@ -11,29 +11,230 @@ let currentCoach = null;
 let currentSlot = null;
 let weekOffset = 0;
 
+// --- Coach-list accordion + slot cache -------------------------------------
+
+// Only one card is expanded at a time. null = nothing expanded.
+let currentlyExpandedId = null;
+
+// In-memory cache: coachId -> Array of ISO datetime strings (slot starts).
+// Cleared naturally by a full page reload; no TTL.
+const slotCacheByCoach = new Map();
+
+function firstChar(name) {
+  if (!name) return '?';
+  // Array.from handles multi-byte / surrogate-pair characters correctly.
+  return Array.from(name)[0];
+}
+
+function fmtSlotChip(iso) {
+  const d = new Date(iso);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${mm}/${dd} ${dow(d.getDay())} ${hh}:${min}`;
+}
+
+function relativeDays(daysAgo) {
+  if (daysAgo === 0) return '今天';
+  if (daysAgo > 0) return `${daysAgo} 天前`;
+  return `${-daysAgo} 天後`;
+}
+
+function next7DaysRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(start.getTime() + 6 * 86400_000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const f = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return { from: f(start), to: f(end) };
+}
+
+function avatarHtml(coach) {
+  if (coach.avatar_path) {
+    return `<img src="/avatars/${escapeHtml(coach.avatar_path)}" alt="">`;
+  }
+  return `<span class="ccard-avatar-fallback">${escapeHtml(firstChar(coach.display_name))}</span>`;
+}
+
+function cardHtml(coach, { pinned = false, expanded = false } = {}) {
+  const classes = ['ccard'];
+  if (pinned) classes.push('pinned');
+  if (expanded) classes.push('expanded');
+  return `
+    <div class="${classes.join(' ')}"
+         role="button"
+         tabindex="0"
+         data-coach-id="${coach.id}"
+         aria-expanded="${expanded ? 'true' : 'false'}">
+      <div class="ccard-avatar">${avatarHtml(coach)}</div>
+      <div class="ccard-body">
+        <div class="ccard-name">${escapeHtml(coach.display_name)}</div>
+        ${coach.specialty ? `<div class="ccard-spec">${escapeHtml(coach.specialty)}</div>` : ''}
+      </div>
+      <div class="ccard-chev" aria-hidden="true">▾</div>
+    </div>
+  `;
+}
+
+function expandSkeletonHtml(coach) {
+  return `
+    ${coach.bio ? `<div class="bio">${escapeHtml(coach.bio)}</div>` : ''}
+    <div class="slot-label">最近可預約</div>
+    <div class="slot-area" data-coach-id="${coach.id}">
+      <div class="slot-empty">載入中…</div>
+    </div>
+    <a href="#" class="book-cta" data-coach-id="${coach.id}">預約${escapeHtml(coach.display_name)} →</a>
+  `;
+}
+
+function renderExpand(targetEl, coach) {
+  targetEl.className = 'ccard-expand';
+  targetEl.innerHTML = expandSkeletonHtml(coach);
+  const cta = targetEl.querySelector('.book-cta');
+  cta.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    openCoach(coach.id);
+  });
+}
+
+function renderSlotsInto(slotArea, slots, coachId) {
+  if (slots.length === 0) {
+    slotArea.innerHTML = '<div class="slot-empty">目前無可預約時段</div>';
+    return;
+  }
+  const first3 = slots.slice(0, 3)
+    .map((s) => `<span class="slot-chip">${escapeHtml(fmtSlotChip(s))}</span>`)
+    .join('');
+  slotArea.innerHTML = `
+    <div class="slot-chips">
+      ${first3}
+      <span class="slot-chip slot-chip-more" role="button" tabindex="0" data-coach-id="${coachId}">看更多 →</span>
+    </div>
+  `;
+  const moreChip = slotArea.querySelector('.slot-chip-more');
+  const trigger = () => openCoach(coachId);
+  moreChip.addEventListener('click', trigger);
+  moreChip.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); trigger(); }
+  });
+}
+
+async function ensureSlotsLoaded(coachId, slotAreaEl) {
+  if (slotCacheByCoach.has(coachId)) {
+    renderSlotsInto(slotAreaEl, slotCacheByCoach.get(coachId), coachId);
+    return;
+  }
+  const { from, to } = next7DaysRange();
+  try {
+    const slots = await api(`/api/coaches/${coachId}/availability?from=${from}&to=${to}`);
+    slotCacheByCoach.set(coachId, slots);
+    renderSlotsInto(slotAreaEl, slots, coachId);
+  } catch (e) {
+    slotAreaEl.innerHTML = '<div class="slot-empty">時段載入失敗</div>';
+  }
+}
+
+// --- Accordion state ------------------------------------------------------
+
+const allCoachesById = new Map();
+
+function collapseCurrent() {
+  if (currentlyExpandedId == null) return;
+  document.querySelectorAll(`.ccard[data-coach-id="${currentlyExpandedId}"]`).forEach((cardEl) => {
+    cardEl.classList.remove('expanded');
+    cardEl.setAttribute('aria-expanded', 'false');
+  });
+  const expandEl = document.querySelector(`.ccard-expand[data-for-coach="${currentlyExpandedId}"]`);
+  if (expandEl) expandEl.remove();
+  currentlyExpandedId = null;
+}
+
+function expandCard(coachId) {
+  const coach = allCoachesById.get(coachId);
+  if (!coach) return;
+  if (currentlyExpandedId === coachId) {
+    collapseCurrent();
+    return;
+  }
+  collapseCurrent();
+  const cardEl = document.querySelector(`.ccard[data-coach-id="${coachId}"]`);
+  if (!cardEl) return;
+  cardEl.classList.add('expanded');
+  cardEl.setAttribute('aria-expanded', 'true');
+  const expandEl = document.createElement('div');
+  expandEl.setAttribute('data-for-coach', String(coachId));
+  cardEl.insertAdjacentElement('afterend', expandEl);
+  renderExpand(expandEl, coach);
+  currentlyExpandedId = coachId;
+  ensureSlotsLoaded(coachId, expandEl.querySelector('.slot-area'));
+}
+
+function attachCardHandlers(rootEl) {
+  rootEl.querySelectorAll('.ccard').forEach((cardEl) => {
+    const coachId = Number(cardEl.dataset.coachId);
+    const trigger = () => expandCard(coachId);
+    cardEl.addEventListener('click', trigger);
+    cardEl.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); trigger(); }
+    });
+  });
+}
+
+// --- Recent-coach section -------------------------------------------------
+
+async function loadRecentSection() {
+  let data;
+  try {
+    data = await api('/api/my/recent-coach');
+  } catch {
+    return; // silent — section stays hidden
+  }
+  if (!data || !data.coach) return;
+
+  const section = $('recent-section');
+  section.classList.remove('hidden');
+
+  $('recent-ago').textContent = relativeDays(data.days_ago ?? 0);
+
+  allCoachesById.set(data.coach.id, data.coach);
+
+  const cardWrap = $('recent-card');
+  cardWrap.innerHTML = cardHtml(data.coach, { pinned: true, expanded: true });
+  attachCardHandlers(cardWrap);
+
+  const expandWrap = $('recent-expand');
+  expandWrap.innerHTML = '';
+  const expandEl = document.createElement('div');
+  expandEl.setAttribute('data-for-coach', String(data.coach.id));
+  expandWrap.appendChild(expandEl);
+  renderExpand(expandEl, data.coach);
+  currentlyExpandedId = data.coach.id;
+
+  ensureSlotsLoaded(data.coach.id, expandEl.querySelector('.slot-area'));
+}
+
+// --- Full coach list ------------------------------------------------------
+
 async function loadCoachList() {
   const coaches = await api('/api/coaches');
   const wrap = $('coach-list');
   wrap.innerHTML = '';
-  if (coaches.length === 0) {
-    wrap.innerHTML = '<p class="text-slate-500">目前沒有可預約的教練</p>';
-    return;
-  }
+
   for (const c of coaches) {
-    const card = document.createElement('button');
-    card.className = 'card flex items-center gap-3 text-left hover:shadow-md transition';
-    card.innerHTML = `
-      <div class="w-14 h-14 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">
-        ${c.avatar_path ? `<img src="/avatars/${c.avatar_path}" class="w-full h-full object-cover" alt="">` : '<span class="text-slate-400">👤</span>'}
-      </div>
-      <div class="min-w-0">
-        <div class="font-semibold">${escapeHtml(c.display_name)}</div>
-        <div class="text-sm text-slate-500 truncate">${escapeHtml(c.specialty || '')}</div>
-      </div>
-    `;
-    card.addEventListener('click', () => openCoach(c.id));
-    wrap.appendChild(card);
+    allCoachesById.set(c.id, c);
+    wrap.insertAdjacentHTML('beforeend', cardHtml(c));
   }
+  attachCardHandlers(wrap);
+
+  if (coaches.length === 0) {
+    wrap.innerHTML = '<p class="text-slate-500 text-sm">目前沒有可預約的教練</p>';
+  }
+
+  // Recent section runs after the list so its data-coach-id matches a card
+  // already in the DOM; if the recent coach is also in the list, collapsing
+  // the pinned one finds both elements via querySelectorAll.
+  await loadRecentSection();
 }
 
 async function openCoach(id) {
