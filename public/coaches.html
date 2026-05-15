@@ -48,7 +48,19 @@
 <main class="max-w-6xl mx-auto px-6 py-8">
   <div id="view-list">
     <h1 class="page-title">選擇教練</h1>
-    <div id="coach-list" class="grid sm:grid-cols-2 md:grid-cols-3 gap-4"></div>
+
+    <section id="recent-section" class="hidden">
+      <div class="section-recent-label">
+        <span>你最近的教練</span>
+        <span id="recent-ago" class="ago-badge"></span>
+      </div>
+      <div id="recent-mount"></div>
+    </section>
+
+    <section id="all-section">
+      <div class="section-all-label">全部教練</div>
+      <div id="coach-list"></div>
+    </section>
   </div>
 
   <div id="view-detail" class="hidden">

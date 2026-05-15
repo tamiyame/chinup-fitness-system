@@ -575,3 +575,135 @@ details.session-row summary:hover { background: #f8faf9; }
 /* New button variant for "進入候補" — amber, signals waitlist not confirmation */
 .btn-warn { background: #d97706; color: white; }
 .btn-warn:hover { background: #b45309; transform: translateY(-1px); }
+
+/* ============ Coaches list (accordion) ============ */
+.ccard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.ccard:hover { border-color: rgba(56, 189, 248, 0.4); }
+.ccard:focus-visible {
+  outline: 2px solid var(--brand-600);
+  outline-offset: 2px;
+}
+.ccard.pinned {
+  border-color: #fcd34d;
+  background: #fffefb;
+}
+.ccard.pinned:hover { border-color: #f59e0b; }
+
+.ccard-avatar {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.ccard-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ccard-avatar-fallback {
+  color: #475569;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+  user-select: none;
+}
+
+.ccard-body { flex: 1; min-width: 0; }
+.ccard-name {
+  font-weight: 700; color: var(--ink); font-size: 14px;
+  line-height: 1.3;
+}
+.ccard-spec {
+  font-size: 12px; color: var(--ink-soft); margin-top: 2px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ccard-chev { color: #94a3b8; font-size: 18px; flex-shrink: 0; transition: transform 160ms ease; }
+.ccard.expanded .ccard-chev { transform: rotate(180deg); }
+
+.ccard-expand {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  padding: 12px 14px 14px;
+  margin: -1px 0 8px;   /* -1px pulls expand panel flush against card border */
+  font-size: 12px;
+}
+.ccard.pinned + .ccard-expand {
+  border-color: #fcd34d;
+}
+.ccard-expand .bio {
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin-bottom: 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.ccard-expand .slot-label {
+  font-size: 11px;
+  color: var(--ink-soft);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.ccard-expand .slot-empty {
+  font-size: 12px;
+  color: var(--ink-mute);
+  margin-bottom: 12px;
+}
+
+.slot-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.slot-chip {
+  background: white; border: 1px solid var(--line);
+  padding: 4px 10px; border-radius: 8px; font-size: 11px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.slot-chip-more { color: var(--brand-700); border-color: #bae6fd; }
+
+.book-cta {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%;
+  padding: 9px;
+  border-radius: 10px;
+  background: var(--brand-600);
+  color: white;
+  font-weight: 700; font-size: 13px;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+.book-cta:hover { background: var(--brand-700); }
+
+.section-recent-label {
+  font-size: 11px; font-weight: 700; color: var(--ink-soft);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  margin: 4px 0 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-recent-label .ago-badge {
+  background: #fffbeb; color: #a16207; border: 1px solid #fcd34d;
+  font-size: 10px; padding: 2px 6px; border-radius: 999px;
+  text-transform: none; letter-spacing: 0; font-weight: 600;
+}
+
+.section-all-label {
+  font-size: 11px; font-weight: 700; color: var(--ink-soft);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  margin: 18px 0 8px;
+}
