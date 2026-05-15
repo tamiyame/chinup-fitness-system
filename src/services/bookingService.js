@@ -35,6 +35,27 @@ const listCoachStmt = db.prepare(`
 const getCoachStmt = db.prepare('SELECT * FROM coaches WHERE id = ?');
 const getUserNameStmt = db.prepare('SELECT name FROM users WHERE id = ?');
 
+// Returns the member's most recent non-cancelled 1-on-1 booking and the coach
+// data joined through. ORDER by start_at so multi-booking same-day is
+// deterministic. Filtered to is_active coaches — a deactivated coach should
+// not surface as "your recent coach".
+const getMostRecentBookingWithCoachStmt = db.prepare(`
+  SELECT
+    b.start_at             AS start_at,
+    c.id                   AS coach_id,
+    c.display_name         AS coach_display_name,
+    c.specialty            AS coach_specialty,
+    c.bio                  AS coach_bio,
+    c.avatar_path          AS coach_avatar_path
+  FROM bookings b
+  JOIN coaches c ON c.id = b.coach_id
+  WHERE b.member_id = ?
+    AND b.status != 'cancelled'
+    AND c.is_active = 1
+  ORDER BY b.start_at DESC
+  LIMIT 1
+`);
+
 export function createBooking({ coachId, memberId, startAt, note = null }) {
   if (!coachId || !memberId || !startAt) throw new ApiError(400, 'missing_fields');
   const coach = getCoachStmt.get(coachId);
@@ -138,6 +159,49 @@ export function listMemberBookings(memberId) {
 
 export function listCoachBookings(coachId) {
   return listCoachStmt.all(coachId);
+}
+
+/**
+ * Returns the most recent non-cancelled 1-on-1 coach for a member.
+ *
+ * Used by `GET /api/my/recent-coach` to surface a "你最近的教練" pinned card.
+ * "Most recent" = the booking with the latest start_at;
+ * future-dated bookings count, cancelled ones don't. Coaches who have been
+ * deactivated (`is_active = 0`) are filtered out so the card never points
+ * to someone you can't actually book.
+ *
+ * @param {number} userId
+ * @returns {{
+ *   coach: { id: number, display_name: string, specialty: string|null,
+ *            bio: string|null, avatar_path: string|null } | null,
+ *   last_session_date: string | null,
+ *   days_ago: number | null,
+ * }}
+ */
+export function getMostRecentCoachForUser(userId) {
+  const row = getMostRecentBookingWithCoachStmt.get(userId);
+  if (!row) return { coach: null, last_session_date: null, days_ago: null };
+
+  // start_at is stored as 'YYYY-MM-DDTHH:MM:SS' (ISO string format). Extract
+  // the date part and compare in local-midnight days to avoid timezone drift
+  // between server clock and the stored timestamp.
+  const dateStr = row.start_at.split('T')[0]; // 'YYYY-MM-DD'
+  const sessionMidnight = new Date(`${dateStr}T00:00:00`);
+  const today = new Date();
+  const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const daysAgo = Math.floor((todayMidnight - sessionMidnight) / 86400000);
+
+  return {
+    coach: {
+      id: row.coach_id,
+      display_name: row.coach_display_name,
+      specialty: row.coach_specialty,
+      bio: row.coach_bio,
+      avatar_path: row.coach_avatar_path,
+    },
+    last_session_date: dateStr,
+    days_ago: daysAgo, // negative = future-dated booking
+  };
 }
 
 function addMinutes(localTs, minutes) {
