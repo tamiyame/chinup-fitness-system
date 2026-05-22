@@ -146,4 +146,31 @@ assert.ok(openSess, 'need at least one open session');
   console.log('  ✓ invalid phone → 400');
 }
 
+// DELETE /api/public/bookings/:id
+{
+  const myAgain = await (await fetch(BASE + '/api/public/my?phone=0988111222')).json();
+  const bookingId = myAgain.bookings[0].id;
+
+  // wrong phone (existing user, doesn't own booking) → 403
+  {
+    const r = await fetch(BASE + `/api/public/bookings/${bookingId}?phone=0988999000`, { method: 'DELETE' });
+    assert.equal(r.status, 403);
+    console.log('  ✓ wrong phone cancel → 403');
+  }
+
+  // correct phone → 200
+  {
+    const r = await fetch(BASE + `/api/public/bookings/${bookingId}?phone=0988111222`, { method: 'DELETE' });
+    assert.equal(r.status, 200);
+    console.log('  ✓ correct phone cancel → 200');
+  }
+
+  // double cancel → 409
+  {
+    const r = await fetch(BASE + `/api/public/bookings/${bookingId}?phone=0988111222`, { method: 'DELETE' });
+    assert.equal(r.status, 409);
+    console.log('  ✓ double cancel → 409');
+  }
+}
+
 console.log('[public-api test] done');

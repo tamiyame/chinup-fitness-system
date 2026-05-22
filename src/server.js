@@ -7,7 +7,7 @@ import {
   listOpenSessions, listRegistrationsBySession, listUserRegistrations,
   processDeadlines, processReminders,
 } from './services/courseService.js';
-import { register, registerAnon, cancelRegistration, ApiError } from './services/registration.js';
+import { register, registerAnon, cancelRegistration, cancelRegistrationAnon, ApiError } from './services/registration.js';
 import {
   createCoach as svcCreateCoach,
   getCoach as svcGetCoach,
@@ -28,6 +28,7 @@ import {
 import {
   createBooking as svcCreateBooking,
   createBookingAnon,
+  cancelBookingAnon,
   listMemberBookings as svcListMemberBookings,
   listCoachBookings as svcListCoachBookings,
   cancelBooking as svcCancelBooking,
@@ -243,6 +244,32 @@ app.get('/api/public/my', asyncHandler((req, res) => {
     bookings,
     registrations,
   });
+}));
+
+app.delete('/api/public/bookings/:id', asyncHandler((req, res) => {
+  const bookingId = Number(req.params.id);
+  const phone = req.query.phone;
+  if (!validatePhone(phone)) return res.status(400).json({ error: 'invalid_phone' });
+  const user = getUserByPhone(phone);
+  if (!user) return res.status(404).json({ error: 'not_found' });
+  const b = getBookingMember.get(bookingId);
+  if (!b) return res.status(404).json({ error: 'booking_not_found' });
+  if (b.member_id !== user.id) return res.status(403).json({ error: 'forbidden' });
+  cancelBookingAnon({ bookingId, actorUserId: user.id });
+  res.json({ ok: true });
+}));
+
+app.delete('/api/public/registrations/:id', asyncHandler((req, res) => {
+  const registrationId = Number(req.params.id);
+  const phone = req.query.phone;
+  if (!validatePhone(phone)) return res.status(400).json({ error: 'invalid_phone' });
+  const user = getUserByPhone(phone);
+  if (!user) return res.status(404).json({ error: 'not_found' });
+  const r = getRegUser.get(registrationId);
+  if (!r) return res.status(404).json({ error: 'registration_not_found' });
+  if (r.user_id !== user.id) return res.status(403).json({ error: 'forbidden' });
+  cancelRegistrationAnon({ registrationId, userId: user.id });
+  res.json({ ok: true });
 }));
 
 // --- Google OAuth ---
@@ -793,6 +820,9 @@ const listMemberRegs = db.prepare(`
   WHERE r.user_id = ? AND r.status != 'cancelled'
   ORDER BY s.start_at DESC
 `);
+
+const getBookingMember = db.prepare('SELECT member_id FROM bookings WHERE id = ?');
+const getRegUser = db.prepare('SELECT user_id FROM registrations WHERE id = ?');
 
 app.get('/api/my/line/binding', requireUser, asyncHandler((req, res) => {
   const user = getLineBindingState.get(req.user.id);
