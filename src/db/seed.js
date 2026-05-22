@@ -1,7 +1,7 @@
 import { db } from './connection.js';
 import { hashPassword } from '../services/auth.js';
 
-db.exec('DELETE FROM auth_sessions; DELETE FROM notifications; DELETE FROM registrations; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM users;');
+db.exec('DELETE FROM auth_sessions; DELETE FROM notifications; DELETE FROM point_transactions; DELETE FROM bookings; DELETE FROM registrations; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM users;');
 
 const insertUser = db.prepare(
   'INSERT INTO users (name, email, phone, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?, ?)'

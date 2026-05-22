@@ -56,13 +56,12 @@ const getMostRecentBookingWithCoachStmt = db.prepare(`
   LIMIT 1
 `);
 
-function createBookingCore({ coachId, memberId, startAt, note }) {
-  // Pre-conditions checked by caller (coach existence, active flag).
-  const coach = getCoachStmt.get(coachId);
+// Must be called inside tx() with the coach already validated; caller threads coach in.
+function createBookingCore({ coach, memberId, startAt, note }) {
   const endAt = addMinutes(startAt, 60);
   let bookingId;
   try {
-    const info = insertBookingStmt.run(coachId, memberId, startAt, endAt, note);
+    const info = insertBookingStmt.run(coach.id, memberId, startAt, endAt, note);
     bookingId = info.lastInsertRowid;
   } catch (e) {
     if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
@@ -88,17 +87,18 @@ function createBookingCore({ coachId, memberId, startAt, note }) {
   return { id: bookingId, startAt, endAt };
 }
 
-function preCheck(coachId, memberId, startAt) {
+function validateBookingCreate(coachId, memberId, startAt) {
   if (!coachId || !memberId || !startAt) throw new ApiError(400, 'missing_fields');
   const coach = getCoachStmt.get(coachId);
   if (!coach) throw new ApiError(404, 'coach_not_found');
   if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
+  return coach;
 }
 
 export function createBooking({ coachId, memberId, startAt, note = null }) {
-  preCheck(coachId, memberId, startAt);
   return tx(() => {
-    const result = createBookingCore({ coachId, memberId, startAt, note });
+    const coach = validateBookingCreate(coachId, memberId, startAt);
+    const result = createBookingCore({ coach, memberId, startAt, note });
     recordTransaction({
       memberId, pool: 'one_on_one', amount: -1,
       note: `預約 #${result.id}`,
@@ -111,10 +111,13 @@ export function createBooking({ coachId, memberId, startAt, note = null }) {
 }
 
 export function createBookingAnon({ coachId, memberId, startAt, note = null }) {
-  preCheck(coachId, memberId, startAt);
-  return tx(() => createBookingCore({ coachId, memberId, startAt, note }));
+  return tx(() => {
+    const coach = validateBookingCreate(coachId, memberId, startAt);
+    return createBookingCore({ coach, memberId, startAt, note });
+  });
 }
 
+// Must be called inside tx(); caller is responsible for any side-effects (e.g. point refund).
 function cancelBookingCore({ bookingId, actorUserId, isCoach, reason }) {
   const b = getBookingStmt.get(bookingId);
   if (!b) throw new ApiError(404, 'booking_not_found');
@@ -164,6 +167,7 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
 }
 
 export function cancelBookingAnon({ bookingId, actorUserId }) {
+  if (!bookingId || !actorUserId) throw new ApiError(400, 'missing_fields');
   return tx(() => {
     cancelBookingCore({ bookingId, actorUserId, isCoach: false, reason: null });
     return { ok: true };
