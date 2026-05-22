@@ -50,8 +50,8 @@ function migrateUsersEmailNullable() {
   if (!emailCol || emailCol.notnull === 0) return;  // already nullable
   console.log('[migration] rebuilding users table to drop NOT NULL on email');
   db.exec('PRAGMA foreign_keys = OFF');
-  db.exec('BEGIN');
   try {
+    db.exec('BEGIN');
     db.exec(`
       DROP VIEW IF EXISTS member_point_balance;
       CREATE TABLE users_new (
@@ -95,7 +95,7 @@ function migrateUsersEmailNullable() {
     `);
     db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    try { db.exec('ROLLBACK'); } catch {}
     throw e;
   } finally {
     db.exec('PRAGMA foreign_keys = ON');
