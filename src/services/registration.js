@@ -51,85 +51,127 @@ function renumberWaitlist(sessionId) {
   queue.forEach((r, idx) => update.run(idx + 1, r.id));
 }
 
+/**
+ * Core registration logic — session validation, capacity check, insert/reactivate, notify.
+ * Must be called inside tx(); caller is responsible for any side-effects (e.g. point deduction).
+ */
+function registerCore({ sessionId, userId }) {
+  const session = getSession.get(sessionId);
+  if (!session) throw new ApiError(404, 'session_not_found');
+  if (session.status === 'cancelled') throw new ApiError(409, 'session_cancelled');
+  if (session.status === 'completed') throw new ApiError(409, 'session_completed');
+  if (nowLocal() > session.registration_deadline) throw new ApiError(409, 'registration_closed');
+
+  // Check for ANY existing row (the UNIQUE (session_id, user_id) constraint
+  // would otherwise reject a fresh INSERT for a user who once cancelled).
+  const existing = getAnyReg.get(sessionId, userId);
+  if (existing && ['confirmed', 'waitlisted'].includes(existing.status)) {
+    throw new ApiError(409, 'already_registered');
+  }
+
+  const tpl = getTemplate.get(session.template_id);
+  const confirmed = getConfirmedCount.get(sessionId).c;
+
+  let status, position;
+  if (confirmed < tpl.max_capacity) {
+    status = 'confirmed';
+    position = null;
+  } else {
+    status = 'waitlisted';
+    position = session.waitlist_count + 1;
+  }
+
+  let registrationId;
+  if (existing) {
+    // Reactivate cancelled / rejected row instead of inserting a dup.
+    reactivateReg.run(status, position, existing.id);
+    registrationId = existing.id;
+  } else {
+    const info = insertReg.run(sessionId, userId, status, position);
+    registrationId = info.lastInsertRowid;
+  }
+  recalcAndSave(sessionId);
+
+  const vars = { course_name: tpl.name, start_at: session.start_at, position };
+  notify({
+    userId,
+    sessionId,
+    type: status === 'confirmed' ? 'registered_confirmed' : 'registered_waitlisted',
+    vars,
+  });
+
+  return { registrationId, status, position };
+}
+
 export function register({ sessionId, userId }) {
   return tx(() => {
-    const session = getSession.get(sessionId);
-    if (!session) throw new ApiError(404, 'session_not_found');
-    if (session.status === 'cancelled') throw new ApiError(409, 'session_cancelled');
-    if (session.status === 'completed') throw new ApiError(409, 'session_completed');
-
-    if (nowLocal() > session.registration_deadline) throw new ApiError(409, 'registration_closed');
-
-    // Check for ANY existing row (the UNIQUE (session_id, user_id) constraint
-    // would otherwise reject a fresh INSERT for a user who once cancelled).
-    const existing = getAnyReg.get(sessionId, userId);
-    if (existing && ['confirmed', 'waitlisted'].includes(existing.status)) {
-      throw new ApiError(409, 'already_registered');
-    }
-
-    const tpl = getTemplate.get(session.template_id);
-    const confirmed = getConfirmedCount.get(sessionId).c;
-
-    let status, position;
-    if (confirmed < tpl.max_capacity) {
-      status = 'confirmed';
-      position = null;
-    } else {
-      status = 'waitlisted';
-      position = session.waitlist_count + 1;
-    }
-
-    let registrationId;
-    if (existing) {
-      // Reactivate cancelled / rejected row instead of inserting a dup.
-      reactivateReg.run(status, position, existing.id);
-      registrationId = existing.id;
-    } else {
-      const info = insertReg.run(sessionId, userId, status, position);
-      registrationId = info.lastInsertRowid;
-    }
-    recalcAndSave(sessionId);
-
+    const result = registerCore({ sessionId, userId });
     recordTransaction({
       memberId: userId,
       pool: 'group',
       amount: -1,
-      note: `報名 #${registrationId}`,
+      note: `報名 #${result.registrationId}`,
       actorId: userId,
       source: 'registration_deduct',
-      relatedRegistrationId: registrationId,
+      relatedRegistrationId: result.registrationId,
       relatedSessionId: sessionId,
     });
-
-    const vars = {
-      course_name: tpl.name,
-      start_at: session.start_at,
-      position,
-    };
-    notify({
-      userId,
-      sessionId,
-      type: status === 'confirmed' ? 'registered_confirmed' : 'registered_waitlisted',
-      vars,
-    });
-
-    return { registrationId, status, position };
+    return result;
   });
+}
+
+export function registerAnon({ sessionId, userId }) {
+  return tx(() => registerCore({ sessionId, userId }));
+}
+
+/**
+ * Core cancellation logic — validates registration, marks cancelled, promotes waitlist, recalcs.
+ * Must be called inside tx(); caller is responsible for any side-effects (e.g. point refund).
+ * Returns { reg, session } for the caller to use in side-effects.
+ */
+function cancelRegistrationCore({ registrationId, userId }) {
+  const reg = db.prepare('SELECT * FROM registrations WHERE id = ?').get(registrationId);
+  if (!reg) throw new ApiError(404, 'registration_not_found');
+  if (reg.user_id !== userId) throw new ApiError(403, 'forbidden');
+  if (reg.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
+
+  const session = getSession.get(reg.session_id);
+  const tpl = getTemplate.get(session.template_id);
+
+  const wasConfirmed = reg.status === 'confirmed';
+  updateRegStatus.run('cancelled', null, reg.id);
+
+  notify({
+    userId,
+    sessionId: session.id,
+    type: 'registration_cancelled',
+    vars: { course_name: tpl.name, start_at: session.start_at },
+  });
+
+  // 若原為正取且場次未取消，候補第一位遞補
+  if (wasConfirmed && session.status !== 'cancelled') {
+    const queue = getWaitlistQueue.all(session.id);
+    if (queue.length > 0) {
+      const next = queue[0];
+      updateRegStatus.run('confirmed', null, next.id);
+      notify({
+        userId: next.user_id,
+        sessionId: session.id,
+        type: 'promoted',
+        vars: { course_name: tpl.name, start_at: session.start_at },
+      });
+    }
+  }
+
+  recalcAndSave(session.id);
+  renumberWaitlist(session.id);
+
+  return { reg, session };
 }
 
 export function cancelRegistration({ registrationId, userId }) {
   return tx(() => {
-    const reg = db.prepare('SELECT * FROM registrations WHERE id = ?').get(registrationId);
-    if (!reg) throw new ApiError(404, 'registration_not_found');
-    if (reg.user_id !== userId) throw new ApiError(403, 'forbidden');
-    if (reg.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
-
-    const session = getSession.get(reg.session_id);
-    const tpl = getTemplate.get(session.template_id);
-
-    const wasConfirmed = reg.status === 'confirmed';
-    updateRegStatus.run('cancelled', null, reg.id);
-
+    const { reg, session } = cancelRegistrationCore({ registrationId, userId });
     recordTransaction({
       memberId: userId,
       pool: 'group',
@@ -140,32 +182,14 @@ export function cancelRegistration({ registrationId, userId }) {
       relatedRegistrationId: reg.id,
       relatedSessionId: session.id,
     });
+    return { ok: true };
+  });
+}
 
-    notify({
-      userId,
-      sessionId: session.id,
-      type: 'registration_cancelled',
-      vars: { course_name: tpl.name, start_at: session.start_at },
-    });
-
-    // 若原為正取且場次未取消，候補第一位遞補
-    if (wasConfirmed && session.status !== 'cancelled') {
-      const queue = getWaitlistQueue.all(session.id);
-      if (queue.length > 0) {
-        const next = queue[0];
-        updateRegStatus.run('confirmed', null, next.id);
-        notify({
-          userId: next.user_id,
-          sessionId: session.id,
-          type: 'promoted',
-          vars: { course_name: tpl.name, start_at: session.start_at },
-        });
-      }
-    }
-
-    recalcAndSave(session.id);
-    renumberWaitlist(session.id);
-
+export function cancelRegistrationAnon({ registrationId, userId }) {
+  if (!registrationId || !userId) throw new ApiError(400, 'missing_fields');
+  return tx(() => {
+    cancelRegistrationCore({ registrationId, userId });
     return { ok: true };
   });
 }
