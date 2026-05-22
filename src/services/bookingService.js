@@ -56,99 +56,116 @@ const getMostRecentBookingWithCoachStmt = db.prepare(`
   LIMIT 1
 `);
 
-export function createBooking({ coachId, memberId, startAt, note = null }) {
+function createBookingCore({ coachId, memberId, startAt, note }) {
+  // Pre-conditions checked by caller (coach existence, active flag).
+  const coach = getCoachStmt.get(coachId);
+  const endAt = addMinutes(startAt, 60);
+  let bookingId;
+  try {
+    const info = insertBookingStmt.run(coachId, memberId, startAt, endAt, note);
+    bookingId = info.lastInsertRowid;
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
+    throw e;
+  }
+  // notify coach + member
+  const memberRow = getUserNameStmt.get(memberId);
+  if (memberRow) {
+    const startFmt = fmtDateForLine(startAt);
+    notify({
+      userId: coach.user_id,
+      sessionId: null,
+      type: 'booking_created',
+      vars: { member_name: memberRow.name, start_at: startFmt },
+    });
+    notify({
+      userId: memberId,
+      sessionId: null,
+      type: 'booking_confirmed',
+      vars: { coach_display_name: coach.display_name, start_at: startFmt },
+    });
+  }
+  return { id: bookingId, startAt, endAt };
+}
+
+function preCheck(coachId, memberId, startAt) {
   if (!coachId || !memberId || !startAt) throw new ApiError(400, 'missing_fields');
   const coach = getCoachStmt.get(coachId);
   if (!coach) throw new ApiError(404, 'coach_not_found');
   if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
-  const endAt = addMinutes(startAt, 60);
+}
+
+export function createBooking({ coachId, memberId, startAt, note = null }) {
+  preCheck(coachId, memberId, startAt);
   return tx(() => {
-    let bookingId;
-    try {
-      const info = insertBookingStmt.run(coachId, memberId, startAt, endAt, note);
-      bookingId = info.lastInsertRowid;
-    } catch (e) {
-      if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
-      throw e;
-    }
+    const result = createBookingCore({ coachId, memberId, startAt, note });
     recordTransaction({
       memberId, pool: 'one_on_one', amount: -1,
-      note: `預約 #${bookingId}`,
+      note: `預約 #${result.id}`,
       actorId: memberId,
       source: 'booking_deduct',
-      relatedBookingId: bookingId,
+      relatedBookingId: result.id,
     });
-    // Phase 3C: notify coach + member
-    const memberRow = getUserNameStmt.get(memberId);
-    if (memberRow) {
-      const startFmt = fmtDateForLine(startAt);
+    return result;
+  });
+}
+
+export function createBookingAnon({ coachId, memberId, startAt, note = null }) {
+  preCheck(coachId, memberId, startAt);
+  return tx(() => createBookingCore({ coachId, memberId, startAt, note }));
+}
+
+function cancelBookingCore({ bookingId, actorUserId, isCoach, reason }) {
+  const b = getBookingStmt.get(bookingId);
+  if (!b) throw new ApiError(404, 'booking_not_found');
+  if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
+  const coach = getCoachStmt.get(b.coach_id);
+  if (isCoach) {
+    if (!coach || coach.user_id !== actorUserId) throw new ApiError(403, 'forbidden');
+    if (!reason || !reason.trim()) throw new ApiError(400, 'missing_reason');
+  } else {
+    if (b.member_id !== actorUserId) throw new ApiError(403, 'forbidden');
+  }
+  cancelBookingStmt.run(nowLocal(), actorUserId, reason, bookingId);
+  const memberRow = getUserNameStmt.get(b.member_id);
+  if (coach && memberRow) {
+    const startFmt = fmtDateForLine(b.start_at);
+    const isCoachCancel = actorUserId === coach.user_id;
+    if (isCoachCancel) {
       notify({
-        userId: coach.user_id,
-        sessionId: null,
-        type: 'booking_created',
-        vars: { member_name: memberRow.name, start_at: startFmt },
-      });
-      notify({
-        userId: memberId,
-        sessionId: null,
-        type: 'booking_confirmed',
+        userId: b.member_id, sessionId: null,
+        type: 'booking_cancelled_by_coach',
         vars: { coach_display_name: coach.display_name, start_at: startFmt },
       });
+    } else {
+      notify({
+        userId: coach.user_id, sessionId: null,
+        type: 'booking_cancelled_by_member',
+        vars: { member_name: memberRow.name, start_at: startFmt },
+      });
     }
-    return { id: bookingId, startAt, endAt };
-  });
+  }
+  return { booking: b, coach };
 }
 
 export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason = null }) {
   return tx(() => {
-    const b = getBookingStmt.get(bookingId);
-    if (!b) throw new ApiError(404, 'booking_not_found');
-    if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
-
-    const coach = getCoachStmt.get(b.coach_id);
-
-    if (isCoach) {
-      if (!coach || coach.user_id !== actorUserId) throw new ApiError(403, 'forbidden');
-      if (!reason || !reason.trim()) throw new ApiError(400, 'missing_reason');
-    } else {
-      if (b.member_id !== actorUserId) throw new ApiError(403, 'forbidden');
-    }
-
-    cancelBookingStmt.run(nowLocal(), actorUserId, reason, bookingId);
-
+    const { booking } = cancelBookingCore({ bookingId, actorUserId, isCoach, reason });
     const refundNote = isCoach
       ? `取消 #${bookingId}（教練：${reason}）`
       : `取消 #${bookingId}`;
     recordTransaction({
-      memberId: b.member_id, pool: 'one_on_one', amount: 1,
-      note: refundNote,
-      actorId: actorUserId,
-      source: 'booking_refund',
-      relatedBookingId: bookingId,
+      memberId: booking.member_id, pool: 'one_on_one', amount: 1,
+      note: refundNote, actorId: actorUserId,
+      source: 'booking_refund', relatedBookingId: bookingId,
     });
+    return { ok: true };
+  });
+}
 
-    // Phase 3C: notify the OTHER party (the one who didn't cancel)
-    const memberRow = getUserNameStmt.get(b.member_id);
-    if (coach && memberRow) {
-      const startFmt = fmtDateForLine(b.start_at);
-      const isCoachCancel = actorUserId === coach.user_id;
-      if (isCoachCancel) {
-        notify({
-          userId: b.member_id,
-          sessionId: null,
-          type: 'booking_cancelled_by_coach',
-          vars: { coach_display_name: coach.display_name, start_at: startFmt },
-        });
-      } else {
-        notify({
-          userId: coach.user_id,
-          sessionId: null,
-          type: 'booking_cancelled_by_member',
-          vars: { member_name: memberRow.name, start_at: startFmt },
-        });
-      }
-    }
-
+export function cancelBookingAnon({ bookingId, actorUserId }) {
+  return tx(() => {
+    cancelBookingCore({ bookingId, actorUserId, isCoach: false, reason: null });
     return { ok: true };
   });
 }
