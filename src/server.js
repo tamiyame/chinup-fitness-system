@@ -56,6 +56,7 @@ import {
   unbindByLineUserId,
   unbindByUserId,
 } from './services/lineBindingService.js';
+import { findOrCreateUserByPhone, getUserByPhone, validatePhone } from './services/userService.js';
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
@@ -167,6 +168,15 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/me', requireUser, (req, res) => {
   res.json(req.user);
 });
+
+// --- Public (no auth) endpoints for anon booking flow ---
+
+app.post('/api/public/users/lookup', asyncHandler((req, res) => {
+  const { phone } = req.body || {};
+  if (!validatePhone(phone)) return res.status(400).json({ error: 'invalid_phone' });
+  const user = getUserByPhone(phone);
+  res.json({ exists: !!user, name: user?.name || null });
+}));
 
 // --- Google OAuth ---
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
