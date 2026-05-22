@@ -231,6 +231,20 @@ app.post('/api/public/registrations', asyncHandler((req, res) => {
   });
 }));
 
+app.get('/api/public/my', asyncHandler((req, res) => {
+  const phone = req.query.phone;
+  if (!validatePhone(phone)) return res.status(400).json({ error: 'invalid_phone' });
+  const user = getUserByPhone(phone);
+  if (!user) return res.status(404).json({ error: 'not_found' });
+  const bookings = svcListMemberBookings(user.id).filter((b) => b.status !== 'cancelled');
+  const registrations = listMemberRegs.all(user.id);
+  res.json({
+    user: { name: user.name, phone: user.phone },
+    bookings,
+    registrations,
+  });
+}));
+
 // --- Google OAuth ---
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -769,6 +783,16 @@ app.get('/api/my/schedule', requireUser, asyncHandler((req, res) => {
 const getLineBindingState = db.prepare(
   'SELECT line_user_id, line_bind_code, line_bind_expires_at FROM users WHERE id = ?'
 );
+
+const listMemberRegs = db.prepare(`
+  SELECT r.id, r.session_id, r.status, r.position, r.registered_at,
+         s.start_at, s.template_id, t.name AS course_name
+  FROM registrations r
+  JOIN course_sessions s ON s.id = r.session_id
+  JOIN course_templates t ON t.id = s.template_id
+  WHERE r.user_id = ? AND r.status != 'cancelled'
+  ORDER BY s.start_at DESC
+`);
 
 app.get('/api/my/line/binding', requireUser, asyncHandler((req, res) => {
   const user = getLineBindingState.get(req.user.id);

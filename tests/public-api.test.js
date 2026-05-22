@@ -120,4 +120,30 @@ assert.ok(openSess, 'need at least one open session');
   console.log('  ✓ duplicate registration → 409');
 }
 
+// fetch my bookings + registrations by phone (use the phone from earlier anon booking)
+{
+  const r = await fetch(BASE + '/api/public/my?phone=0988111222');
+  const data = await r.json();
+  assert.equal(r.status, 200);
+  assert.equal(data.user.phone, '0988111222');
+  assert.ok(Array.isArray(data.bookings));
+  assert.ok(Array.isArray(data.registrations));
+  assert.ok(data.bookings.length >= 1);
+  console.log('  ✓ my-by-phone returns bookings');
+}
+
+// unknown phone
+{
+  const r = await fetch(BASE + '/api/public/my?phone=0000000000');
+  assert.equal(r.status, 404);
+  console.log('  ✓ unknown phone → 404');
+}
+
+// invalid phone
+{
+  const r = await fetch(BASE + '/api/public/my?phone=abc');
+  assert.equal(r.status, 400);
+  console.log('  ✓ invalid phone → 400');
+}
+
 console.log('[public-api test] done');
