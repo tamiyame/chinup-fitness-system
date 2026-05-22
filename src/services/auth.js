@@ -55,42 +55,6 @@ export function login({ email, password }) {
   return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt };
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export function registerWithPassword({ email, password, name, phone, notification_preference, as_coach = false }) {
-  if (!email || !EMAIL_RE.test(email)) throw new ApiError(400, 'invalid_email');
-  if (!password || password.length < 8) throw new ApiError(400, 'password_too_short');
-  if (!name || !name.trim()) throw new ApiError(400, 'missing_name');
-
-  const existing = getUserByEmail.get(email);
-  if (existing) throw new ApiError(409, 'email_exists');
-
-  const role = as_coach ? 'coach' : 'user';
-
-  const info = db
-    .prepare(
-      'INSERT INTO users (name, email, phone, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?, ?)'
-    )
-    .run(
-      name.trim(),
-      email.toLowerCase(),
-      phone || null,
-      hashPassword(password),
-      role,
-      notification_preference || 'email'
-    );
-
-  const userId = info.lastInsertRowid;
-
-  if (as_coach) {
-    createCoach({ userId, displayName: name.trim() });  // is_active=0; admin must activate
-  }
-
-  const user = getUserById.get(userId);
-  const session = createSession(user.id);
-  return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt, pending_coach: as_coach };
-}
-
 // Google OAuth: upsert user by google_id, else link by email, else create.
 // Password is stored as a sentinel that can never match scrypt verification.
 const GOOGLE_SENTINEL = 'oauth:google';

@@ -38,7 +38,6 @@ import {
   logout as authLogout,
   userFromToken,
   ensureInitialAdmin,
-  registerWithPassword,
   findOrCreateGoogleUser,
   loginAsGoogleUser,
 } from './services/auth.js';
@@ -158,10 +157,6 @@ app.post('/api/auth/login', loginLimiter, asyncHandler((req, res) => {
   res.json(result);
 }));
 
-app.post('/api/auth/register', registerLimiter, asyncHandler((req, res) => {
-  const result = registerWithPassword(req.body || {});
-  res.status(201).json(result);
-}));
 
 app.post('/api/auth/logout', (req, res) => {
   const token = getTokenFromReq(req);
