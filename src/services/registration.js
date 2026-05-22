@@ -33,6 +33,7 @@ const getWaitlistQueue = db.prepare(
   "SELECT * FROM registrations WHERE session_id = ? AND status = 'waitlisted' ORDER BY registered_at ASC, id ASC"
 );
 const updateRegStatus = db.prepare('UPDATE registrations SET status = ?, position = ? WHERE id = ?');
+const getRegById = db.prepare('SELECT * FROM registrations WHERE id = ?');
 
 function recalcAndSave(sessionId) {
   const confirmed = db
@@ -121,6 +122,7 @@ export function register({ sessionId, userId }) {
 }
 
 export function registerAnon({ sessionId, userId }) {
+  if (!sessionId || !userId) throw new ApiError(400, 'missing_fields');
   return tx(() => registerCore({ sessionId, userId }));
 }
 
@@ -130,7 +132,7 @@ export function registerAnon({ sessionId, userId }) {
  * Returns { reg, session } for the caller to use in side-effects.
  */
 function cancelRegistrationCore({ registrationId, userId }) {
-  const reg = db.prepare('SELECT * FROM registrations WHERE id = ?').get(registrationId);
+  const reg = getRegById.get(registrationId);
   if (!reg) throw new ApiError(404, 'registration_not_found');
   if (reg.user_id !== userId) throw new ApiError(403, 'forbidden');
   if (reg.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
