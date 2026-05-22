@@ -7,7 +7,7 @@ import {
   listOpenSessions, listRegistrationsBySession, listUserRegistrations,
   processDeadlines, processReminders,
 } from './services/courseService.js';
-import { register, cancelRegistration, ApiError } from './services/registration.js';
+import { register, registerAnon, cancelRegistration, ApiError } from './services/registration.js';
 import {
   createCoach as svcCreateCoach,
   getCoach as svcGetCoach,
@@ -200,6 +200,32 @@ app.post('/api/public/bookings', asyncHandler((req, res) => {
     bookingId: booking.id,
     startAt: booking.startAt,
     endAt: booking.endAt,
+    lineBindCode,
+    lineBindExpiresAt,
+  });
+}));
+
+app.post('/api/public/registrations', asyncHandler((req, res) => {
+  const { sessionId, name, phone } = req.body || {};
+  if (!sessionId) return res.status(400).json({ error: 'missing_fields' });
+  if (!validatePhone(phone)) return res.status(400).json({ error: 'invalid_phone' });
+  if (!name || !name.trim()) return res.status(400).json({ error: 'missing_name' });
+
+  const { userId } = findOrCreateUserByPhone({ phone, name });
+  const result = registerAnon({ sessionId, userId });
+
+  const user = getUserByPhone(phone);
+  let lineBindCode = null, lineBindExpiresAt = null;
+  if (!user.line_user_id) {
+    const bc = generateBindCode(userId);
+    lineBindCode = bc.code;
+    lineBindExpiresAt = bc.expires_at;
+  }
+
+  res.json({
+    registrationId: result.registrationId,
+    status: result.status,
+    position: result.position,
     lineBindCode,
     lineBindExpiresAt,
   });

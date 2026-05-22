@@ -91,4 +91,33 @@ const startAt = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padSt
   console.log('  ✓ missing fields → 400');
 }
 
+// Need an open session — find one via /api/sessions
+const sessRes = await fetch(BASE + '/api/sessions');
+const sessions = await sessRes.json();
+const openSess = sessions.find((s) => s.status === 'open' && s.confirmed_count < s.max_capacity);
+assert.ok(openSess, 'need at least one open session');
+
+// anon registration
+{
+  const r = await req('POST', '/api/public/registrations', {
+    sessionId: openSess.id,
+    name: 'Anon Reg', phone: '0977555666',
+  });
+  assert.equal(r.status, 200);
+  assert.ok(r.data.registrationId);
+  assert.ok(['confirmed','waitlisted'].includes(r.data.status));
+  assert.ok(r.data.lineBindCode);  // new user
+  console.log('  ✓ anon registration succeeds');
+}
+
+// double-register same phone same session
+{
+  const r = await req('POST', '/api/public/registrations', {
+    sessionId: openSess.id,
+    name: 'Anon Reg', phone: '0977555666',
+  });
+  assert.equal(r.status, 409);
+  console.log('  ✓ duplicate registration → 409');
+}
+
 console.log('[public-api test] done');
