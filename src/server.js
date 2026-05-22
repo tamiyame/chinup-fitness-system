@@ -27,6 +27,7 @@ import {
 } from './services/availabilityService.js';
 import {
   createBooking as svcCreateBooking,
+  createBookingAnon,
   listMemberBookings as svcListMemberBookings,
   listCoachBookings as svcListCoachBookings,
   cancelBooking as svcCancelBooking,
@@ -176,6 +177,32 @@ app.post('/api/public/users/lookup', asyncHandler((req, res) => {
   if (!validatePhone(phone)) return res.status(400).json({ error: 'invalid_phone' });
   const user = getUserByPhone(phone);
   res.json({ exists: !!user, name: user?.name || null });
+}));
+
+app.post('/api/public/bookings', asyncHandler((req, res) => {
+  const { coachId, startAt, name, phone, note } = req.body || {};
+  if (!coachId || !startAt) return res.status(400).json({ error: 'missing_fields' });
+  if (!validatePhone(phone)) return res.status(400).json({ error: 'invalid_phone' });
+  if (!name || !name.trim()) return res.status(400).json({ error: 'missing_name' });
+
+  const { userId } = findOrCreateUserByPhone({ phone, name });
+  const booking = createBookingAnon({ coachId, memberId: userId, startAt, note: note || null });
+
+  const user = getUserByPhone(phone);
+  let lineBindCode = null, lineBindExpiresAt = null;
+  if (!user.line_user_id) {
+    const bc = generateBindCode(userId);
+    lineBindCode = bc.code;
+    lineBindExpiresAt = bc.expires_at;
+  }
+
+  res.json({
+    bookingId: booking.id,
+    startAt: booking.startAt,
+    endAt: booking.endAt,
+    lineBindCode,
+    lineBindExpiresAt,
+  });
 }));
 
 // --- Google OAuth ---
