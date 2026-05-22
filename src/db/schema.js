@@ -5,7 +5,7 @@ export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
+  email TEXT UNIQUE,
   phone TEXT,
   password_hash TEXT,
   google_id TEXT,
@@ -206,4 +206,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_line_user_id
 
 CREATE INDEX IF NOT EXISTS idx_notifications_retry
   ON notifications(status, next_retry_at) WHERE status = 'failed';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone
+  ON users(phone) WHERE phone IS NOT NULL;
 `;
