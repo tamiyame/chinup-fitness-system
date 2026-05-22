@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone) WHERE phone IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS auth_sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -207,6 +209,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_line_user_id
 CREATE INDEX IF NOT EXISTS idx_notifications_retry
   ON notifications(status, next_retry_at) WHERE status = 'failed';
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone
-  ON users(phone) WHERE phone IS NOT NULL;
 `;
