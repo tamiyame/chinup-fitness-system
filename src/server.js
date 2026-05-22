@@ -73,9 +73,7 @@ app.set('trust proxy', 1);
 //   (a) 同辦公室 / 同網路使用者共用 NAT 出口 IP
 //   (b) test suite 連跑時容易誤觸
 //   選 30 仍然把暴力破解速率壓到 120/小時，配合 scrypt 雜湊已足夠
-// Register: 5 / 1hr — 註冊頻率本來就低，嚴格擋濫用註冊
 const loginLimiter = createRateLimiter({ name: 'login', windowMs: 15 * 60_000, max: 30 });
-const registerLimiter = createRateLimiter({ name: 'register', windowMs: 60 * 60_000, max: 5 });
 app.use(express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; },

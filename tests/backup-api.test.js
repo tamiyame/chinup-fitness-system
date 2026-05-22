@@ -38,7 +38,8 @@ if (existsSync(BACKUP_DIR)) {
 }
 
 const admin = await loginAs('admin@chinup.local', 'admin1234');
-const member = await loginAs('user1@chinup.local', 'pass1234');
+// Use a coach account for the "403 as non-admin" checks — user-role login is blocked in Phase 4.
+const member = await loginAs('coach1@chinup.local', 'pass1234');
 
 console.log('[1] GET /api/admin/backups requires admin');
 {
