@@ -1,10 +1,10 @@
 process.env.LINE_MOCK = '1';
 import { db } from '../src/db/connection.js';
-import { findOrCreateUserByPhone, validatePhone } from '../src/services/userService.js';
+import { findOrCreateUserByPhone, validatePhone, getUserByPhone } from '../src/services/userService.js';
 import assert from 'node:assert/strict';
 
 function reset() {
-  db.exec("DELETE FROM users WHERE email IS NULL OR email LIKE 'test-%@local'");
+  db.exec("DELETE FROM users WHERE phone LIKE '0911%' OR phone LIKE '0999%'");
 }
 
 console.log('[user-service test] start');
@@ -46,6 +46,20 @@ console.log('  ✓ updates name on existing phone');
 // invalid phone throws
 assert.throws(() => findOrCreateUserByPhone({ phone: '123', name: 'X' }), /invalid_phone/);
 console.log('  ✓ throws on invalid phone');
+
+// getUserByPhone
+const lookup = getUserByPhone('0911111111');
+assert.ok(lookup);
+assert.equal(lookup.phone, '0911111111');
+console.log('  ✓ getUserByPhone finds existing');
+
+const missing = getUserByPhone('0911999999');
+assert.ok(!missing);  // null or undefined OK
+console.log('  ✓ getUserByPhone returns null for unknown');
+
+const invalid = getUserByPhone('abc');
+assert.ok(!invalid);  // null or undefined OK
+console.log('  ✓ getUserByPhone rejects invalid phone');
 
 reset();
 console.log('[user-service test] done');
