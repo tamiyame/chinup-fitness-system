@@ -427,7 +427,7 @@ app.delete('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) =>
 app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
   const rows = db.prepare(`
     SELECT u.id, u.name, u.email, u.phone, u.role, u.notification_preference,
-           (u.google_id IS NOT NULL) AS has_google, u.created_at,
+           (u.google_id IS NOT NULL) AS has_google, u.line_user_id, u.created_at,
            COALESCE(b.one_on_one_balance, 0) AS one_on_one_balance,
            COALESCE(b.group_balance, 0) AS group_balance
     FROM users u
