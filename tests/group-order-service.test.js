@@ -36,6 +36,7 @@ const s1 = sessions[0].id, s2 = sessions[1].id;
 // 建單：選 2 場（都有空）
 const o1 = createGroupOrder({ name: '甲', phone: '0997000001', paySessionIds: [s1, s2], waitlistSessionIds: [] });
 expect('order created', () => assert(o1.orderId));
+expect('order returns lineBindCode for unbound user', () => assert(/^\d{6}$/.test(o1.lineBindCode)));
 expect('total = 2*500', () => assert.equal(o1.total, 1000));
 expect('bankInfo present', () => assert(o1.bankInfo && o1.bankInfo === BANK_INFO));
 expect('expiresAt present', () => assert(typeof o1.expiresAt === 'string'));

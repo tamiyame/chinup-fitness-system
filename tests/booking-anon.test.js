@@ -43,6 +43,7 @@ expect('NO point_transactions for this booking', () => {
   const c = db.prepare("SELECT COUNT(*) AS c FROM point_transactions WHERE related_booking_id = ?").get(r.id).c;
   assert.equal(c, 0);
 });
+expect('returns lineBindCode for unbound user', () => assert(/^\d{6}$/.test(r.lineBindCode)));
 
 // 重複時段 → 409 slot_taken
 expect('double-book 409', () => {

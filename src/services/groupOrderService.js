@@ -2,6 +2,7 @@ import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
 import { notify } from './notifications.js';
+import { generateBindCode } from './lineBindingService.js';
 
 // 收款資訊（健身房固定，可改用環境變數）
 export const BANK_INFO = process.env.BANK_INFO || '玉山銀行 (808) 1234-567-890123 戶名：CHINUP';
@@ -111,7 +112,9 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
       waitlisted.push(sid);
     }
 
-    return { orderId, total, bankInfo: BANK_INFO, expiresAt: order.expires_at, waitlisted, memberId: user.id };
+    const result = { orderId, total, bankInfo: BANK_INFO, expiresAt: order.expires_at, waitlisted, memberId: user.id };
+    if (!user.line_user_id) result.lineBindCode = generateBindCode(user.id).code;
+    return result;
   });
 }
 

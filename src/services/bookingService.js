@@ -2,6 +2,7 @@ import { db, tx, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
 import { notify, fmtDateForLine } from './notifications.js';
+import { generateBindCode } from './lineBindingService.js';
 
 const insertBookingStmt = db.prepare(`
   INSERT INTO bookings (coach_id, member_id, start_at, end_at, note)
@@ -93,7 +94,9 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null }
   if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
   return tx(() => {
     const user = findOrCreateUserByPhone({ phone, name });
-    return createBookingCore({ coach, memberId: user.id, startAt, note });
+    const r = createBookingCore({ coach, memberId: user.id, startAt, note });
+    if (!user.line_user_id) r.lineBindCode = generateBindCode(user.id).code;
+    return r;
   });
 }
 
