@@ -85,3 +85,51 @@ expect('partial-full pay batch → 409 and writes nothing', () => {
 });
 
 console.log('[group-order-service part1] done');
+
+import { confirmGroupOrder, cancelGroupOrder, cancelRegistrationPublic, promoteWaitlist } from '../src/services/groupOrderService.js';
+
+console.log('[group-order-service part2] start');
+
+// 接續 part1 狀態：s1 cap=2，o1(甲:s1,s2 pending)、o2(乙:s1 pending)、o3(丙:s1 waitlisted)
+// 核對 o2 付款 → confirmed
+expect('confirm order → paid + regs confirmed', () => {
+  const adminId = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get()?.id
+    || db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES ('A','goa@x.com','x','owner') RETURNING id").get().id;
+  const res = confirmGroupOrder({ orderId: o2.orderId, actorId: adminId });
+  assert.equal(res.ok, true);
+  const o = db.prepare('SELECT status FROM group_orders WHERE id=?').get(o2.orderId);
+  assert.equal(o.status, 'paid');
+  const r = db.prepare("SELECT status FROM registrations WHERE order_id=?").get(o2.orderId);
+  assert.equal(r.status, 'confirmed');
+});
+
+// 乙取消（confirmed）→ 釋名額 → 丙(候補) 遞補成 pending + 新 24h order
+expect('cancel confirmed reg → promote waitlist', () => {
+  const reg = db.prepare("SELECT id FROM registrations WHERE order_id=?").get(o2.orderId);
+  const res = cancelRegistrationPublic({ registrationId: reg.id, phone: '0997000002', name: '乙' });
+  assert.equal(res.ok, true);
+  // 丙 應被遞補
+  const bing = db.prepare("SELECT * FROM registrations WHERE session_id=? AND user_id=(SELECT id FROM users WHERE phone='0997000003')").get(s1);
+  assert.equal(bing.status, 'pending');
+  assert(bing.order_id);  // 新訂單
+  const ord = db.prepare('SELECT * FROM group_orders WHERE id=?').get(bing.order_id);
+  assert.equal(ord.status, 'pending');
+});
+
+// 放棄整筆未付 order（甲的 o1）→ regs cancelled、釋名額
+expect('cancel pending order whole → ok', () => {
+  const res = cancelGroupOrder({ orderId: o1.orderId, phone: '0997000001', name: '甲' });
+  assert.equal(res.ok, true);
+  const o = db.prepare('SELECT status FROM group_orders WHERE id=?').get(o1.orderId);
+  assert.equal(o.status, 'cancelled');
+  const cnt = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE order_id=? AND status='cancelled'").get(o1.orderId).c;
+  assert.equal(cnt, 2);
+});
+
+// 取消他人 order → 403
+expect('cancel order wrong owner → 403', () => {
+  try { cancelGroupOrder({ orderId: o3 && o3.orderId, phone: '0000', name: 'x' }); assert.fail('no throw'); }
+  catch (e) { assert([403,404,400].includes(e.status)); }
+});
+
+console.log('[group-order-service part2] done');

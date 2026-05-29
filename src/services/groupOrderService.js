@@ -114,3 +114,94 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
     return { orderId, total, bankInfo: BANK_INFO, expiresAt: order.expires_at, waitlisted, memberId: user.id };
   });
 }
+
+const getOrder = db.prepare('SELECT * FROM group_orders WHERE id = ?');
+const getReg = db.prepare('SELECT * FROM registrations WHERE id = ?');
+const getUserByPhone = db.prepare('SELECT * FROM users WHERE phone = ?');
+
+function ownerMatches(user, phone, name) {
+  return user && user.phone === phone && user.name &&
+    user.name.trim().toLowerCase() === (name || '').trim().toLowerCase();
+}
+
+/** admin 核對匯款：order → paid，其 pending registrations → confirmed，通知客人。 */
+export function confirmGroupOrder({ orderId, actorId }) {
+  return tx(() => {
+    const order = getOrder.get(orderId);
+    if (!order) throw new ApiError(404, 'order_not_found');
+    if (order.status === 'paid') return { ok: true };
+    if (order.status === 'cancelled') throw new ApiError(409, 'order_cancelled');
+    db.prepare("UPDATE group_orders SET status='paid', paid_at=?, paid_by=? WHERE id=?")
+      .run(nowLocal(), actorId, orderId);
+    db.prepare("UPDATE registrations SET status='confirmed' WHERE order_id=? AND status='pending'").run(orderId);
+    // 通知客人
+    const first = db.prepare('SELECT session_id FROM registrations WHERE order_id=? LIMIT 1').get(orderId);
+    if (first) {
+      const s = getSession.get(first.session_id);
+      const tpl = getTemplate.get(s.template_id);
+      notify({ userId: order.member_id, sessionId: first.session_id, type: 'payment_received',
+        vars: { course_name: tpl.name, start_at: s.start_at } });
+    }
+    return { ok: true };
+  });
+}
+
+/** 取消整筆未付 order（只有 pending 可整筆放棄）。釋名額後遞補。 */
+export function cancelGroupOrder({ orderId, phone, name }) {
+  return tx(() => {
+    const order = getOrder.get(orderId);
+    if (!order) throw new ApiError(404, 'order_not_found');
+    const user = getUserByPhone.get(phone);
+    if (!ownerMatches(user, phone, name) || user.id !== order.member_id) throw new ApiError(403, 'forbidden');
+    if (order.status === 'paid') throw new ApiError(409, 'order_already_paid');
+    if (order.status === 'cancelled') return { ok: true };
+    const regs = db.prepare("SELECT session_id FROM registrations WHERE order_id=? AND status='pending'").all(orderId);
+    db.prepare("UPDATE registrations SET status='cancelled' WHERE order_id=? AND status='pending'").run(orderId);
+    db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=? WHERE id=?").run(nowLocal(), orderId);
+    for (const r of regs) promoteWaitlist(r.session_id);
+    return { ok: true };
+  });
+}
+
+/** 取消單筆 confirmed / waitlisted registration。釋名額後遞補。 */
+export function cancelRegistrationPublic({ registrationId, phone, name }) {
+  return tx(() => {
+    const reg = getReg.get(registrationId);
+    if (!reg) throw new ApiError(404, 'registration_not_found');
+    const user = getUserByPhone.get(phone);
+    if (!ownerMatches(user, phone, name) || user.id !== reg.user_id) throw new ApiError(403, 'forbidden');
+    if (reg.status === 'cancelled') return { ok: true };
+    if (reg.status === 'pending') throw new ApiError(409, 'use_cancel_order'); // pending 要走整筆放棄
+    const wasOccupying = reg.status === 'confirmed';
+    db.prepare("UPDATE registrations SET status='cancelled' WHERE id=?").run(registrationId);
+    if (wasOccupying) promoteWaitlist(reg.session_id);
+    return { ok: true };
+  });
+}
+
+const getWaitQueue = db.prepare(
+  "SELECT * FROM registrations WHERE session_id=? AND status='waitlisted' ORDER BY registered_at ASC, id ASC"
+);
+
+/** 若該場有空位，取最早候補 → pending + 建 24h 單堂 order，通知客人。 */
+export function promoteWaitlist(sessionId) {
+  return tx(() => {
+    const s = getSession.get(sessionId);
+    if (!s || s.status === 'cancelled') return;
+    const tpl = getTemplate.get(s.template_id);
+    if (sessionOccupied(sessionId) >= tpl.max_capacity) return;
+    const next = getWaitQueue.get(sessionId);
+    if (!next) return;
+    const orderId = insertOrder.run(
+      next.user_id,
+      db.prepare('SELECT name FROM users WHERE id=?').get(next.user_id).name,
+      db.prepare('SELECT phone FROM users WHERE id=?').get(next.user_id).phone || '',
+      tpl.price_per_session,
+      offsetLocal(PROMOTED_TTL_MS)
+    ).lastInsertRowid;
+    db.prepare("UPDATE registrations SET status='pending', order_id=?, amount_due=? WHERE id=?")
+      .run(orderId, tpl.price_per_session, next.id);
+    notify({ userId: next.user_id, sessionId, type: 'group_promoted',
+      vars: { course_name: tpl.name, start_at: s.start_at } });
+  });
+}
