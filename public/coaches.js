@@ -1,16 +1,15 @@
-import { api, fmtDate, dow, toast, refreshAuthBar, bootPublic, escapeHtml, getUser } from './app.js';
+import { api, fmtDate, dow, toast, bootPublic, escapeHtml } from './app.js';
 
 await bootPublic();
 
 const $ = (id) => document.getElementById(id);
-const views = { list: $('view-list'), detail: $('view-detail'), confirm: $('view-confirm') };
+const views = { list: $('view-list'), detail: $('view-detail') };
 function show(name) {
   for (const v of Object.values(views)) v.classList.add('hidden');
   views[name].classList.remove('hidden');
 }
 
 let currentCoach = null;
-let currentSlot = null;
 let weekOffset = 0;
 
 // --- Coach-list accordion + slot cache -------------------------------------
@@ -37,21 +36,6 @@ function fmtSlotChip(iso) {
   return `${mm}/${dd} ${dow(d.getDay())} ${hh}:${min}`;
 }
 
-function relativeDays(daysAgo) {
-  if (daysAgo === 0) return '今天';
-  if (daysAgo > 0) return `${daysAgo} 天前`;
-  return `${-daysAgo} 天後`;
-}
-
-function next7DaysRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const end = new Date(start.getTime() + 6 * 86400_000);
-  const pad = (n) => String(n).padStart(2, '0');
-  const f = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  return { from: f(start), to: f(end) };
-}
-
 function avatarHtml(coach) {
   if (coach.avatar_path) {
     return `<img src="/avatars/${escapeHtml(coach.avatar_path)}" alt="">`;
@@ -59,9 +43,8 @@ function avatarHtml(coach) {
   return `<span class="ccard-avatar-fallback">${escapeHtml(firstChar(coach.display_name))}</span>`;
 }
 
-function cardHtml(coach, { pinned = false, expanded = false } = {}) {
+function cardHtml(coach, { expanded = false } = {}) {
   const classes = ['ccard'];
-  if (pinned) classes.push('pinned');
   if (expanded) classes.push('expanded');
   return `
     <div class="${classes.join(' ')}"
@@ -103,7 +86,7 @@ function renderSlotsInto(slotArea, slots, coachId) {
     return;
   }
   const first3 = slots.slice(0, 3)
-    .map((s) => `<span class="slot-chip">${escapeHtml(fmtSlotChip(s))}</span>`)
+    .map((s) => `<span class="slot-chip" role="button" tabindex="0" data-slot="${escapeHtml(s)}" data-coach-id="${coachId}">${escapeHtml(fmtSlotChip(s))}</span>`)
     .join('');
   slotArea.innerHTML = `
     <div class="slot-chips">
@@ -111,6 +94,17 @@ function renderSlotsInto(slotArea, slots, coachId) {
       <span class="slot-chip slot-chip-more" role="button" tabindex="0" data-coach-id="${coachId}">看更多 →</span>
     </div>
   `;
+  // Slot chips in accordion → open booking modal directly
+  slotArea.querySelectorAll('.slot-chip[data-slot]').forEach((chip) => {
+    const trigger = () => {
+      const coach = allCoachesById.get(Number(chip.dataset.coachId));
+      if (coach) openBookingModal(coach, chip.dataset.slot);
+    };
+    chip.addEventListener('click', trigger);
+    chip.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); trigger(); }
+    });
+  });
   const moreChip = slotArea.querySelector('.slot-chip-more');
   const trigger = () => openCoach(coachId);
   moreChip.addEventListener('click', trigger);
@@ -124,7 +118,13 @@ async function ensureSlotsLoaded(coachId, slotAreaEl) {
     renderSlotsInto(slotAreaEl, slotCacheByCoach.get(coachId), coachId);
     return;
   }
-  const { from, to } = next7DaysRange();
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(start.getTime() + 6 * 86400_000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const f = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const from = f(start);
+  const to = f(end);
   try {
     const slots = await api(`/api/coaches/${coachId}/availability?from=${from}&to=${to}`);
     slotCacheByCoach.set(coachId, slots);
@@ -180,56 +180,6 @@ function attachCardHandlers(rootEl) {
   });
 }
 
-// --- Recent-coach section -------------------------------------------------
-
-async function loadRecentSection() {
-  // Skip silently for logged-out visitors — the pinned section needs an
-  // authenticated user. Hitting /api/my/recent-coach would 401, which the
-  // shared api() helper escalates into a forced redirect to /login.
-  if (!getUser()) return;
-  let data;
-  try {
-    data = await api('/api/my/recent-coach');
-  } catch {
-    return; // silent — section stays hidden
-  }
-  if (!data || !data.coach) return;
-
-  const section = $('recent-section');
-  section.classList.remove('hidden');
-
-  $('recent-ago').textContent = relativeDays(data.days_ago ?? 0);
-
-  allCoachesById.set(data.coach.id, data.coach);
-
-  // Render the pinned card AND its expand panel as true siblings inside
-  // #recent-mount so the generic accordion logic (collapseCurrent /
-  // expandCard) handles the pinned card identically to bottom-list cards.
-  const mount = $('recent-mount');
-  mount.innerHTML = cardHtml(data.coach, { pinned: true, expanded: true });
-  attachCardHandlers(mount);
-
-  const cardEl = mount.querySelector('.ccard');
-  const expandEl = document.createElement('div');
-  expandEl.setAttribute('data-for-coach', String(data.coach.id));
-  cardEl.insertAdjacentElement('afterend', expandEl);
-  renderExpand(expandEl, data.coach);
-
-  currentlyExpandedId = data.coach.id;
-  ensureSlotsLoaded(data.coach.id, expandEl.querySelector('.slot-area'));
-
-  // Dedupe: the same coach was just rendered in #coach-list by loadCoachList.
-  // Keeping only the pinned instance avoids two confusing UX gotchas:
-  //  - clicking the bottom duplicate triggers a collapse-only path (since
-  //    currentlyExpandedId already matches), making the pinned collapse out
-  //    of viewport with no visible feedback;
-  //  - after collapsing pinned, clicking the bottom duplicate would re-expand
-  //    next to the pinned (first querySelector match), not where the user
-  //    clicked.
-  const bottomDup = $('coach-list').querySelector(`.ccard[data-coach-id="${data.coach.id}"]`);
-  if (bottomDup) bottomDup.remove();
-}
-
 // --- Full coach list ------------------------------------------------------
 
 async function loadCoachList() {
@@ -246,11 +196,6 @@ async function loadCoachList() {
   if (coaches.length === 0) {
     wrap.innerHTML = '<p class="text-slate-500 text-sm">目前沒有可預約的教練</p>';
   }
-
-  // Recent section runs after the list so its data-coach-id matches a card
-  // already in the DOM; if the recent coach is also in the list, collapsing
-  // the pinned one finds both elements via querySelectorAll.
-  await loadRecentSection();
 }
 
 async function openCoach(id) {
@@ -319,71 +264,161 @@ async function loadSlots() {
     btn.className = 'btn-secondary text-sm';
     const d = new Date(s);
     btn.textContent = `${d.getMonth() + 1}/${d.getDate()}（${dow(d.getDay())[1]}）${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    btn.addEventListener('click', () => openConfirm(s));
+    btn.addEventListener('click', () => openBookingModal(currentCoach, s));
     grid.appendChild(btn);
   }
 }
 
-async function openConfirm(slotStr) {
-  currentSlot = slotStr;
-  const d = new Date(slotStr);
-  $('confirm-summary').innerHTML = `
-    <div class="mb-2"><span class="text-slate-500">教練</span><br><strong>${escapeHtml(currentCoach.display_name)}</strong></div>
-    <div><span class="text-slate-500">時間</span><br><strong>${fmtDate(slotStr)}（60 分鐘）</strong></div>
-  `;
-  $('note').value = '';
+$('back-to-list').addEventListener('click', () => show('list'));
 
-  // Phase 2: check balance, disable confirm button if 0
-  try {
-    const bal = await api('/api/my/points/balance');
-    const btn = $('confirm-btn');
-    if (bal.one_on_one <= 0) {
-      btn.disabled = true;
-      btn.textContent = '點數不足，無法預約';
-      btn.classList.add('opacity-50');
-      let hint = document.getElementById('balance-hint');
-      if (!hint) {
-        hint = document.createElement('div');
-        hint.id = 'balance-hint';
-        hint.className = 'text-sm text-red-500 mt-2';
-        btn.parentNode.insertBefore(hint, btn.nextSibling);
-      }
-      hint.textContent = '目前一對一餘額 0 點，請聯絡管理員儲值。';
-    } else {
-      btn.disabled = false;
-      btn.textContent = '確認預約';
-      btn.classList.remove('opacity-50');
-      const hint = document.getElementById('balance-hint');
-      if (hint) hint.remove();
-    }
-  } catch {} // silent — if balance fetch fails, still let them try; backend will block
+// --- Booking modal ---------------------------------------------------------
 
-  show('confirm');
+let modalCoach = null;
+let modalSlot = null;
+
+function openBookingModal(coach, slotIso) {
+  modalCoach = coach;
+  modalSlot = slotIso;
+
+  $('modal-coach-name').textContent = coach.display_name;
+  $('modal-slot-time').textContent = fmtDate(slotIso) + '（60 分鐘）';
+  $('modal-name').value = '';
+  $('modal-phone').value = '';
+  $('modal-name-err').textContent = '';
+  $('modal-phone-err').textContent = '';
+  $('modal-general-err').textContent = '';
+  $('modal-submit-btn').disabled = false;
+  $('modal-submit-btn').textContent = '確認預約';
+
+  $('booking-modal').classList.remove('hidden');
+  $('modal-name').focus();
 }
 
-$('back-to-list').addEventListener('click', () => show('list'));
-$('back-to-detail').addEventListener('click', () => show('detail'));
+function closeBookingModal() {
+  $('booking-modal').classList.add('hidden');
+  modalCoach = null;
+  modalSlot = null;
+}
 
-$('confirm-btn').addEventListener('click', async () => {
+$('modal-close-btn').addEventListener('click', closeBookingModal);
+$('booking-modal').addEventListener('click', (ev) => {
+  if (ev.target === $('booking-modal')) closeBookingModal();
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') closeBookingModal();
+});
+
+$('modal-submit-btn').addEventListener('click', async () => {
+  const nameVal = $('modal-name').value.trim();
+  const phoneRaw = $('modal-phone').value.trim();
+  const phoneNormalized = phoneRaw.replace(/\D/g, '');
+
+  // Clear previous errors
+  $('modal-name-err').textContent = '';
+  $('modal-phone-err').textContent = '';
+  $('modal-general-err').textContent = '';
+
+  // Client-side validation
+  let hasErr = false;
+  if (!nameVal) {
+    $('modal-name-err').textContent = '請輸入姓名';
+    hasErr = true;
+  }
+  if (!phoneNormalized) {
+    $('modal-phone-err').textContent = '請輸入電話';
+    hasErr = true;
+  }
+  if (hasErr) return;
+
+  const btn = $('modal-submit-btn');
+  btn.disabled = true;
+  btn.textContent = '送出中…';
+
   try {
-    const note = $('note').value.trim();
-    const result = await api('/api/bookings', {
+    const result = await api('/api/public/bookings', {
       method: 'POST',
-      body: { coach_id: currentCoach.id, start_at: currentSlot, note: note || null },
+      body: { coachId: modalCoach.id, startAt: modalSlot, name: nameVal, phone: phoneNormalized },
     });
-    toast('預約成功！', 'success');
-    await refreshAuthBar();
-    setTimeout(() => location.href = '/my-schedule', 700);
+    // Success
+    closeBookingModal();
+    showSuccessView(result);
+
+    // Remove the booked slot from the detail grid if visible
+    removeSlotFromGrid(modalSlot);
+    // Invalidate accordion cache for this coach
+    slotCacheByCoach.delete(modalCoach.id);
   } catch (e) {
-    if (e.data?.error === 'slot_taken') {
-      toast('此時段剛被預約走了', 'error');
-    } else if (e.data?.error === 'insufficient_points') {
-      toast('點數不足，請聯絡管理員', 'error');
+    btn.disabled = false;
+    btn.textContent = '確認預約';
+    const errCode = e.data?.error;
+    if (errCode === 'slot_taken') {
+      $('modal-general-err').textContent = '此時段剛被預約走了，請選其他時段。';
+      // Remove this slot from the grid so user doesn't try again
+      removeSlotFromGrid(modalSlot);
+      slotCacheByCoach.delete(modalCoach?.id);
+    } else if (errCode === 'invalid_phone') {
+      $('modal-phone-err').textContent = e.data?.detail || '電話格式不正確';
+    } else if (errCode === 'missing_name') {
+      $('modal-name-err').textContent = '請輸入姓名';
+    } else if (errCode === 'missing_phone') {
+      $('modal-phone-err').textContent = '請輸入電話';
+    } else if (errCode === 'coach_not_found' || errCode === 'coach_inactive') {
+      $('modal-general-err').textContent = '教練目前無法預約，請重新整理頁面。';
     } else {
-      toast(`預約失敗：${e.message}`, 'error');
+      $('modal-general-err').textContent = `預約失敗：${e.message}`;
     }
   }
 });
+
+function removeSlotFromGrid(slotIso) {
+  // Remove from the detail view grid
+  const grid = $('slot-grid');
+  if (grid) {
+    grid.querySelectorAll('button').forEach((btn) => {
+      // Check by slot ISO text match via data or by re-building the label
+      if (btn.dataset.slot === slotIso) btn.remove();
+    });
+  }
+}
+
+// --- Success view ----------------------------------------------------------
+
+function showSuccessView(bookingResult) {
+  const successEl = $('view-success');
+  const coachName = escapeHtml(modalCoach?.display_name ?? '');
+  const slotTime = escapeHtml(fmtDate(modalSlot ?? bookingResult.startAt));
+
+  let lineHtml = '';
+  if (bookingResult.lineBindCode) {
+    lineHtml = `
+      <div class="card bg-green-50 border border-green-200 mt-4 p-4 text-sm">
+        <p class="text-green-800">想收 LINE 通知？加官方帳號並貼這組碼：</p>
+        <p class="text-xl font-bold text-green-700 my-2 tracking-widest">${escapeHtml(bookingResult.lineBindCode)}</p>
+        <p class="text-green-600">（15 分鐘內有效）</p>
+      </div>
+    `;
+  }
+
+  successEl.innerHTML = `
+    <div class="text-center py-6">
+      <div class="text-5xl mb-4">✅</div>
+      <h1 class="page-title">預約成功！</h1>
+      <div class="card mt-4 mb-2 text-left">
+        <div class="mb-2"><span class="text-slate-500">教練</span><br><strong>${coachName}</strong></div>
+        <div><span class="text-slate-500">時間</span><br><strong>${slotTime}</strong></div>
+      </div>
+      ${lineHtml}
+      <div class="mt-6 flex flex-col gap-3">
+        <a href="/my-schedule" class="btn-primary text-center block">查我的預約</a>
+        <a href="/" class="btn-secondary text-center block">回首頁</a>
+      </div>
+    </div>
+  `;
+
+  // Show success view (not in the views map — show manually)
+  for (const v of Object.values(views)) v.classList.add('hidden');
+  successEl.classList.remove('hidden');
+}
 
 await loadCoachList();
 document.body.style.visibility = 'visible';
