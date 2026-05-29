@@ -877,10 +877,19 @@ expect('cancel pending order whole → ok', () => {
   assert.equal(cnt, 2);
 });
 
-// 取消他人 order → 403
+// 取消他人 order（用真實但非本人的帳號：甲 試圖取消屬於丙的 o3）→ 403
 expect('cancel order wrong owner → 403', () => {
-  try { cancelGroupOrder({ orderId: o3 && o3.orderId, phone: '0000', name: 'x' }); assert.fail('no throw'); }
-  catch (e) { assert([403,404,400].includes(e.status)); }
+  try { cancelGroupOrder({ orderId: o3.orderId, phone: '0997000001', name: '甲' }); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 403); }
+});
+
+// cancelRegistrationPublic 對 pending reg（丙遞補後的待付）→ 409 use_cancel_order（須走整筆放棄）
+expect('cancel pending reg → 409 use_cancel_order', () => {
+  const bingId = db.prepare("SELECT id FROM users WHERE phone='0997000003'").get().id;
+  const reg = db.prepare("SELECT id FROM registrations WHERE user_id=? AND status='pending'").get(bingId);
+  assert(reg, 'expected promoted 丙 to have a pending reg');
+  try { cancelRegistrationPublic({ registrationId: reg.id, phone: '0997000003', name: '丙' }); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 409); assert.equal(e.code, 'use_cancel_order'); }
 });
 
 console.log('[group-order-service part2] done');
@@ -895,6 +904,7 @@ Run: `node tests/group-order-service.test.js` → part2 FAIL（functions missing
 const getOrder = db.prepare('SELECT * FROM group_orders WHERE id = ?');
 const getReg = db.prepare('SELECT * FROM registrations WHERE id = ?');
 const getUserByPhone = db.prepare('SELECT * FROM users WHERE phone = ?');
+const getUserBasics = db.prepare('SELECT name, phone FROM users WHERE id = ?');
 
 function ownerMatches(user, phone, name) {
   return user && user.phone === phone && user.name &&
@@ -969,10 +979,12 @@ export function promoteWaitlist(sessionId) {
     if (sessionOccupied(sessionId) >= tpl.max_capacity) return;
     const next = getWaitQueue.get(sessionId);
     if (!next) return;
+    const u = getUserBasics.get(next.user_id);
+    if (!u) return;  // FK guarantees this, but stay defensive
     const orderId = insertOrder.run(
       next.user_id,
-      db.prepare('SELECT name FROM users WHERE id=?').get(next.user_id).name,
-      db.prepare('SELECT phone FROM users WHERE id=?').get(next.user_id).phone || '',
+      u.name,
+      u.phone || '',
       tpl.price_per_session,
       offsetLocal(PROMOTED_TTL_MS)
     ).lastInsertRowid;

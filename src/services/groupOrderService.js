@@ -118,6 +118,7 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
 const getOrder = db.prepare('SELECT * FROM group_orders WHERE id = ?');
 const getReg = db.prepare('SELECT * FROM registrations WHERE id = ?');
 const getUserByPhone = db.prepare('SELECT * FROM users WHERE phone = ?');
+const getUserBasics = db.prepare('SELECT name, phone FROM users WHERE id = ?');
 
 function ownerMatches(user, phone, name) {
   return user && user.phone === phone && user.name &&
@@ -192,10 +193,12 @@ export function promoteWaitlist(sessionId) {
     if (sessionOccupied(sessionId) >= tpl.max_capacity) return;
     const next = getWaitQueue.get(sessionId);
     if (!next) return;
+    const u = getUserBasics.get(next.user_id);
+    if (!u) return;  // FK guarantees this, but stay defensive
     const orderId = insertOrder.run(
       next.user_id,
-      db.prepare('SELECT name FROM users WHERE id=?').get(next.user_id).name,
-      db.prepare('SELECT phone FROM users WHERE id=?').get(next.user_id).phone || '',
+      u.name,
+      u.phone || '',
       tpl.price_per_session,
       offsetLocal(PROMOTED_TTL_MS)
     ).lastInsertRowid;
