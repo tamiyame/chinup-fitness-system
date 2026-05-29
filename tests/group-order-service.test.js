@@ -143,3 +143,48 @@ expect('cancel pending reg → 409 use_cancel_order', () => {
 });
 
 console.log('[group-order-service part2] done');
+
+import { expirePendingOrders, getPublicGroupCourses, getPublicSchedule } from '../src/services/groupOrderService.js';
+
+console.log('[group-order-service part3] start');
+
+// 造一筆「已過期」pending order：直接改 expires_at 到過去
+expect('expire sweep cancels stale pending + promotes', () => {
+  // 用丁建一個 pending（選 s2，s2 cap=2 目前 0 佔；先讓某人候補 s2）
+  const oDi = createGroupOrder({ name: '丁', phone: '0997000004', paySessionIds: [s2], waitlistSessionIds: [] });
+  // 戊候補 s2 之前要先把 s2 佔滿；s2 cap=2，丁佔 1，再加一個正取佔滿
+  createGroupOrder({ name: '己', phone: '0997000005', paySessionIds: [s2], waitlistSessionIds: [] }); // s2 now full(2)
+  const oGeng = createGroupOrder({ name: '庚', phone: '0997000006', paySessionIds: [], waitlistSessionIds: [s2] }); // waitlist
+  // 把丁的 order 過期
+  db.prepare("UPDATE group_orders SET expires_at='2000-01-01T00:00:00' WHERE id=?").run(oDi.orderId);
+  const res = expirePendingOrders();
+  assert(res.expired >= 1);
+  const o = db.prepare('SELECT status FROM group_orders WHERE id=?').get(oDi.orderId);
+  assert.equal(o.status, 'cancelled');
+  // 庚 應遞補上 s2
+  const geng = db.prepare("SELECT status FROM registrations WHERE session_id=? AND user_id=(SELECT id FROM users WHERE phone='0997000006')").get(s2);
+  assert.equal(geng.status, 'pending');
+});
+
+// 公開課程列表
+expect('getPublicGroupCourses returns templates with sessions+price+occupied', () => {
+  const courses = getPublicGroupCourses();
+  const c = courses.find(x => x.id === tpl.templateId);
+  assert(c && c.price_per_session === 500 && Array.isArray(c.sessions));
+  const sess = c.sessions.find(x => x.id === s1);
+  assert(typeof sess.occupied === 'number' && sess.max_capacity === 2 && typeof sess.is_full === 'boolean');
+});
+
+// 公開查課表（電話+姓名）+ 剩堂數
+expect('getPublicSchedule by phone+name', () => {
+  const sched = getPublicSchedule({ phone: '0997000006', name: '庚' });
+  assert(sched && Array.isArray(sched.items));
+  assert(typeof sched.group_remaining === 'number');
+  assert(typeof sched.one_on_one_remaining === 'number');
+});
+expect('getPublicSchedule wrong name → 403', () => {
+  try { getPublicSchedule({ phone: '0997000006', name: '錯' }); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 403); }
+});
+
+console.log('[group-order-service part3] done');

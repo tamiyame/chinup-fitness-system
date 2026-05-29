@@ -1,6 +1,6 @@
 import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
-import { findOrCreateUserByPhone } from './userService.js';
+import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
 import { notify } from './notifications.js';
 
 // 收款資訊（健身房固定，可改用環境變數）
@@ -207,4 +207,97 @@ export function promoteWaitlist(sessionId) {
     notify({ userId: next.user_id, sessionId, type: 'group_promoted',
       vars: { course_name: tpl.name, start_at: s.start_at } });
   });
+}
+
+/** 把所有逾時未付 pending order → cancelled，釋名額後對受影響場次遞補。 */
+export function expirePendingOrders() {
+  const now = nowLocal();
+  const stale = db.prepare("SELECT id FROM group_orders WHERE status='pending' AND expires_at < ?").all(now);
+  let expired = 0;
+  for (const { id } of stale) {
+    tx(() => {
+      const regs = db.prepare("SELECT session_id FROM registrations WHERE order_id=? AND status='pending'").all(id);
+      db.prepare("UPDATE registrations SET status='cancelled' WHERE order_id=? AND status='pending'").run(id);
+      db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=? WHERE id=?").run(now, id);
+      for (const r of regs) promoteWaitlist(r.session_id);
+    });
+    expired++;
+  }
+  return { expired };
+}
+
+/** 公開：所有有未來場次的 published template，含每場 occupied / is_full。 */
+export function getPublicGroupCourses() {
+  const now = nowLocal();
+  const templates = db.prepare(`
+    SELECT id, name, description, min_capacity, max_capacity, duration_minutes,
+           price_per_session, recurrence, cycle_start_date, cycle_end_date
+    FROM course_templates
+    WHERE status = 'published'
+    ORDER BY created_at DESC
+  `).all();
+  return templates.map((t) => {
+    const sessions = db.prepare(`
+      SELECT id, session_date, start_at, end_at, status, registration_deadline
+      FROM course_sessions
+      WHERE template_id = ? AND status = 'open' AND start_at > ?
+      ORDER BY start_at ASC
+    `).all(t.id, now).map((s) => {
+      const occupied = sessionOccupied(s.id);
+      return {
+        ...s, occupied, max_capacity: t.max_capacity,
+        is_full: occupied >= t.max_capacity,
+        price_per_session: t.price_per_session,
+      };
+    });
+    return { ...t, sessions };
+  }).filter((t) => t.sessions.length > 0);
+}
+
+/** 公開：用電話+姓名查課表（1v1 bookings + group registrations）+ 剩堂數。 */
+export function getPublicSchedule({ phone, name }) {
+  const user = getUserByPhoneAndName({ phone, name });
+  if (!user) throw new ApiError(403, 'not_found_or_mismatch');
+  const now = nowLocal();
+
+  const bookings = db.prepare(`
+    SELECT b.id, b.start_at, b.end_at, b.status, c.display_name AS coach_display_name
+    FROM bookings b JOIN coaches c ON c.id = b.coach_id
+    WHERE b.member_id = ? ORDER BY b.start_at DESC
+  `).all(user.id).map((b) => ({
+    kind: 'booking', id: b.id, start_at: b.start_at, end_at: b.end_at,
+    status: b.status, coach_display_name: b.coach_display_name,
+    is_past: b.start_at < now,
+    can_cancel: b.status === 'confirmed' && b.start_at > now,
+  }));
+
+  const regs = db.prepare(`
+    SELECT r.id, r.status, r.amount_due, r.order_id,
+           s.id AS session_id, s.start_at, s.end_at, s.status AS session_status,
+           t.name AS course_name, o.status AS order_status, o.expires_at AS order_expires_at,
+           o.total_amount, o.id AS oid
+    FROM registrations r
+    JOIN course_sessions s ON s.id = r.session_id
+    JOIN course_templates t ON t.id = s.template_id
+    LEFT JOIN group_orders o ON o.id = r.order_id
+    WHERE r.user_id = ? AND r.status != 'cancelled'
+    ORDER BY s.start_at DESC
+  `).all(user.id).map((r) => ({
+    kind: 'registration', id: r.id, status: r.status,
+    start_at: r.start_at, end_at: r.end_at, session_id: r.session_id,
+    course_name: r.course_name, session_status: r.session_status,
+    order_id: r.order_id, order_status: r.order_status, order_expires_at: r.order_expires_at,
+    amount_due: r.amount_due, is_past: r.start_at < now,
+    can_cancel: ['confirmed', 'waitlisted'].includes(r.status) && r.session_status === 'open' && r.start_at > now,
+  }));
+
+  // 剩堂數 = 已付款(confirmed) 且未上(start_at>now)
+  const one_on_one_remaining = bookings.filter((b) => b.status === 'confirmed' && !b.is_past).length;
+  const group_remaining = regs.filter((r) => r.status === 'confirmed' && !r.is_past).length;
+
+  const items = [...bookings, ...regs].sort((a, b) => b.start_at.localeCompare(a.start_at));
+  return {
+    user: { name: user.name, phone: user.phone },
+    items, one_on_one_remaining, group_remaining,
+  };
 }
