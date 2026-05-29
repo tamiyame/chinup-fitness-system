@@ -1,13 +1,13 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, basename } from 'node:path';
-import { db, tx, nowLocal } from './db/connection.js';
+import { db, tx } from './db/connection.js';
 import {
   createTemplate, editTemplate, listTemplates, getTemplate,
-  listOpenSessions, listRegistrationsBySession, listUserRegistrations,
+  listOpenSessions, listRegistrationsBySession,
   processDeadlines, processReminders,
 } from './services/courseService.js';
-import { register, cancelRegistration, ApiError } from './services/registration.js';
+import { ApiError } from './services/registration.js';
 import {
   createCoach as svcCreateCoach,
   getCoach as svcGetCoach,
@@ -26,11 +26,8 @@ import {
   computeAvailableSlots as svcComputeSlots,
 } from './services/availabilityService.js';
 import {
-  createBooking as svcCreateBooking,
-  listMemberBookings as svcListMemberBookings,
   listCoachBookings as svcListCoachBookings,
   cancelBooking as svcCancelBooking,
-  getMostRecentCoachForUser as svcGetMostRecentCoachForUser,
   createBookingAnon as svcCreateBookingAnon,
   cancelBookingAnon as svcCancelBookingAnon,
 } from './services/bookingService.js';
@@ -49,24 +46,15 @@ import {
   logout as authLogout,
   userFromToken,
   ensureInitialAdmin,
-  registerWithPassword,
   findOrCreateGoogleUser,
   loginAsGoogleUser,
 } from './services/auth.js';
 import { randomBytes } from 'node:crypto';
 import { startScheduler } from './scheduler.js';
-import {
-  getBalances as svcGetBalances,
-  adminGrant as svcAdminGrant,
-  listTransactionsForAdmin as svcListTx,
-} from './services/pointService.js';
-import { listMySchedule as svcListMySchedule } from './services/myScheduleService.js';
 import { verifySignature, reply as lineReply } from './services/lineClient.js';
 import {
-  generateBindCode,
   consumeCode,
   unbindByLineUserId,
-  unbindByUserId,
 } from './services/lineBindingService.js';
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
@@ -82,9 +70,7 @@ app.set('trust proxy', 1);
 //   (a) 同辦公室 / 同網路使用者共用 NAT 出口 IP
 //   (b) test suite 連跑時容易誤觸
 //   選 30 仍然把暴力破解速率壓到 120/小時，配合 scrypt 雜湊已足夠
-// Register: 5 / 1hr — 註冊頻率本來就低，嚴格擋濫用註冊
 const loginLimiter = createRateLimiter({ name: 'login', windowMs: 15 * 60_000, max: 30 });
-const registerLimiter = createRateLimiter({ name: 'register', windowMs: 60 * 60_000, max: 5 });
 app.use(express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; },
@@ -167,11 +153,6 @@ app.post('/api/auth/login', loginLimiter, asyncHandler((req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'missing_credentials' });
   const result = authLogin({ email, password });
   res.json(result);
-}));
-
-app.post('/api/auth/register', registerLimiter, asyncHandler((req, res) => {
-  const result = registerWithPassword(req.body || {});
-  res.status(201).json(result);
 }));
 
 app.post('/api/auth/logout', (req, res) => {
@@ -279,31 +260,6 @@ app.get('/api/auth/google/callback', async (req, res) => {
 // --- Browse courses (any authenticated user) ---
 app.get('/api/sessions', asyncHandler((req, res) => {
   res.json(listOpenSessions());
-}));
-
-app.get('/api/my/registrations', requireUser, asyncHandler((req, res) => {
-  res.json(listUserRegistrations(req.user.id));
-}));
-
-app.post('/api/sessions/:id/register', requireUser, asyncHandler((req, res) => {
-  const result = register({ sessionId: Number(req.params.id), userId: req.user.id });
-  res.status(201).json(result);
-}));
-
-app.delete('/api/registrations/:id', requireUser, asyncHandler((req, res) => {
-  const result = cancelRegistration({ registrationId: Number(req.params.id), userId: req.user.id });
-  res.json(result);
-}));
-
-// Returns the requester's most recent non-cancelled 1-on-1 coach so the
-// /coaches page can surface a "你最近的教練" pinned card. Always 200 with
-// { coach: null } for non-members or members with no booking history — that
-// lets the front-end use a single "if (coach) renderSection()" branch.
-app.get('/api/my/recent-coach', requireUser, asyncHandler((req, res) => {
-  if (req.user.role !== 'user') {
-    return res.json({ coach: null, last_session_date: null, days_ago: null });
-  }
-  res.json(svcGetMostRecentCoachForUser(req.user.id));
 }));
 
 // --- Admin ---
@@ -438,11 +394,8 @@ app.delete('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) =>
 app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
   const rows = db.prepare(`
     SELECT u.id, u.name, u.email, u.phone, u.role, u.notification_preference,
-           (u.google_id IS NOT NULL) AS has_google, u.line_user_id, u.created_at,
-           COALESCE(b.one_on_one_balance, 0) AS one_on_one_balance,
-           COALESCE(b.group_balance, 0) AS group_balance
+           (u.google_id IS NOT NULL) AS has_google, u.line_user_id, u.created_at
     FROM users u
-    LEFT JOIN member_point_balance b ON b.member_id = u.id
     ORDER BY u.id ASC
   `).all();
   res.json(rows);
@@ -469,34 +422,6 @@ app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => 
 
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
   res.json({ ok: true, id: targetId, role });
-}));
-
-app.get('/api/my/points/balance', requireUser, asyncHandler((req, res) => {
-  res.json(svcGetBalances(req.user.id));
-}));
-
-app.post('/api/admin/users/:id/points/grant', requireAdmin, asyncHandler((req, res) => {
-  const memberId = Number(req.params.id);
-  const { pool, amount, note } = req.body || {};
-  if (typeof amount !== 'number') return res.status(400).json({ error: 'invalid_amount' });
-  const result = svcAdminGrant({
-    memberId,
-    pool,
-    amount: Math.trunc(amount),
-    note,
-    adminId: req.user.id,
-  });
-  res.status(201).json(result);
-}));
-
-app.get('/api/admin/users/:id/points/transactions', requireAdmin, asyncHandler((req, res) => {
-  const memberId = Number(req.params.id);
-  const { pool, limit } = req.query;
-  const rows = svcListTx(memberId, {
-    pool: pool || null,
-    limit: limit ? Math.min(Number(limit), 500) : 100,
-  });
-  res.json(rows);
 }));
 
 // --- One-on-one: admin coach management ---
@@ -719,18 +644,7 @@ app.get('/api/coaches/:id/availability', asyncHandler((req, res) => {
   res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
 }));
 
-app.post('/api/bookings', requireUser, asyncHandler((req, res) => {
-  const { coach_id, start_at, note } = req.body || {};
-  if (!coach_id || !start_at) return res.status(400).json({ error: 'missing_fields' });
-  const result = svcCreateBooking({
-    coachId: Number(coach_id),
-    memberId: req.user.id,
-    startAt: start_at,
-    note: note || null,
-  });
-  res.status(201).json(result);
-}));
-
+// Kept for coach 緊急取消 (coach has a token; member login is disabled).
 app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
   const id = Number(req.params.id);
   const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
@@ -749,60 +663,7 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
   res.json({ ok: true });
 }));
 
-app.get('/api/my/bookings', requireUser, asyncHandler((req, res) => {
-  res.json(svcListMemberBookings(req.user.id));
-}));
-
-app.get('/api/my/schedule', requireUser, asyncHandler((req, res) => {
-  const items = svcListMySchedule({ userId: req.user.id });
-  res.json({ items });
-}));
-
 // ─── Phase 3C · LINE notification endpoints ───
-
-const getLineBindingState = db.prepare(
-  'SELECT line_user_id, line_bind_code, line_bind_expires_at FROM users WHERE id = ?'
-);
-
-app.get('/api/my/line/binding', requireUser, asyncHandler((req, res) => {
-  const user = getLineBindingState.get(req.user.id);
-
-  const officialAccountId = process.env.LINE_OFFICIAL_ACCOUNT_ID || null;
-
-  if (user.line_user_id) {
-    return res.json({ bound: true, official_account_id: officialAccountId });
-  }
-
-  // Unbound: return existing valid code or auto-generate
-  const codeValid = user.line_bind_code &&
-                    user.line_bind_expires_at &&
-                    user.line_bind_expires_at > nowLocal();
-  if (codeValid) {
-    return res.json({
-      bound: false,
-      code: user.line_bind_code,
-      expires_at: user.line_bind_expires_at,
-      official_account_id: officialAccountId,
-    });
-  }
-  const fresh = generateBindCode(req.user.id);
-  res.json({
-    bound: false,
-    code: fresh.code,
-    expires_at: fresh.expires_at,
-    official_account_id: officialAccountId,
-  });
-}));
-
-app.post('/api/my/line/regenerate', requireUser, asyncHandler((req, res) => {
-  const fresh = generateBindCode(req.user.id);
-  res.json({ code: fresh.code, expires_at: fresh.expires_at });
-}));
-
-app.delete('/api/my/line', requireUser, asyncHandler((req, res) => {
-  unbindByUserId(req.user.id);
-  res.json({ ok: true });
-}));
 
 app.post('/api/line/webhook', (req, res) => {
   // Verify HMAC signature (LINE_MOCK=1 bypasses inside verifySignature)
