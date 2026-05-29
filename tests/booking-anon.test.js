@@ -7,6 +7,7 @@ import { ApiError } from '../src/services/registration.js';
 
 function reset() {
   db.exec(`
+    DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'anon-bk-%' OR phone LIKE '0998%');
     DELETE FROM bookings;
     DELETE FROM coaches;
     DELETE FROM users WHERE email LIKE 'anon-bk-%' OR phone LIKE '0998%';
@@ -38,10 +39,9 @@ expect('user auto-created', () => {
   const u = db.prepare("SELECT * FROM users WHERE phone='0998000111'").get();
   assert(u && u.name === '阿華' && u.role === 'user');
 });
-expect('NO point_transactions written', () => {
-  const c = db.prepare("SELECT COUNT(*) AS c FROM point_transactions WHERE note LIKE '預約%'").get().c;
-  // 本測試清過 users，舊點數列可能仍在；改驗本 booking 沒對應扣點列
-  assert(c >= 0);
+expect('NO point_transactions for this booking', () => {
+  const c = db.prepare("SELECT COUNT(*) AS c FROM point_transactions WHERE related_booking_id = ?").get(r.id).c;
+  assert.equal(c, 0);
 });
 
 // 重複時段 → 409 slot_taken
