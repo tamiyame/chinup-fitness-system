@@ -1,5 +1,7 @@
 # 匿名預約 + 識別簡化 Implementation Plan
 
+> ⚠️ **SUPERSEDED（未落地）** — 本 plan 未執行，已由 2026-05-29 重設計取代。保留僅供歷史參考。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 chinup 從「會員必須登入才能預約」轉成「客人輸入姓名+電話即預約」，admin/coach 才需登入。修掉 admin navbar 看到「教練後台」的 bug。

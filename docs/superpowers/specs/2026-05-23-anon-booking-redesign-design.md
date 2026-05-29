@@ -1,5 +1,7 @@
 # 匿名預約 + 識別簡化重設計
 
+> ⚠️ **SUPERSEDED（未落地）** — 本設計未實作，已由 `2026-05-29-anon-booking-paid-group-redesign-design.md` 取代。保留僅供歷史參考。
+
 **Date**: 2026-05-23
 **Author**: brainstorm with user
 **Scope**: 全站從「會員必須登入」轉成「客人匿名預約 / 教練+admin 才登入」
