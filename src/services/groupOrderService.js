@@ -128,6 +128,25 @@ function ownerMatches(user, phone, name) {
     user.name.trim().toLowerCase() === (name || '').trim().toLowerCase();
 }
 
+/** admin：待核對（pending 且未過期）訂單清單，含場次摘要。 */
+export function listPendingOrders() {
+  const now = nowLocal();
+  const orders = db.prepare(`
+    SELECT id, member_id, customer_name, customer_phone, total_amount, expires_at, created_at
+    FROM group_orders WHERE status='pending' AND expires_at >= ?
+    ORDER BY created_at ASC
+  `).all(now);
+  return orders.map((o) => ({
+    ...o,
+    sessions: db.prepare(`
+      SELECT s.start_at, t.name AS course_name
+      FROM registrations r JOIN course_sessions s ON s.id=r.session_id
+      JOIN course_templates t ON t.id=s.template_id
+      WHERE r.order_id=? AND r.status='pending' ORDER BY s.start_at ASC
+    `).all(o.id),
+  }));
+}
+
 /** admin 核對匯款：order → paid，其 pending registrations → confirmed，通知客人。 */
 export function confirmGroupOrder({ orderId, actorId }) {
   return tx(() => {

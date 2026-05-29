@@ -39,6 +39,7 @@ import {
   expirePendingOrders as svcExpireOrders,
   getPublicGroupCourses as svcPublicCourses,
   getPublicSchedule as svcPublicSchedule,
+  listPendingOrders as svcListPendingOrders,
 } from './services/groupOrderService.js';
 import { listActiveCoaches as svcListActive, saveAvatar as svcSaveAvatar } from './services/coachService.js';
 import {
@@ -732,6 +733,18 @@ app.get('/api/admin/notifications', requireAdmin, asyncHandler((req, res) => {
     ORDER BY n.sent_at DESC LIMIT 100
   `).all();
   res.json(rows);
+}));
+
+app.get('/api/admin/group-orders', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcListPendingOrders());
+}));
+app.post('/api/admin/group-orders/:id/confirm', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcConfirmGroupOrder({ orderId: Number(req.params.id), actorId: req.user.id }));
+}));
+app.post('/api/admin/group-orders/:id/cancel', requireAdmin, asyncHandler((req, res) => {
+  const o = db.prepare('SELECT customer_phone, customer_name FROM group_orders WHERE id=?').get(Number(req.params.id));
+  if (!o) return res.status(404).json({ error: 'order_not_found' });
+  res.json(svcCancelGroupOrder({ orderId: Number(req.params.id), phone: o.customer_phone, name: o.customer_name }));
 }));
 
 // 手動觸發排程（用於測試 / 管理者按鈕）
