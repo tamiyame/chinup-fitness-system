@@ -1076,13 +1076,18 @@ export function expirePendingOrders() {
   const stale = db.prepare("SELECT id FROM group_orders WHERE status='pending' AND expires_at < ?").all(now);
   let expired = 0;
   for (const { id } of stale) {
-    tx(() => {
-      const regs = db.prepare("SELECT session_id FROM registrations WHERE order_id=? AND status='pending'").all(id);
-      db.prepare("UPDATE registrations SET status='cancelled' WHERE order_id=? AND status='pending'").run(id);
-      db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=? WHERE id=?").run(now, id);
-      for (const r of regs) promoteWaitlist(r.session_id);
-    });
-    expired++;
+    // 每筆獨立 tx + try/catch：單筆失敗不中斷整輪 sweep（下一輪會再掃到）
+    try {
+      tx(() => {
+        const regs = db.prepare("SELECT session_id FROM registrations WHERE order_id=? AND status='pending'").all(id);
+        db.prepare("UPDATE registrations SET status='cancelled' WHERE order_id=? AND status='pending'").run(id);
+        db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=? WHERE id=?").run(now, id);
+        for (const r of regs) promoteWaitlist(r.session_id);
+      });
+      expired++;
+    } catch (e) {
+      console.error(`[expirePendingOrders] order #${id} failed, will retry next sweep:`, e);
+    }
   }
   return { expired };
 }
@@ -1124,7 +1129,7 @@ export function getPublicSchedule({ phone, name }) {
   const bookings = db.prepare(`
     SELECT b.id, b.start_at, b.end_at, b.status, c.display_name AS coach_display_name
     FROM bookings b JOIN coaches c ON c.id = b.coach_id
-    WHERE b.member_id = ? ORDER BY b.start_at DESC
+    WHERE b.member_id = ? AND b.status != 'cancelled' ORDER BY b.start_at DESC
   `).all(user.id).map((b) => ({
     kind: 'booking', id: b.id, start_at: b.start_at, end_at: b.end_at,
     status: b.status, coach_display_name: b.coach_display_name,
