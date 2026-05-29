@@ -81,6 +81,7 @@ app.use(express.json({
 // Phase 3A · /my-schedule unification: redirect legacy URLs + serve canonical path
 app.get('/my.html', (req, res) => res.redirect(301, '/my-schedule'));
 app.get('/my-bookings.html', (req, res) => res.redirect(301, '/my-schedule'));
+app.get('/line.html', (req, res) => res.redirect(301, '/my-schedule'));
 app.get('/my-schedule', (req, res) =>
   res.sendFile(resolve(__dirname, '../public/my-schedule.html'))
 );
