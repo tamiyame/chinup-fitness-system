@@ -61,6 +61,16 @@ const TEMPLATES = {
     subject: '教練取消預約 - {{coach_display_name}}',
     body: '⚠️ {{coach_display_name}} 教練取消了你 {{start_at}} 的預約，點數已退回。',
   },
+
+  // === new 2 (anon paid-group redesign) ===
+  payment_received: {
+    subject: '匯款已收到 - {{course_name}}',
+    body: '✅ 已收到您的匯款，{{course_name}}（{{start_at}}）報名確認，期待見到您！',
+  },
+  group_promoted: {
+    subject: '候補遞補成功 - {{course_name}}',
+    body: '🎉 您候補的 {{course_name}}（{{start_at}}）有名額了！請於 24 小時內完成匯款以保留名額，並至「我的課表」查看。',
+  },
 };
 
 function render(template, vars) {
