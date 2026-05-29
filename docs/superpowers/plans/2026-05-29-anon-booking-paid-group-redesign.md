@@ -235,6 +235,7 @@ old.exec(`
   INSERT INTO users (name, email, phone, role) VALUES ('Old User', 'old@x.com', '0912345678', 'user');
   INSERT INTO course_templates (name, min_capacity, max_capacity, day_of_week, start_time, recurrence, cycle_start_date, cycle_end_date) VALUES ('Old Class', 1, 5, 1, '19:00', 'weekly', '2026-01-01', '2026-12-31');
   INSERT INTO course_sessions (template_id, session_date, start_at, end_at, registration_deadline) VALUES (1, '2026-06-01', '2026-06-01T19:00:00', '2026-06-01T20:00:00', '2026-05-31T19:00:00');
+  INSERT INTO course_sessions (template_id, session_date, start_at, end_at, registration_deadline) VALUES (1, '2026-06-08', '2026-06-08T19:00:00', '2026-06-08T20:00:00', '2026-06-07T19:00:00');
   INSERT INTO registrations (session_id, user_id, status) VALUES (1, 1, 'confirmed');
 `);
 old.close();
@@ -277,7 +278,7 @@ expect('registration row preserved', () => assert.equal(db.prepare('SELECT statu
 expect('pending registration allowed', () => {
   db.prepare("INSERT INTO group_orders (member_id, customer_name, customer_phone, total_amount, expires_at) VALUES (1,'Old User','0912345678',500,'2026-06-01T00:00:00')").run();
   const oid = db.prepare('SELECT last_insert_rowid() AS id').get().id;
-  db.prepare("INSERT INTO registrations (session_id, user_id, status, order_id, amount_due) VALUES (1,1,'pending',?,500)").run(oid);
+  db.prepare("INSERT INTO registrations (session_id, user_id, status, order_id, amount_due) VALUES (2,1,'pending',?,500)").run(oid);
 });
 
 console.log('[migration test] done');
