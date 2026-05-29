@@ -6,6 +6,7 @@ import { ApiError } from '../src/services/registration.js';
 
 function reset() {
   db.exec(`
+    DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0997%');
     DELETE FROM registrations;
     DELETE FROM group_orders;
     DELETE FROM course_sessions;
