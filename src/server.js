@@ -743,6 +743,10 @@ app.post('/api/admin/jobs/send-reminders', requireAdmin, asyncHandler((req, res)
   res.json({ sent: processReminders() });
 }));
 
+app.post('/api/admin/jobs/expire-orders', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcExpireOrders());
+}));
+
 app.get('/api/admin/backups', requireAdmin, asyncHandler((req, res) => {
   res.json(listBackups());
 }));
