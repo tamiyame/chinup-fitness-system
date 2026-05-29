@@ -673,6 +673,21 @@ expect('duplicate → 409', () => {
   catch (e) { assert.equal(e.status, 409); }
 });
 
+// all-or-nothing：pay 桶含「未滿 + 已滿」→ 整批 409，未滿場次與訂單/使用者都不被寫入（tx rollback）
+expect('partial-full pay batch → 409 and writes nothing', () => {
+  const before = sessionOccupied(s2);
+  try {
+    createGroupOrder({ name: '戊', phone: '0997000009', paySessionIds: [s2, s1], waitlistSessionIds: [] });
+    assert.fail('no throw');
+  } catch (e) {
+    assert.equal(e.status, 409);
+    assert.deepEqual(e.detail.fullSessionIds, [s1]);
+  }
+  assert.equal(sessionOccupied(s2), before, 's2 occupancy unchanged');
+  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM group_orders WHERE customer_phone='0997000009'").get().c, 0, 'no order written');
+  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM users WHERE phone='0997000009'").get().c, 0, 'no user written (tx rolled back)');
+});
+
 console.log('[group-order-service part1] done');
 ```
 
@@ -709,7 +724,9 @@ export function sessionOccupied(sessionId) {
 }
 export function sessionIsFull(sessionId) {
   const s = getSession.get(sessionId);
+  if (!s) throw new ApiError(404, 'session_not_found');
   const tpl = getTemplate.get(s.template_id);
+  if (!tpl) throw new ApiError(404, 'template_not_found');
   return sessionOccupied(sessionId) >= tpl.max_capacity;
 }
 
@@ -761,6 +778,7 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
     for (const sid of paySessionIds) {
       const s = getSession.get(sid);
       const tpl = getTemplate.get(s.template_id);
+      if (!tpl) throw new ApiError(404, 'template_not_found');
       const dup = getAnyReg.get(sid, user.id);
       if (dup && ['pending', 'confirmed', 'waitlisted'].includes(dup.status)) {
         throw new ApiError(409, 'already_registered', { sessionId: sid });

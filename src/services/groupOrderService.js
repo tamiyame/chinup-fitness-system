@@ -27,7 +27,9 @@ export function sessionOccupied(sessionId) {
 }
 export function sessionIsFull(sessionId) {
   const s = getSession.get(sessionId);
+  if (!s) throw new ApiError(404, 'session_not_found');
   const tpl = getTemplate.get(s.template_id);
+  if (!tpl) throw new ApiError(404, 'template_not_found');
   return sessionOccupied(sessionId) >= tpl.max_capacity;
 }
 
@@ -79,6 +81,7 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
     for (const sid of paySessionIds) {
       const s = getSession.get(sid);
       const tpl = getTemplate.get(s.template_id);
+      if (!tpl) throw new ApiError(404, 'template_not_found');
       const dup = getAnyReg.get(sid, user.id);
       if (dup && ['pending', 'confirmed', 'waitlisted'].includes(dup.status)) {
         throw new ApiError(409, 'already_registered', { sessionId: sid });
