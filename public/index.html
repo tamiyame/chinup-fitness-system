@@ -49,25 +49,34 @@
 <main class="max-w-6xl mx-auto px-6">
 
   <section class="hero">
-    <span class="hero-eyebrow">💪 2026 Spring Program</span>
+    <span class="hero-eyebrow">💪 CHINUP Performance</span>
+    <h1>開始你的訓練之旅</h1>
+    <p>選擇適合你的課程類型，線上報名或預約教練。</p>
   </section>
 
   <section class="pb-16">
-    <a href="/coaches.html" class="btn-pill-outline flex w-full sm:hidden mb-4">
-      <span>🏋️</span>
-      <span>預約一對一教練課</span>
-      <span aria-hidden="true">→</span>
-    </a>
-    <div class="flex items-center justify-between mb-2 gap-3">
-      <h1 class="text-[22px] font-extrabold leading-tight whitespace-nowrap text-slate-900">找到適合你的團體訓練課程</h1>
-      <span id="count-badge" class="subtle"></span>
-    </div>
-    <p class="section-desc">由專業教練設計的循環課表，每月開課、彈性報名。額滿自動進入候補、成班與否都會通知你。</p>
-    <div id="sessions" class="grid gap-4"></div>
-    <div id="empty" class="empty-state" style="display:none;">
-      <span class="empty-state-icon">🗓️</span>
-      <p>目前沒有可報名的課程</p>
-      <p class="subtle mt-1">請稍後再查看，或聯絡管理員新增課程</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+      <!-- 團體課程 entry card -->
+      <a href="/group.html" class="card block no-underline group" style="padding:32px 28px;">
+        <div class="text-4xl mb-4">🏋️‍♂️</div>
+        <div class="card-title text-xl">團體課程</div>
+        <p class="card-desc mt-2" style="font-size:15px;">多人小班訓練、線上報名匯款。由專業教練設計的循環課表，每月開課、彈性報名。</p>
+        <div class="mt-6 flex items-center gap-2" style="color:var(--brand-700);font-weight:600;font-size:14px;">
+          查看課程 <span aria-hidden="true">→</span>
+        </div>
+      </a>
+
+      <!-- 1對1個別指導 entry card -->
+      <a href="/coaches.html" class="card block no-underline group" style="padding:32px 28px;">
+        <div class="text-4xl mb-4">🎯</div>
+        <div class="card-title text-xl">1 對 1 個別指導</div>
+        <p class="card-desc mt-2" style="font-size:15px;">預約教練一對一時段，針對個人目標量身設計訓練內容。</p>
+        <div class="mt-6 flex items-center gap-2" style="color:var(--brand-700);font-weight:600;font-size:14px;">
+          預約教練 <span aria-hidden="true">→</span>
+        </div>
+      </a>
+
     </div>
   </section>
 </main>
@@ -75,6 +84,9 @@
 <div id="toast" class="toast"></div>
 
 <script type="module" src="/app.js"></script>
-<script type="module" src="/courses.js"></script>
+<script type="module">
+import { bootPublic } from '/app.js';
+bootPublic();
+</script>
 </body>
 </html>
