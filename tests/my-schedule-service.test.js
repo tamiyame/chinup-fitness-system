@@ -6,7 +6,6 @@ import { createCoach, setCoachActive } from '../src/services/coachService.js';
 import { createBooking, cancelBooking } from '../src/services/bookingService.js';
 import { createTemplate } from '../src/services/courseService.js';
 import { register, cancelRegistration } from '../src/services/registration.js';
-import { adminGrant } from '../src/services/pointService.js';
 import { listMySchedule } from '../src/services/myScheduleService.js';
 
 function reset() {
@@ -36,17 +35,6 @@ function createMember(name, email) {
   return info.lastInsertRowid;
 }
 
-function createAdmin() {
-  let existing = db.prepare("SELECT id FROM users WHERE role = 'owner'").get();
-  if (existing) return existing.id;
-  existing = db.prepare("SELECT id FROM users WHERE role = 'admin'").get();
-  if (existing) return existing.id;
-  const info = db.prepare(
-    "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'owner')"
-  ).run('Admin', 'my-sched-test-admin@chinup.local', hashPassword('pass1234'));
-  return info.lastInsertRowid;
-}
-
 function createCoachFor(name, email) {
   const info = db.prepare(
     "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'coach')"
@@ -66,15 +54,11 @@ function futureLocal(daysAhead, hh = 10, mm = 0) {
 console.log('[my-schedule-service test] start');
 reset();
 
-const adminId = createAdmin();
 const memberA = createMember('Member A', 'my-sched-test-a@chinup.local');
 const memberB = createMember('Member B', 'my-sched-test-b@chinup.local');
 const coach = createCoachFor('Test Coach', 'my-sched-test-coach@chinup.local');
 
 // Seed: Member A has 1 future booking + 1 past booking (manually inserted past)
-adminGrant({ memberId: memberA, pool: 'one_on_one', amount: 10, note: 'seed', adminId });
-adminGrant({ memberId: memberA, pool: 'group', amount: 10, note: 'seed', adminId });
-
 const futureBookingStart = futureLocal(7, 10, 0);
 createBooking({ coachId: coach.id, memberId: memberA, startAt: futureBookingStart, note: 'future booking' });
 
