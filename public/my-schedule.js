@@ -1,7 +1,6 @@
-import { api, fmtDate, toast, bootAuth, escapeHtml } from './app.js';
+import { api, fmtDate, toast, bootPublic, escapeHtml } from './app.js';
 
-const user = await bootAuth();
-if (!user) throw new Error('__redirected_by_auth__');
+const user = await bootPublic();
 
 const state = {
   items: [],

@@ -1,4 +1,6 @@
-import { api, fmtDate, dow, toast, refreshAuthBar, escapeHtml, getUser } from './app.js';
+import { api, fmtDate, dow, toast, refreshAuthBar, bootPublic, escapeHtml, getUser } from './app.js';
+
+await bootPublic();
 
 const $ = (id) => document.getElementById(id);
 const views = { list: $('view-list'), detail: $('view-detail'), confirm: $('view-confirm') };

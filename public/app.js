@@ -126,14 +126,38 @@ export async function bootAuth({ requireAdmin = false } = {}) {
   return user;
 }
 
+// Soft public init: show auth bar if logged in; do nothing (no redirect) for anonymous visitors.
+export async function bootPublic() {
+  const token = getToken();
+  if (!token) {
+    // No token — anonymous visitor. Just reveal the body and return.
+    document.body.style.visibility = 'visible';
+    return null;
+  }
+  let user;
+  try {
+    user = await api('/api/auth/me');
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } catch {
+    // Token invalid/expired — treat as anonymous, no redirect.
+    document.body.style.visibility = 'visible';
+    return null;
+  }
+  await renderAuthBar(user);
+  document.body.style.visibility = 'visible';
+  return user;
+}
+
 async function renderAuthBar(user) {
-  // Hide admin nav link for non-admin users
-  document.querySelectorAll('a[href="/admin.html"]').forEach((el) => {
-    el.style.display = ['admin', 'owner'].includes(user.role) ? '' : 'none';
+  // Show admin nav link only for admin/owner — toggle via .admin-only class
+  const showAdmin = ['admin', 'owner'].includes(user.role);
+  document.querySelectorAll('.admin-only').forEach((el) => {
+    if (showAdmin) el.classList.remove('hidden');
+    else el.classList.add('hidden');
   });
 
-  // Show coach nav link only for coach/admin/owner
-  const showCoach = ['coach', 'admin', 'owner'].includes(user.role);
+  // Show coach nav link only for coach (not admin/owner)
+  const showCoach = user.role === 'coach';
   document.querySelectorAll('.coach-only').forEach((el) => {
     if (showCoach) el.classList.remove('hidden');
     else el.classList.add('hidden');

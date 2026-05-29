@@ -1,7 +1,6 @@
-import { api, toast, fmtDate, bootAuth, getUser, refreshAuthBar, escapeHtml } from '/app.js';
+import { api, toast, fmtDate, bootPublic, getUser, refreshAuthBar, escapeHtml } from '/app.js';
 
-const user = await bootAuth();
-if (!user) throw new Error('__redirected_by_auth__');
+const user = await bootPublic();
 
 const DOW_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
 

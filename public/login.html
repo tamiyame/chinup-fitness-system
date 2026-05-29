@@ -56,13 +56,6 @@
   .divider { display: flex; align-items: center; gap: 10px; color: var(--ink-mute); font-size: 12px; margin: 20px 0; }
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 
-  .tab-btn {
-    flex: 1; padding: 10px 0; font-size: 14px; font-weight: 600;
-    background: transparent; border: none; cursor: pointer;
-    color: var(--ink-mute); border-bottom: 2px solid transparent;
-    transition: all 150ms;
-  }
-  .tab-btn.active { color: var(--brand-700); border-bottom-color: var(--brand-600); }
 </style>
 </head>
 <body class="flex items-center justify-center p-6">
@@ -70,13 +63,8 @@
 <div class="login-card">
   <div class="text-center mb-6">
     <img src="/logo.png" alt="CHINUP Performance" class="login-logo">
-    <h1 class="text-2xl font-bold" id="title" style="letter-spacing:-0.02em;">歡迎回來</h1>
-    <p class="subtle mt-1" id="subtitle">登入 CHINUP Performance 繼續報名課程</p>
-  </div>
-
-  <div class="flex border-b border-slate-200 mb-5">
-    <button type="button" class="tab-btn active" data-mode="login">登入</button>
-    <button type="button" class="tab-btn" data-mode="register">註冊新帳號</button>
+    <h1 class="text-2xl font-bold" style="letter-spacing:-0.02em;">管理員 / 教練專用登入</h1>
+    <p class="subtle mt-1">CHINUP Performance 後台入口，限授權人員使用</p>
   </div>
 
   <!-- Google OAuth -->
@@ -106,66 +94,18 @@
     <button type="submit" class="btn btn-primary w-full" id="login-btn">登入</button>
   </form>
 
-  <!-- Register form -->
-  <form id="register-form" class="space-y-4" style="display:none;">
-    <div>
-      <label class="form-label" for="r-name">姓名</label>
-      <input id="r-name" name="name" type="text" required class="form-input" placeholder="王小明">
-    </div>
-    <div>
-      <label class="form-label" for="r-email">電子郵件</label>
-      <input id="r-email" name="email" type="email" required class="form-input" placeholder="you@example.com" autocomplete="email">
-    </div>
-    <div>
-      <label class="form-label" for="r-phone">手機（選填，接收簡訊通知用）</label>
-      <input id="r-phone" name="phone" type="tel" class="form-input" placeholder="0912345678">
-    </div>
-    <div>
-      <label class="form-label" for="r-password">密碼（至少 8 字元）</label>
-      <input id="r-password" name="password" type="password" required class="form-input" placeholder="••••••••" autocomplete="new-password" minlength="8">
-    </div>
-    <div>
-      <label class="form-label" for="r-notif">通知方式</label>
-      <select id="r-notif" name="notification_preference" class="form-select">
-        <option value="email">Email</option>
-        <option value="sms">簡訊</option>
-        <option value="both">Email + 簡訊</option>
-      </select>
-    </div>
-    <div id="register-err" class="text-sm" style="color:#dc2626;display:none;"></div>
-    <button type="submit" class="btn btn-primary w-full" id="register-btn">建立帳號</button>
-  </form>
 </div>
 
 <script type="module">
 const $ = s => document.querySelector(s);
 
-// --- tab switching ---
-const titleEl = $('#title');
-const subEl = $('#subtitle');
 const loginForm = $('#login-form');
-const regForm = $('#register-form');
-const tabs = document.querySelectorAll('.tab-btn');
-
-function switchMode(mode) {
-  tabs.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-  if (mode === 'login') {
-    titleEl.textContent = '歡迎回來';
-    subEl.textContent = '登入 CHINUP Performance 繼續報名課程';
-    loginForm.style.display = ''; regForm.style.display = 'none';
-  } else {
-    titleEl.textContent = '建立新帳號';
-    subEl.textContent = '加入 CHINUP Performance 開始報名團體課程';
-    loginForm.style.display = 'none'; regForm.style.display = '';
-  }
-}
-tabs.forEach(b => b.addEventListener('click', () => switchMode(b.dataset.mode)));
 
 // Already logged in? bounce based on role
 if (localStorage.getItem('chinup.token')) {
   fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${localStorage.getItem('chinup.token')}` }})
     .then(r => r.ok ? r.json() : null)
-    .then(u => { if (u) location.href = ['admin','owner'].includes(u.role) ? '/admin.html' : '/'; });
+    .then(u => { if (u) location.href = ['admin','owner'].includes(u.role) ? '/admin.html' : u.role === 'coach' ? '/coach.html' : '/'; });
 }
 
 // Display OAuth error on URL (?err=xxx)
@@ -195,47 +135,12 @@ loginForm.addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error(data.error === 'invalid_credentials' ? '帳號或密碼錯誤' : (data.error || 'login failed'));
     localStorage.setItem('chinup.token', data.token);
     localStorage.setItem('chinup.user', JSON.stringify(data.user));
-    const redirect = new URLSearchParams(location.search).get('redirect') || (['admin','owner'].includes(data.user.role) ? '/admin.html' : '/');
+    const redirect = new URLSearchParams(location.search).get('redirect') || (['admin','owner'].includes(data.user.role) ? '/admin.html' : data.user.role === 'coach' ? '/coach.html' : '/');
     location.href = redirect;
   } catch (e2) {
     errEl.textContent = e2.message;
     errEl.style.display = 'block';
     submit.disabled = false; submit.textContent = '登入';
-  }
-});
-
-// --- Register form ---
-regForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const body = Object.fromEntries(new FormData(regForm).entries());
-  const submit = $('#register-btn');
-  const errEl = $('#register-err');
-  errEl.style.display = 'none';
-  submit.disabled = true; submit.textContent = '建立中…';
-
-  try {
-    const res = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      const msgs = {
-        invalid_email: '電子郵件格式不正確',
-        password_too_short: '密碼至少需 8 字元',
-        missing_name: '請輸入姓名',
-        email_exists: '此 Email 已被註冊，請直接登入或使用 Google',
-      };
-      throw new Error(msgs[data.error] || data.error || 'register failed');
-    }
-    localStorage.setItem('chinup.token', data.token);
-    localStorage.setItem('chinup.user', JSON.stringify(data.user));
-    location.href = '/';
-  } catch (e2) {
-    errEl.textContent = e2.message;
-    errEl.style.display = 'block';
-    submit.disabled = false; submit.textContent = '建立帳號';
   }
 });
 </script>
