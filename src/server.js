@@ -49,6 +49,7 @@ import {
   ensureInitialAdmin,
   findOrCreateGoogleUser,
   loginAsGoogleUser,
+  createCoachAccount,
 } from './services/auth.js';
 import { randomBytes } from 'node:crypto';
 import { startScheduler } from './scheduler.js';
@@ -426,6 +427,12 @@ app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => 
 }));
 
 // --- One-on-one: admin coach management ---
+
+app.post('/api/admin/coaches/account', requireAdmin, asyncHandler(async (req, res) => {
+  const { email, password, name } = req.body || {};
+  const r = createCoachAccount({ email, password, name });
+  res.status(201).json({ user_id: r.user.id, coach_pending: true });
+}));
 
 app.get('/api/admin/coaches', requireAdmin, asyncHandler((req, res) => {
   const rows = db.prepare(`

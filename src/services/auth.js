@@ -91,6 +91,10 @@ export function registerWithPassword({ email, password, name, phone, notificatio
   return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt, pending_coach: as_coach };
 }
 
+export function createCoachAccount({ email, password, name }) {
+  return registerWithPassword({ email, password, name, as_coach: true });
+}
+
 // Google OAuth: upsert user by google_id, else link by email, else create.
 // Password is stored as a sentinel that can never match scrypt verification.
 const GOOGLE_SENTINEL = 'oauth:google';
