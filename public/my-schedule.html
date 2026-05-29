@@ -44,7 +44,7 @@
     font-weight: 600;
     margin-right: 6px;
   }
-  .pill-1on1 { background: #dbeafe; color: #1e40af; }
+  .pill-1on1  { background: #dbeafe; color: #1e40af; }
   .pill-group { background: #fce7f3; color: #9d174d; }
   .past-toggle {
     display: flex;
@@ -58,7 +58,8 @@
     cursor: pointer;
     user-select: none;
   }
-  .past-list .card { opacity: 0.72; }
+  .past-list .card,
+  .past-card { opacity: 0.72; }
   .section-label {
     font-size: 12px;
     font-weight: 700;
@@ -66,6 +67,41 @@
     text-transform: uppercase;
     letter-spacing: .04em;
     margin: 4px 0 10px;
+  }
+  /* Lookup form */
+  .lookup-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+  }
+  .lookup-field label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+  }
+  .lookup-field input {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 16px; /* prevent iOS zoom */
+    width: 100%;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .lookup-field input:focus {
+    border-color: var(--brand-500, #6366f1);
+    box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+  }
+  .remaining-banner {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1d4ed8;
+    margin-bottom: 18px;
   }
 </style>
 </head>
@@ -80,7 +116,6 @@
         <a href="/" class="nav-link">課程</a>
         <a href="/coaches.html" class="nav-link">一對一預約</a>
         <a href="/my-schedule" class="nav-link active">我的課表</a>
-        <a href="/login.html" class="nav-link">登入</a>
         <a href="/admin.html" class="nav-link admin-only hidden">管理後台</a>
         <a href="/coach.html" class="nav-link coach-only hidden">教練後台</a>
       </div>
@@ -95,7 +130,6 @@
       <a href="/" class="nav-link-mobile">課程</a>
       <a href="/coaches.html" class="nav-link-mobile">一對一預約</a>
       <a href="/my-schedule" class="nav-link-mobile active">我的課表</a>
-      <a href="/login.html" class="nav-link-mobile">登入</a>
       <a href="/admin.html" class="nav-link-mobile admin-only hidden">管理後台</a>
       <a href="/coach.html" class="nav-link-mobile coach-only hidden">教練後台</a>
     </div>
@@ -106,41 +140,83 @@
   <section class="hero">
     <span class="hero-eyebrow">📋 Personal</span>
     <h1>我的課表</h1>
-    <p>一對一預約 + 團課報名，依時間排序。</p>
+    <p>輸入電話與姓名查詢預約記錄與剩餘堂數。</p>
   </section>
 
-  <div id="load-error" class="empty-state" style="display:none;">
-    <span class="empty-state-icon">⚠️</span>
-    <p id="load-error-msg">載入失敗，請重新整理</p>
-    <button id="load-error-retry" class="btn btn-primary mt-3">重試</button>
-  </div>
+  <!-- ── Lookup form ── -->
+  <section id="lookup-section" class="pb-8">
+    <div class="card max-w-sm mx-auto" style="padding:24px;">
+      <div class="lookup-field">
+        <label for="lookup-phone">電話</label>
+        <input
+          id="lookup-phone"
+          type="tel"
+          inputmode="numeric"
+          placeholder="09xxxxxxxx"
+          autocomplete="tel"
+          maxlength="20"
+        >
+      </div>
+      <div class="lookup-field">
+        <label for="lookup-name">姓名</label>
+        <input
+          id="lookup-name"
+          type="text"
+          placeholder="請輸入姓名"
+          autocomplete="name"
+          maxlength="50"
+        >
+      </div>
+      <div
+        id="lookup-error"
+        class="text-sm text-red-600 mb-3"
+        style="display:none;"
+        role="alert"
+      ></div>
+      <button id="lookup-btn" class="btn btn-primary w-full">查詢</button>
+    </div>
+  </section>
 
-  <section id="main-section" class="pb-16">
+  <!-- ── Results ── -->
+  <section id="results-section" class="pb-16" style="display:none;">
+    <!-- Remaining counts banner -->
+    <div id="remaining-summary" class="remaining-banner">
+      1對1 剩 0 堂 · 團體 剩 0 堂
+    </div>
+
+    <!-- Tabs -->
     <div class="tab-bar" id="tab-bar">
       <div class="tab-btn active" data-filter="all">全部</div>
       <div class="tab-btn" data-filter="booking">一對一</div>
       <div class="tab-btn" data-filter="registration">團課</div>
     </div>
 
+    <!-- Upcoming -->
     <div id="upcoming-section">
       <div class="section-label">📅 即將到來</div>
       <div id="upcoming-list" class="grid gap-3"></div>
       <div id="upcoming-empty" class="empty-state" style="display:none;">
-        <span class="empty-state-icon" id="upcoming-empty-icon">📭</span>
+        <span class="empty-state-icon">📭</span>
         <p id="upcoming-empty-msg">尚無預約</p>
-        <div id="upcoming-empty-ctas" class="flex gap-2 justify-center mt-3 flex-wrap">
+        <div class="flex gap-2 justify-center mt-3 flex-wrap">
           <a href="/" class="btn btn-ghost">瀏覽課程</a>
           <a href="/coaches.html" class="btn btn-primary">預約一對一</a>
         </div>
       </div>
     </div>
 
+    <!-- Past (collapsible) -->
     <div id="past-toggle-wrap" style="display:none;">
       <div class="past-toggle" id="past-toggle">
         <span id="past-caret">▶</span>
         <span>過去記錄（<span id="past-count">0</span>）</span>
       </div>
       <div id="past-list" class="past-list grid gap-3" style="display:none;"></div>
+    </div>
+
+    <!-- Change account -->
+    <div class="mt-8 text-center">
+      <button id="change-lookup-btn" class="btn btn-ghost btn-sm">換電話 / 重新查詢</button>
     </div>
   </section>
 </main>

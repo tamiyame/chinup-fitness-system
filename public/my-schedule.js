@@ -1,20 +1,114 @@
 import { api, fmtDate, toast, bootPublic, escapeHtml } from './app.js';
 
-const user = await bootPublic();
+// Public phone+name lookup — no login required.
+const LS_PHONE = 'chinup.my.phone';
+const LS_NAME  = 'chinup.my.name';
+
+await bootPublic();
 
 const state = {
   items: [],
   filter: 'all',
   pastOpen: false,
+  creds: null,  // { phone, name } after successful lookup
+  one_on_one_remaining: 0,
+  group_remaining: 0,
 };
 
-const LABEL_BOOKING_STATUS = { confirmed: '已預約', cancelled: '已取消' };
-const LABEL_REG_STATUS = { confirmed: '正取', waitlisted: '候補', cancelled: '已取消', rejected: '未開課' };
+// ── Lookup form ──────────────────────────────────────────────────────────────
+
+function getForm() {
+  return {
+    phoneEl: document.getElementById('lookup-phone'),
+    nameEl:  document.getElementById('lookup-name'),
+    btnEl:   document.getElementById('lookup-btn'),
+    errEl:   document.getElementById('lookup-error'),
+  };
+}
+
+function autoFillForm() {
+  const { phoneEl, nameEl } = getForm();
+  const savedPhone = localStorage.getItem(LS_PHONE) || '';
+  const savedName  = localStorage.getItem(LS_NAME)  || '';
+  if (savedPhone) phoneEl.value = savedPhone;
+  if (savedName)  nameEl.value  = savedName;
+  return { savedPhone, savedName };
+}
+
+async function doLookup(phone, name) {
+  const { errEl, btnEl } = getForm();
+  errEl.style.display = 'none';
+  btnEl.disabled = true;
+  btnEl.textContent = '查詢中…';
+  try {
+    const data = await api('/api/public/my', {
+      method: 'POST',
+      body: { phone, name },
+    });
+    // Save credentials
+    localStorage.setItem(LS_PHONE, phone);
+    localStorage.setItem(LS_NAME, name);
+    state.creds = { phone, name };
+    state.items = data.items ?? [];
+    state.one_on_one_remaining = data.one_on_one_remaining ?? 0;
+    state.group_remaining = data.group_remaining ?? 0;
+    showResults();
+    render();
+  } catch (e) {
+    if (e.status === 403) {
+      errEl.textContent = '查無資料，請確認電話與姓名';
+      errEl.style.display = 'block';
+    } else {
+      errEl.textContent = `查詢失敗：${e.message}`;
+      errEl.style.display = 'block';
+    }
+  } finally {
+    btnEl.disabled = false;
+    btnEl.textContent = '查詢';
+  }
+}
+
+function bindLookupForm() {
+  const { btnEl, phoneEl, nameEl } = getForm();
+  btnEl.addEventListener('click', async () => {
+    const rawPhone = phoneEl.value.trim();
+    const name     = nameEl.value.trim();
+    if (!rawPhone || !name) {
+      const { errEl } = getForm();
+      errEl.textContent = '請輸入電話與姓名';
+      errEl.style.display = 'block';
+      return;
+    }
+    const phone = rawPhone.replace(/\D/g, '');
+    await doLookup(phone, name);
+  });
+
+  // Submit on Enter key in either input
+  [phoneEl, nameEl].forEach(el => {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') btnEl.click();
+    });
+  });
+}
+
+function showResults() {
+  document.getElementById('lookup-section').style.display = 'none';
+  document.getElementById('results-section').style.display = 'block';
+}
+
+function showForm() {
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('lookup-section').style.display = 'block';
+  state.creds = null;
+  state.items = [];
+}
+
+// ── Card rendering ───────────────────────────────────────────────────────────
 
 function dateBlock(start_at) {
   const dt = new Date(start_at);
-  const d = String(dt.getDate()).padStart(2, '0');
-  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d  = String(dt.getDate()).padStart(2, '0');
+  const m  = String(dt.getMonth() + 1).padStart(2, '0');
   return `
     <div class="text-center px-3 py-2 rounded-lg" style="background:var(--brand-50);min-width:64px;">
       <div class="text-2xl font-bold" style="color:var(--brand-700);line-height:1;">${d}</div>
@@ -23,53 +117,121 @@ function dateBlock(start_at) {
   `;
 }
 
-function statusBadge(item) {
+/**
+ * Derive a status label and badge class for an item.
+ * Booking: confirmed → 已確認, cancelled → 已取消
+ * Registration:
+ *   confirmed  → 已確認
+ *   waitlisted → 候補中
+ *   pending (no order_id) → 待付款
+ *   pending (has order_id) → 已遞補待付款
+ *   cancelled  → 已取消
+ *   rejected   → 未開課
+ */
+function resolveStatus(item) {
   if (item.kind === 'booking') {
-    const label = LABEL_BOOKING_STATUS[item.status] || item.status;
-    return `<span class="badge badge-${item.status}">${label}</span>`;
+    const labels = { confirmed: '已確認', cancelled: '已取消' };
+    const cls    = { confirmed: 'badge-confirmed', cancelled: 'badge-cancelled' };
+    return {
+      label: labels[item.status] || item.status,
+      cls:   cls[item.status]    || 'badge-completed',
+    };
   }
-  const label = LABEL_REG_STATUS[item.status] || item.status;
-  return `<span class="badge badge-${item.status}">${label}</span>`;
+  // registration
+  if (item.status === 'pending') {
+    if (item.order_id) {
+      return { label: '已遞補待付款', cls: 'badge-waitlisted' };
+    }
+    return { label: '待付款', cls: 'badge-waitlisted' };
+  }
+  const labels = {
+    confirmed:  '已確認',
+    waitlisted: '候補中',
+    cancelled:  '已取消',
+    rejected:   '未開課',
+  };
+  const cls = {
+    confirmed:  'badge-confirmed',
+    waitlisted: 'badge-waitlisted',
+    cancelled:  'badge-cancelled',
+    rejected:   'badge-rejected',
+  };
+  return {
+    label: labels[item.status] || item.status,
+    cls:   cls[item.status]    || 'badge-completed',
+  };
+}
+
+function paymentLine(item) {
+  if (item.kind !== 'registration' || item.status !== 'pending') return '';
+  const parts = [];
+  if (item.amount_due != null) {
+    parts.push(`金額：${escapeHtml(String(item.amount_due))} 元`);
+  }
+  if (item.order_expires_at) {
+    parts.push(`請於 ${escapeHtml(fmtDate(item.order_expires_at))} 前匯款`);
+  }
+  if (parts.length === 0) return '';
+  return `<div class="text-sm text-amber-600 mt-1">${parts.join('　')}</div>`;
+}
+
+function cancelButton(item) {
+  if (!item.can_cancel) return '';
+  if (item.kind === 'booking') {
+    return `<button
+      class="cancel-btn btn btn-danger btn-sm"
+      data-kind="booking"
+      data-id="${item.id}">取消</button>`;
+  }
+  // registration
+  if (item.status === 'pending' && item.order_id) {
+    return `<button
+      class="cancel-btn btn btn-danger btn-sm"
+      data-kind="group-order"
+      data-order-id="${item.order_id}">放棄此訂單</button>`;
+  }
+  // confirmed / waitlisted
+  return `<button
+    class="cancel-btn btn btn-danger btn-sm"
+    data-kind="registration"
+    data-id="${item.id}">取消</button>`;
 }
 
 function cardHtml(item) {
   const kindPill = item.kind === 'booking'
     ? '<span class="pill-kind pill-1on1">🏋️ 一對一</span>'
     : '<span class="pill-kind pill-group">👥 團課</span>';
-  const title = item.kind === 'booking' ? item.coach_display_name : item.course_name;
-  const duration = item.kind === 'booking' ? 60 : (item.duration_minutes || 60);
-  const positionTag = (item.kind === 'registration' && item.position)
-    ? `<span class="subtle ml-2">候補 #${item.position}</span>` : '';
-  const noteLine = (item.kind === 'booking' && item.note)
-    ? `<div class="text-sm text-slate-500 mt-1">備註：${escapeHtml(item.note)}</div>` : '';
-  const cancelReasonLine = (item.kind === 'booking' && item.cancel_reason)
-    ? `<div class="text-sm text-red-500 mt-1">原因：${escapeHtml(item.cancel_reason)}</div>` : '';
-  const cancelBtn = item.can_cancel
-    ? `<button data-id="${item.id}" data-kind="${item.kind}" class="cancel-btn btn btn-danger btn-sm">取消</button>`
-    : '';
+
+  const title = item.kind === 'booking'
+    ? (item.coach_display_name || '教練')
+    : (item.course_name || '團課');
+
+  const { label, cls } = resolveStatus(item);
 
   return `
-    <article class="card">
+    <article class="card${item.is_past ? ' past-card' : ''}">
       <div class="flex items-center gap-4">
         ${dateBlock(item.start_at)}
-        <div class="flex-1">
+        <div class="flex-1 min-w-0">
           <div class="mb-1">${kindPill}</div>
-          <h3 class="card-title">${escapeHtml(title || '')}</h3>
+          <h3 class="card-title">${escapeHtml(title)}</h3>
           <div class="meta">
-            <span class="meta-item"><span class="meta-icon">🕐</span> ${fmtDate(item.start_at)}（${duration} 分鐘）</span>
+            <span class="meta-item"><span class="meta-icon">🕐</span> ${escapeHtml(fmtDate(item.start_at))}</span>
           </div>
           <div class="flex items-center gap-2 mt-2 flex-wrap">
-            ${statusBadge(item)}
-            ${positionTag}
+            <span class="badge ${escapeHtml(cls)}">${escapeHtml(label)}</span>
           </div>
-          ${noteLine}
-          ${cancelReasonLine}
+          ${paymentLine(item)}
         </div>
-        ${cancelBtn}
+        <div class="flex-shrink-0">
+          ${cancelButton(item)}
+        </div>
       </div>
     </article>
   `;
 }
+
+// ── Render ───────────────────────────────────────────────────────────────────
 
 function filterItems(items, filter) {
   if (filter === 'all') return items;
@@ -77,45 +239,39 @@ function filterItems(items, filter) {
 }
 
 function render() {
+  // Summary line
+  const summaryEl = document.getElementById('remaining-summary');
+  summaryEl.textContent =
+    `1對1 剩 ${state.one_on_one_remaining} 堂 · 團體 剩 ${state.group_remaining} 堂`;
+
   const filtered = filterItems(state.items, state.filter);
   const upcoming = filtered.filter(i => !i.is_past);
   const past     = filtered.filter(i =>  i.is_past);
 
-  const upWrap = document.getElementById('upcoming-list');
+  // Upcoming
+  const upWrap  = document.getElementById('upcoming-list');
   const upEmpty = document.getElementById('upcoming-empty');
-  const upEmptyIcon = document.getElementById('upcoming-empty-icon');
-  const upEmptyMsg = document.getElementById('upcoming-empty-msg');
-  const upEmptyCtas = document.getElementById('upcoming-empty-ctas');
-
   if (upcoming.length === 0) {
     upWrap.innerHTML = '';
     upEmpty.style.display = 'block';
-    const totallyEmpty = state.items.length === 0;
-    const hasOnlyPast  = state.filter === 'all' && !totallyEmpty && past.length > 0;
-    if (totallyEmpty) {
-      upEmptyIcon.style.display = 'inline-block';
-      upEmptyMsg.textContent = '還沒有任何預約';
-      upEmptyCtas.style.display = 'flex';
-    } else if (hasOnlyPast) {
-      upEmptyIcon.style.display = 'none';
-      upEmptyMsg.textContent = '本週沒有預約';
-      upEmptyCtas.style.display = 'none';
+    const msgEl = document.getElementById('upcoming-empty-msg');
+    if (state.items.length === 0) {
+      msgEl.textContent = '還沒有任何預約';
     } else if (state.filter === 'booking') {
-      upEmptyIcon.style.display = 'none';
-      upEmptyMsg.textContent = '「一對一」沒有未來預約';
-      upEmptyCtas.style.display = 'flex';
+      msgEl.textContent = '「一對一」沒有未來預約';
+    } else if (state.filter === 'registration') {
+      msgEl.textContent = '「團課」沒有未來預約';
     } else {
-      upEmptyIcon.style.display = 'none';
-      upEmptyMsg.textContent = '「團課」沒有未來預約';
-      upEmptyCtas.style.display = 'flex';
+      msgEl.textContent = '沒有即將到來的預約';
     }
   } else {
     upEmpty.style.display = 'none';
     upWrap.innerHTML = upcoming.map(cardHtml).join('');
   }
 
-  const pastWrap = document.getElementById('past-toggle-wrap');
-  const pastList = document.getElementById('past-list');
+  // Past
+  const pastWrap  = document.getElementById('past-toggle-wrap');
+  const pastList  = document.getElementById('past-list');
   const pastCount = document.getElementById('past-count');
   const pastCaret = document.getElementById('past-caret');
 
@@ -134,22 +290,46 @@ function render() {
     }
   }
 
+  // Bind cancel buttons
   document.querySelectorAll('.cancel-btn').forEach(btn => {
-    btn.addEventListener('click', () => handleCancel(Number(btn.dataset.id), btn.dataset.kind));
+    btn.addEventListener('click', () => handleCancel(btn));
   });
 }
 
-async function handleCancel(id, kind) {
+// ── Cancel ───────────────────────────────────────────────────────────────────
+
+async function handleCancel(btn) {
   if (!confirm('確定要取消嗎？')) return;
-  const url = kind === 'booking' ? `/api/bookings/${id}` : `/api/registrations/${id}`;
+  const kind    = btn.dataset.kind;
+  const id      = btn.dataset.id;
+  const orderId = btn.dataset.orderId;
+
+  let url;
+  if (kind === 'booking') {
+    url = `/api/public/bookings/${id}`;
+  } else if (kind === 'registration') {
+    url = `/api/public/registrations/${id}`;
+  } else if (kind === 'group-order') {
+    url = `/api/public/group-orders/${orderId}`;
+  } else {
+    toast('未知取消類型', 'error');
+    return;
+  }
+
   try {
-    await api(url, { method: 'DELETE' });
+    await api(url, {
+      method: 'DELETE',
+      body: state.creds,
+    });
     toast('已取消', 'success');
-    await load();
+    // Re-run lookup to refresh
+    await doLookup(state.creds.phone, state.creds.name);
   } catch (e) {
     toast(`取消失敗：${e.message}`, 'error');
   }
 }
+
+// ── Tab + past toggle ────────────────────────────────────────────────────────
 
 function bindTabs() {
   document.querySelectorAll('#tab-bar .tab-btn').forEach(btn => {
@@ -169,36 +349,23 @@ function bindPastToggle() {
   });
 }
 
-async function load() {
-  try {
-    const { items } = await api('/api/my/schedule');
-    state.items = items ?? [];
-    hideLoadError();
-    render();
-  } catch (e) {
-    showLoadError(e);
-  }
-}
+// ── Init ─────────────────────────────────────────────────────────────────────
 
-function showLoadError(e) {
-  document.getElementById('main-section').style.display = 'none';
-  const errBox = document.getElementById('load-error');
-  errBox.style.display = 'block';
-  document.getElementById('load-error-msg').textContent = `載入失敗：${e.message}`;
-  toast(`載入失敗：${e.message}`, 'error');
-}
-
-function hideLoadError() {
-  document.getElementById('main-section').style.display = '';
-  document.getElementById('load-error').style.display = 'none';
-}
-
-document.getElementById('load-error-retry').addEventListener('click', async () => {
-  hideLoadError();
-  await load();
-});
-
+bindLookupForm();
 bindTabs();
 bindPastToggle();
-await load();
+
+// "換帳號" button in results area
+document.getElementById('change-lookup-btn').addEventListener('click', () => {
+  showForm();
+});
+
+// Auto-fill from localStorage; auto-query if both present
+const { savedPhone, savedName } = autoFillForm();
+if (savedPhone && savedName) {
+  const phone = savedPhone.replace(/\D/g, '');
+  // Auto-query in background; don't block body reveal
+  doLookup(phone, savedName).catch(() => {});
+}
+
 document.body.style.visibility = 'visible';
