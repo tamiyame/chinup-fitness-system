@@ -31,7 +31,18 @@ import {
   listCoachBookings as svcListCoachBookings,
   cancelBooking as svcCancelBooking,
   getMostRecentCoachForUser as svcGetMostRecentCoachForUser,
+  createBookingAnon as svcCreateBookingAnon,
+  cancelBookingAnon as svcCancelBookingAnon,
 } from './services/bookingService.js';
+import {
+  createGroupOrder as svcCreateGroupOrder,
+  confirmGroupOrder as svcConfirmGroupOrder,
+  cancelGroupOrder as svcCancelGroupOrder,
+  cancelRegistrationPublic as svcCancelRegPublic,
+  expirePendingOrders as svcExpireOrders,
+  getPublicGroupCourses as svcPublicCourses,
+  getPublicSchedule as svcPublicSchedule,
+} from './services/groupOrderService.js';
 import { listActiveCoaches as svcListActive, saveAvatar as svcSaveAvatar } from './services/coachService.js';
 import {
   login as authLogin,
@@ -645,6 +656,47 @@ app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
   const { avatar_base64 } = req.body || {};
   const result = svcSaveAvatar({ coachId: coach.id, base64: avatar_base64 });
   res.json(result);
+}));
+
+// --- Public (no auth): anon booking / group orders / phone lookup ---
+app.get('/api/public/group-courses', asyncHandler((req, res) => {
+  res.json(svcPublicCourses());
+}));
+
+app.post('/api/public/bookings', asyncHandler((req, res) => {
+  const { coachId, startAt, name, phone, note } = req.body || {};
+  const r = svcCreateBookingAnon({ coachId: Number(coachId), startAt, name, phone, note: note || null });
+  res.status(201).json(r);
+}));
+
+app.post('/api/public/group-orders', asyncHandler((req, res) => {
+  const { name, phone, paySessionIds, waitlistSessionIds } = req.body || {};
+  const r = svcCreateGroupOrder({
+    name, phone,
+    paySessionIds: (paySessionIds || []).map(Number),
+    waitlistSessionIds: (waitlistSessionIds || []).map(Number),
+  });
+  res.status(201).json(r);
+}));
+
+app.post('/api/public/my', asyncHandler((req, res) => {
+  const { phone, name } = req.body || {};
+  res.json(svcPublicSchedule({ phone, name }));
+}));
+
+app.delete('/api/public/bookings/:id', asyncHandler((req, res) => {
+  const { phone, name } = req.body || {};
+  res.json(svcCancelBookingAnon({ bookingId: Number(req.params.id), phone, name }));
+}));
+
+app.delete('/api/public/registrations/:id', asyncHandler((req, res) => {
+  const { phone, name } = req.body || {};
+  res.json(svcCancelRegPublic({ registrationId: Number(req.params.id), phone, name }));
+}));
+
+app.delete('/api/public/group-orders/:id', asyncHandler((req, res) => {
+  const { phone, name } = req.body || {};
+  res.json(svcCancelGroupOrder({ orderId: Number(req.params.id), phone, name }));
 }));
 
 // --- One-on-one: public + member endpoints ---
