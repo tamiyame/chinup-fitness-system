@@ -5,7 +5,7 @@ export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
+  email TEXT UNIQUE,
   phone TEXT,
   password_hash TEXT,
   google_id TEXT,
@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
   line_bind_expires_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone) WHERE phone IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
   token TEXT PRIMARY KEY,
@@ -49,8 +51,25 @@ CREATE TABLE IF NOT EXISTS course_templates (
   cycle_end_date TEXT NOT NULL,
   registration_deadline_hours INTEGER NOT NULL DEFAULT 24,
   status TEXT NOT NULL DEFAULT 'published' CHECK(status IN ('draft','published','archived')),
+  price_per_session INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS group_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  member_id INTEGER NOT NULL REFERENCES users(id),
+  customer_name TEXT NOT NULL,
+  customer_phone TEXT NOT NULL,
+  total_amount INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','paid','cancelled')),
+  expires_at TEXT NOT NULL,
+  paid_at TEXT,
+  paid_by INTEGER REFERENCES users(id),
+  cancelled_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_group_orders_status ON group_orders(status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_group_orders_member ON group_orders(member_id);
 
 CREATE TABLE IF NOT EXISTS course_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,8 +91,10 @@ CREATE TABLE IF NOT EXISTS registrations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id INTEGER NOT NULL REFERENCES course_sessions(id) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status TEXT NOT NULL CHECK(status IN ('confirmed','waitlisted','cancelled','rejected')),
+  status TEXT NOT NULL CHECK(status IN ('pending','confirmed','waitlisted','cancelled','rejected')),
   position INTEGER,
+  order_id INTEGER REFERENCES group_orders(id),
+  amount_due INTEGER,
   registered_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(session_id, user_id)
 );
@@ -181,18 +202,6 @@ CREATE INDEX IF NOT EXISTS idx_point_tx_member_pool ON point_transactions(member
 CREATE INDEX IF NOT EXISTS idx_point_tx_created ON point_transactions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_point_tx_booking ON point_transactions(related_booking_id);
 CREATE INDEX IF NOT EXISTS idx_point_tx_registration ON point_transactions(related_registration_id);
-
-CREATE VIEW IF NOT EXISTS member_point_balance AS
-SELECT
-  u.id AS member_id,
-  u.name,
-  u.email,
-  COALESCE(SUM(CASE WHEN pt.pool = 'one_on_one' THEN pt.amount ELSE 0 END), 0) AS one_on_one_balance,
-  COALESCE(SUM(CASE WHEN pt.pool = 'group' THEN pt.amount ELSE 0 END), 0) AS group_balance
-FROM users u
-LEFT JOIN point_transactions pt ON pt.member_id = u.id
-WHERE u.role = 'user'
-GROUP BY u.id;
 `;
 
 // Indexes for Phase 3C columns are kept OUT of the SCHEMA string so that
