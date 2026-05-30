@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
 import { hashPassword } from '../src/services/auth.js';
 import { createCoach, setCoachActive } from '../src/services/coachService.js';
-import { createBookingAnon, cancelBookingAnon } from '../src/services/bookingService.js';
+import { createBookingAnon, cancelBookingAnon, cancelBooking } from '../src/services/bookingService.js';
 import { getOneOnOnePrice } from '../src/services/discountService.js';
 
 function reset() {
@@ -124,6 +124,28 @@ expect('invalid discountCode → throws, tx rollback, no booking written', () =>
   }
   const after = db.prepare("SELECT COUNT(*) AS c FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone='0992000003')").get().c;
   assert.equal(after, before, 'no booking should be written on invalid code (tx rollback)');
+});
+
+// ── Test 5: cancelBooking (logged-in/coach path) releases the redemption ──
+let coachCancelBookingId;
+expect('cancelBooking (coach path) releases the redemption', () => {
+  const r = createBookingAnon({
+    coachId: coach.id, startAt: futureLocal(6),
+    name: '折教客', phone: '0992000005',
+    discountCode: 'TESTDBK200',
+  });
+  coachCancelBookingId = r.id;
+  // sanity: redemption present before cancel
+  const before = db.prepare('SELECT * FROM discount_redemptions WHERE kind=? AND ref_id=?')
+    .get('booking', coachCancelBookingId);
+  assert(before, 'redemption should exist before cancel');
+
+  const res = cancelBooking({ bookingId: coachCancelBookingId, actorUserId: cu.lastInsertRowid, isCoach: true, reason: 'x' });
+  assert.equal(res.ok, true);
+
+  const after = db.prepare('SELECT * FROM discount_redemptions WHERE kind=? AND ref_id=?')
+    .get('booking', coachCancelBookingId);
+  assert.equal(after, undefined, 'redemption row should be deleted after coach cancel');
 });
 
 // ── Cleanup ──

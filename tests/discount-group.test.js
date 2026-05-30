@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
-import { createTemplate } from '../src/services/courseService.js';
-import { createGroupOrder, cancelGroupOrder } from '../src/services/groupOrderService.js';
+import { createTemplate, processDeadlines } from '../src/services/courseService.js';
+import { createGroupOrder, cancelGroupOrder, cancelRegistrationPublic, confirmGroupOrder } from '../src/services/groupOrderService.js';
 
 function reset() {
   db.exec(`
@@ -131,6 +131,83 @@ expect('DB group_orders row: no discount, original_amount=total_amount=1000', ()
   assert.equal(row.total_amount, 1000);
   assert.equal(row.discount_amount, null);
   assert.equal(row.discount_code, null);
+});
+
+// ── Helpers for confirm-flow cases ──
+function adminId() {
+  return db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get()?.id
+    || db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES ('A','dg-owner@x.com','x','owner') RETURNING id").get().id;
+}
+function redemptionRow(orderId) {
+  return db.prepare('SELECT * FROM discount_redemptions WHERE kind=? AND ref_id=?').get('group_order', orderId);
+}
+
+// ── Test 5 (a): single-session confirmed order → cancelRegistrationPublic releases redemption ──
+expect('(a) single-session confirmed reg cancel → redemption released', () => {
+  const o = createGroupOrder({
+    name: '折戊', phone: '0993000005',
+    paySessionIds: [s1], waitlistSessionIds: [],
+    discountCode: 'TESTDG10',
+  });
+  confirmGroupOrder({ orderId: o.orderId, actorId: adminId() });
+  assert(redemptionRow(o.orderId), 'redemption should exist while confirmed');
+
+  const reg = db.prepare("SELECT id FROM registrations WHERE order_id=?").get(o.orderId);
+  const res = cancelRegistrationPublic({ registrationId: reg.id, phone: '0993000005', name: '折戊' });
+  assert.equal(res.ok, true);
+  assert.equal(redemptionRow(o.orderId), undefined, 'redemption should be released (order now inactive)');
+});
+
+// ── Test 5 (b): multi-session order, cancel ONE reg → redemption STILL present ──
+expect('(b) multi-session order, cancel one reg → redemption still present', () => {
+  const o = createGroupOrder({
+    name: '折己', phone: '0993000006',
+    paySessionIds: [s1, s2], waitlistSessionIds: [],
+    discountCode: 'TESTDG10',
+  });
+  confirmGroupOrder({ orderId: o.orderId, actorId: adminId() });
+  assert(redemptionRow(o.orderId), 'redemption should exist while confirmed');
+
+  // cancel only the s1 reg; s2 reg remains active
+  const regs = db.prepare("SELECT id, session_id FROM registrations WHERE order_id=? ORDER BY id ASC").all(o.orderId);
+  assert.equal(regs.length, 2, 'should have 2 regs');
+  const res = cancelRegistrationPublic({ registrationId: regs[0].id, phone: '0993000006', name: '折己' });
+  assert.equal(res.ok, true);
+  assert(redemptionRow(o.orderId), 'redemption should REMAIN (order still has another active reg)');
+
+  // cancel the second too → now released
+  cancelRegistrationPublic({ registrationId: regs[1].id, phone: '0993000006', name: '折己' });
+  assert.equal(redemptionRow(o.orderId), undefined, 'redemption released once order fully inactive');
+});
+
+// ── Test 5 (c): under-capacity deadline cancel → reg rejected, redemption released ──
+expect('(c) under-capacity deadline cancel → session cancelled, reg rejected, redemption released', () => {
+  // Separate template with high min_capacity so 1 confirmed < min triggers the cancel branch.
+  const tplHi = createTemplate({
+    name: 'TESTDG高底班', min_capacity: 5, max_capacity: 10,
+    day_of_week: ((new Date()).getDay() + 3) % 7, start_time: '14:00',
+    recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(60),
+    registration_deadline_hours: 1, price_per_session: 500,
+  });
+  const sHi = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC').all(tplHi.templateId)[0].id;
+
+  const o = createGroupOrder({
+    name: '折庚', phone: '0993000007',
+    paySessionIds: [sHi], waitlistSessionIds: [],
+    discountCode: 'TESTDG10',
+  });
+  confirmGroupOrder({ orderId: o.orderId, actorId: adminId() });
+  assert(redemptionRow(o.orderId), 'redemption should exist while confirmed');
+
+  // Force the deadline into the past so processDeadlines picks it up.
+  db.prepare("UPDATE course_sessions SET registration_deadline='2000-01-01T00:00:00' WHERE id=?").run(sHi);
+  processDeadlines();
+
+  const sess = db.prepare('SELECT status FROM course_sessions WHERE id=?').get(sHi);
+  assert.equal(sess.status, 'cancelled', 'session should be cancelled (under capacity)');
+  const reg = db.prepare("SELECT status FROM registrations WHERE order_id=?").get(o.orderId);
+  assert.equal(reg.status, 'rejected', 'reg should be rejected');
+  assert.equal(redemptionRow(o.orderId), undefined, 'redemption should be released after under-capacity cancel');
 });
 
 // ── Cleanup ──

@@ -823,7 +823,7 @@ app.get('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
 }));
 app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
   const p = Number((req.body || {}).one_on_one_price);
-  if (!Number.isInteger(p) || p < 0) return res.status(400).json({ error: 'invalid_price' });
+  if (!Number.isInteger(p) || p < 1) return res.status(400).json({ error: 'invalid_price' });
   setSetting('one_on_one_price', String(p));
   res.json({ one_on_one_price: p });
 }));

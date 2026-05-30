@@ -124,6 +124,7 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
     }
 
     cancelBookingStmt.run(nowLocal(), actorUserId, reason, bookingId);
+    releaseRedemption({ kind: 'booking', refId: bookingId });
 
     // Phase 3C: notify the OTHER party (the one who didn't cancel)
     const memberRow = getUserNameStmt.get(b.member_id);

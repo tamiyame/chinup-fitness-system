@@ -179,6 +179,13 @@ const nanPriceRes = await req('PATCH', '/api/admin/settings', {
 });
 expect('non-integer price → 400', () => assert.equal(nanPriceRes.status, 400));
 
+const zeroPriceRes = await req('PATCH', '/api/admin/settings', {
+  token: adminToken,
+  body: { one_on_one_price: 0 },
+});
+expect('zero price → 400 (must be positive)', () => assert.equal(zeroPriceRes.status, 400));
+expect('error=invalid_price for zero', () => assert.equal(zeroPriceRes.data?.error, 'invalid_price'));
+
 // ── [12] Reset price back to 1500 ──
 console.log('[12] reset price to 1500');
 const resetRes = await req('PATCH', '/api/admin/settings', {

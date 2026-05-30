@@ -196,6 +196,18 @@ export function cancelGroupOrder({ orderId, phone, name }) {
   });
 }
 
+const countActiveOrderRegsStmt = db.prepare(
+  "SELECT COUNT(*) AS c FROM registrations WHERE order_id = ? AND status IN ('pending','confirmed','waitlisted')"
+);
+/** Release a group order's discount redemption only when the order has NO remaining active
+ *  registrations — so a multi-session order doesn't lose its discount when only one session is cancelled. */
+export function releaseOrderRedemptionIfInactive(orderId) {
+  if (!orderId) return;
+  if (countActiveOrderRegsStmt.get(orderId).c === 0) {
+    releaseRedemption({ kind: 'group_order', refId: orderId });
+  }
+}
+
 /** 取消單筆 confirmed / waitlisted registration。釋名額後遞補。 */
 export function cancelRegistrationPublic({ registrationId, phone, name }) {
   return tx(() => {
@@ -207,6 +219,7 @@ export function cancelRegistrationPublic({ registrationId, phone, name }) {
     if (reg.status === 'pending') throw new ApiError(409, 'use_cancel_order'); // pending 要走整筆放棄
     const wasOccupying = reg.status === 'confirmed';
     db.prepare("UPDATE registrations SET status='cancelled' WHERE id=?").run(registrationId);
+    releaseOrderRedemptionIfInactive(reg.order_id);
     if (wasOccupying) promoteWaitlist(reg.session_id);
     return { ok: true };
   });

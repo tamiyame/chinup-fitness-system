@@ -2,6 +2,7 @@ import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { expandTemplate, RECURRENCES } from './schedule.js';
 import { notify } from './notifications.js';
 import { ApiError } from './registration.js';
+import { releaseOrderRedemptionIfInactive } from './groupOrderService.js';
 
 const insertTemplate = db.prepare(`
   INSERT INTO course_templates
@@ -173,12 +174,15 @@ export function processDeadlines() {
         results.push({ sessionId: s.id, action: 'confirmed', count: regs.length });
       } else {
         db.prepare("UPDATE course_sessions SET status = 'cancelled' WHERE id = ?").run(s.id);
-        const regs = db.prepare("SELECT user_id, id FROM registrations WHERE session_id = ? AND status IN ('confirmed','waitlisted','pending')").all(s.id);
+        const regs = db.prepare("SELECT user_id, id, order_id FROM registrations WHERE session_id = ? AND status IN ('confirmed','waitlisted','pending')").all(s.id);
         const upd = db.prepare("UPDATE registrations SET status = 'rejected' WHERE id = ?");
         for (const r of regs) {
           upd.run(r.id);
           notify({ userId: r.user_id, sessionId: s.id, type: 'course_cancelled', vars: { course_name: s.course_name, start_at: s.start_at } });
         }
+        // Release discount redemptions for any orders left with no remaining active regs.
+        const affectedOrderIds = [...new Set(regs.map((r) => r.order_id).filter((oid) => oid != null))];
+        for (const oid of affectedOrderIds) releaseOrderRedemptionIfInactive(oid);
         results.push({ sessionId: s.id, action: 'cancelled', count: regs.length });
       }
     });
