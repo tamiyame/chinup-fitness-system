@@ -52,4 +52,17 @@ expect('different phone still ok', ()=>{ const r=tx(()=>applyDiscountTx({code:'T
 expect('empty code → applyDiscountTx returns null', ()=>{ assert.equal(tx(()=>applyDiscountTx({code:'',phone:'0994000099',subtotal:500,kind:'group_order',refId:999099})),null); });
 console.log('[discount-service] D3 done');
 
+import { listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getOneOnOnePrice } from '../src/services/discountService.js';
+
+console.log('[discount-service] D4 start');
+expect('create + list shows used_count 0', ()=>{ const c=createDiscountCode({code:'testd_new',discount_type:'percent',discount_value:15}); assert.equal(c.code,'TESTD_NEW'); const row=listDiscountCodes().find(x=>x.code==='TESTD_NEW'); assert.equal(row.used_count,0); });
+expect('duplicate code → 409 code_exists', ()=>{ try{createDiscountCode({code:'TESTD_NEW',discount_type:'fixed',discount_value:50});assert.fail();}catch(e){assert.equal(e.code,'code_exists');} });
+expect('percent value >100 → invalid_value', ()=>{ try{createDiscountCode({code:'TESTD_BAD',discount_type:'percent',discount_value:150});assert.fail();}catch(e){assert.equal(e.code,'invalid_value');} });
+expect('update active toggle', ()=>{ const c=createDiscountCode({code:'testd_upd',discount_type:'fixed',discount_value:50}); const u=updateDiscountCode(c.id,{active:0}); assert.equal(u.active,0); });
+expect('delete unused ok', ()=>{ const c=createDiscountCode({code:'testd_del',discount_type:'fixed',discount_value:50}); assert.deepEqual(deleteDiscountCode(c.id),{ok:true}); });
+expect('delete used → has_redemptions', ()=>{ const c=createDiscountCode({code:'testd_used',discount_type:'fixed',discount_value:50}); tx(()=>applyDiscountTx({code:'TESTD_USED',phone:'0994000030',subtotal:500,kind:'group_order',refId:999030})); try{deleteDiscountCode(c.id);assert.fail();}catch(e){assert.equal(e.code,'has_redemptions');} releaseRedemption({kind:'group_order',refId:999030}); });
+expect('settings default 1500', ()=>assert.equal(getOneOnOnePrice(),1500));
+expect('settings set/get', ()=>{ setSetting('one_on_one_price','1800'); assert.equal(getOneOnOnePrice(),1800); setSetting('one_on_one_price','1500'); });
+console.log('[discount-service] D4 done');
+
 reset();

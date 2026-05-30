@@ -54,3 +54,61 @@ export function applyDiscountTx({ code, phone, subtotal, kind, refId }) {
 export function releaseRedemption({ kind, refId }) {
   deleteRedemption.run(kind, refId);
 }
+
+export function listDiscountCodes() {
+  return db.prepare('SELECT * FROM discount_codes ORDER BY created_at DESC, id DESC').all()
+    .map((c) => ({ ...c, used_count: countUsesStmt.get(c.id).c }));
+}
+
+function validateCodeFields({ discount_type, discount_value, max_uses, per_phone_limit, min_amount }) {
+  if (!['percent', 'fixed'].includes(discount_type)) throw new ApiError(400, 'invalid_type');
+  const val = Number(discount_value);
+  if (!Number.isInteger(val) || val < 1 || (discount_type === 'percent' && val > 100)) throw new ApiError(400, 'invalid_value');
+  for (const v of [max_uses, per_phone_limit, min_amount]) {
+    if (v != null && v !== '' && (!Number.isInteger(Number(v)) || Number(v) < 0)) throw new ApiError(400, 'invalid_limit');
+  }
+  return val;
+}
+const nz = (v) => (v == null || v === '' ? null : Number(v));   // nullable int
+const nstr = (v) => (v == null || v === '' ? null : String(v)); // nullable string
+
+export function createDiscountCode(f) {
+  const code = normalizeCode(f.code);
+  if (!code) throw new ApiError(400, 'missing_code');
+  const val = validateCodeFields(f);
+  if (getCodeStmt.get(code)) throw new ApiError(409, 'code_exists');
+  const info = db.prepare(`INSERT INTO discount_codes
+    (code, discount_type, discount_value, active, valid_from, valid_until, max_uses, per_phone_limit, min_amount, note)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+      code, f.discount_type, val, f.active === 0 || f.active === false ? 0 : 1,
+      nstr(f.valid_from), nstr(f.valid_until), nz(f.max_uses), nz(f.per_phone_limit), nz(f.min_amount), nstr(f.note));
+  return db.prepare('SELECT * FROM discount_codes WHERE id = ?').get(info.lastInsertRowid);
+}
+
+export function updateDiscountCode(id, f) {
+  const c = db.prepare('SELECT * FROM discount_codes WHERE id = ?').get(id);
+  if (!c) throw new ApiError(404, 'not_found');
+  const merged = { discount_type: f.discount_type ?? c.discount_type, discount_value: f.discount_value ?? c.discount_value,
+    max_uses: f.max_uses, per_phone_limit: f.per_phone_limit, min_amount: f.min_amount };
+  const val = validateCodeFields(merged);
+  db.prepare(`UPDATE discount_codes SET discount_type=?, discount_value=?, active=?, valid_from=?, valid_until=?,
+    max_uses=?, per_phone_limit=?, min_amount=?, note=? WHERE id=?`).run(
+    merged.discount_type, val, f.active === 0 || f.active === false ? 0 : 1,
+    nstr(f.valid_from), nstr(f.valid_until), nz(f.max_uses), nz(f.per_phone_limit), nz(f.min_amount), nstr(f.note), id);
+  return db.prepare('SELECT * FROM discount_codes WHERE id = ?').get(id);
+}
+
+export function deleteDiscountCode(id) {
+  const c = db.prepare('SELECT * FROM discount_codes WHERE id = ?').get(id);
+  if (!c) throw new ApiError(404, 'not_found');
+  if (countUsesStmt.get(id).c > 0) throw new ApiError(409, 'has_redemptions');
+  db.prepare('DELETE FROM discount_codes WHERE id = ?').run(id);
+  return { ok: true };
+}
+
+const getSettingStmt = db.prepare('SELECT value FROM app_settings WHERE key = ?');
+export function getSetting(key) { const r = getSettingStmt.get(key); return r ? r.value : null; }
+export function setSetting(key, value) {
+  db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, String(value));
+}
+export function getOneOnOnePrice() { return parseInt(getSetting('one_on_one_price') || '1500', 10); }
