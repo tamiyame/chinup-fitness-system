@@ -23,8 +23,8 @@
         <a href="/" class="nav-link">課程</a>
         <a href="/coaches.html" class="nav-link active">一對一預約</a>
         <a href="/my-schedule" class="nav-link">我的課表</a>
-        <a href="/line.html" class="nav-link">🔔 LINE 通知</a>
-        <a href="/admin.html" class="nav-link">管理後台</a>
+        <a href="/login.html" class="nav-link">登入</a>
+        <a href="/admin.html" class="nav-link admin-only hidden">管理後台</a>
         <a href="/coach.html" class="nav-link coach-only hidden">教練後台</a>
       </div>
     </div>
@@ -38,8 +38,8 @@
       <a href="/" class="nav-link-mobile">課程</a>
       <a href="/coaches.html" class="nav-link-mobile active">一對一預約</a>
       <a href="/my-schedule" class="nav-link-mobile">我的課表</a>
-      <a href="/line.html" class="nav-link-mobile">🔔 LINE 通知</a>
-      <a href="/admin.html" class="nav-link-mobile">管理後台</a>
+      <a href="/login.html" class="nav-link-mobile">登入</a>
+      <a href="/admin.html" class="nav-link-mobile admin-only hidden">管理後台</a>
       <a href="/coach.html" class="nav-link-mobile coach-only hidden">教練後台</a>
     </div>
   </div>
@@ -48,14 +48,6 @@
 <main class="max-w-6xl mx-auto px-6 py-8">
   <div id="view-list">
     <h1 class="page-title">選擇教練</h1>
-
-    <section id="recent-section" class="hidden">
-      <div class="section-recent-label">
-        <span>你最近的教練</span>
-        <span id="recent-ago" class="ago-badge"></span>
-      </div>
-      <div id="recent-mount"></div>
-    </section>
 
     <section id="all-section">
       <div class="section-all-label">全部教練</div>
@@ -71,17 +63,40 @@
     <div id="slot-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"></div>
   </div>
 
-  <div id="view-confirm" class="hidden">
-    <button id="back-to-detail" class="text-sm text-sky-600 mb-3">← 選別的時段</button>
-    <h1 class="page-title">確認預約</h1>
-    <div id="confirm-summary" class="card mb-4"></div>
-    <label class="block mb-3">
-      <span class="text-sm text-slate-600">備註（選填）</span>
-      <textarea id="note" class="mt-1 w-full border rounded p-2 text-sm" rows="3" placeholder="例如：想加強核心訓練"></textarea>
-    </label>
-    <button id="confirm-btn" class="btn-primary w-full">確認預約</button>
-  </div>
+  <div id="view-success" class="hidden"></div>
 </main>
+
+<!-- Booking Modal -->
+<div id="booking-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-sm" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="flex items-center justify-between p-4 border-b">
+      <h2 id="modal-title" class="text-lg font-bold">填寫預約資訊</h2>
+      <button id="modal-close-btn" class="text-slate-400 hover:text-slate-700 text-xl leading-none" aria-label="關閉">✕</button>
+    </div>
+    <div class="p-4">
+      <div class="card bg-slate-50 mb-4 text-sm">
+        <div class="mb-1"><span class="text-slate-500">教練：</span><strong id="modal-coach-name"></strong></div>
+        <div><span class="text-slate-500">時間：</span><strong id="modal-slot-time"></strong></div>
+      </div>
+
+      <label class="block mb-3">
+        <span class="text-sm font-medium text-slate-700">姓名 <span class="text-red-500">*</span></span>
+        <input id="modal-name" type="text" class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="請輸入真實姓名">
+        <span id="modal-name-err" class="text-xs text-red-500 mt-1 block"></span>
+      </label>
+
+      <label class="block mb-4">
+        <span class="text-sm font-medium text-slate-700">電話 <span class="text-red-500">*</span></span>
+        <input id="modal-phone" type="tel" inputmode="numeric" class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="例：0912345678">
+        <span id="modal-phone-err" class="text-xs text-red-500 mt-1 block"></span>
+      </label>
+
+      <span id="modal-general-err" class="text-sm text-red-600 block mb-3"></span>
+
+      <button id="modal-submit-btn" class="btn-primary w-full">確認預約</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast" class="toast"></div>
 <script type="module" src="/coaches.js"></script>

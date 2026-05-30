@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>團體課程 – CHINUP Performance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/colors_and_type.css">
+<link rel="stylesheet" href="/style.css">
+<style>
+body { visibility: hidden; }
+
+/* ── sticky price bar ── */
+#price-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 15;
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+#price-bar.hidden { display: none; }
+
+/* ── session row (selectable) ── */
+.sess-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  margin-bottom: 8px;
+  transition: border-color 160ms, background 160ms;
+  cursor: pointer;
+}
+.sess-row:hover { border-color: rgba(56,189,248,0.4); background: var(--brand-50); }
+.sess-row.selected { border-color: var(--brand-600); background: #f0f9ff; }
+.sess-row.waitlist-selected { border-color: #d97706; background: #fffbeb; }
+.sess-row-info { flex: 1; min-width: 0; }
+.sess-row-date { font-weight: 700; font-size: 14px; }
+.sess-row-time { font-size: 12px; color: var(--ink-soft); margin-top: 1px; }
+.sess-row-cap { font-size: 12px; white-space: nowrap; color: var(--ink-mute); }
+
+/* ── success panel ── */
+#success-view { display: none; }
+
+/* ── bank info box ── */
+.bank-box {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-size: 14px;
+}
+.bank-box strong { display: block; font-size: 16px; font-weight: 700; margin: 4px 0 8px; color: var(--brand-900); }
+
+/* ── full-width btn variant ── */
+.btn-full { width: 100%; display: flex; }
+
+/* ── LINE bind box ── */
+.line-box {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-size: 14px;
+}
+.line-code {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: #15803d;
+  margin: 6px 0;
+}
+
+/* ── select-all control ── */
+.select-all-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--brand-700);
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 140ms;
+}
+.select-all-row:hover { background: var(--brand-50); }
+</style>
+</head>
+<body>
+
+<nav class="navbar sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-8">
+      <a href="/" class="brand-mark">
+        <span class="brand-dot"><img src="/logo.png" alt="logo"></span> CHINUP Performance
+      </a>
+      <div class="hidden md:flex items-center gap-6">
+        <a href="/" class="nav-link">課程</a>
+        <a href="/coaches.html" class="nav-link">一對一預約</a>
+        <a href="/my-schedule" class="nav-link">我的課表</a>
+        <a href="/login.html" class="nav-link">登入</a>
+        <a href="/admin.html" class="nav-link admin-only hidden">管理後台</a>
+        <a href="/coach.html" class="nav-link coach-only hidden">教練後台</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <div id="auth-bar" class="flex items-center gap-3"></div>
+      <button id="nav-toggle" class="md:hidden nav-toggle-btn" aria-label="選單" aria-expanded="false">☰</button>
+    </div>
+  </div>
+  <div id="nav-mobile" class="hidden md:hidden">
+    <div class="max-w-6xl mx-auto px-6 py-2 flex flex-col">
+      <a href="/" class="nav-link-mobile">課程</a>
+      <a href="/coaches.html" class="nav-link-mobile">一對一預約</a>
+      <a href="/my-schedule" class="nav-link-mobile">我的課表</a>
+      <a href="/login.html" class="nav-link-mobile">登入</a>
+      <a href="/admin.html" class="nav-link-mobile admin-only hidden">管理後台</a>
+      <a href="/coach.html" class="nav-link-mobile coach-only hidden">教練後台</a>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-3xl mx-auto px-4 pb-32">
+
+  <!-- Hero -->
+  <section class="hero" style="padding-bottom:20px;">
+    <span class="hero-eyebrow">🏋️‍♂️ 團體課程</span>
+    <h1 style="font-size:clamp(24px,4vw,36px);">選課 &amp; 匯款報名</h1>
+    <p>選擇場次、填寫資料後以銀行轉帳完成報名。額滿場次可選候補。</p>
+  </section>
+
+  <!-- Loading skeleton -->
+  <div id="loading" class="flex flex-col gap-4 mt-2">
+    <div class="skeleton" style="height:72px;border-radius:14px;"></div>
+    <div class="skeleton" style="height:72px;border-radius:14px;"></div>
+    <div class="skeleton" style="height:72px;border-radius:14px;"></div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="empty" class="empty-state hidden mt-4">
+    <span class="empty-state-icon">📭</span>
+    <p>目前沒有開放報名的團體課程，請稍後再查看。</p>
+  </div>
+
+  <!-- Course list -->
+  <div id="course-list" class="hidden mt-2"></div>
+
+  <!-- Booking form (hidden until user has selections) -->
+  <section id="booking-form-section" class="hidden mt-8">
+    <div class="card">
+      <h2 class="section-title mb-4">填寫報名資料</h2>
+
+      <div id="form-error" class="hidden mb-4 p-3 rounded-lg text-sm" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;"></div>
+
+      <form id="booking-form" autocomplete="on" novalidate>
+        <div class="mb-4">
+          <label class="form-label" for="f-name">姓名 *</label>
+          <input id="f-name" name="name" class="form-input" type="text" required placeholder="請輸入真實姓名" autocomplete="name">
+        </div>
+        <div class="mb-4">
+          <label class="form-label" for="f-phone">電話 *</label>
+          <input id="f-phone" name="phone" class="form-input" type="text" inputmode="numeric" required placeholder="09xxxxxxxx" autocomplete="tel">
+        </div>
+
+        <!-- Order summary -->
+        <div id="order-summary" class="mb-4 p-3 rounded-lg text-sm" style="background:#f8fafc;border:1px solid var(--line);">
+          <div class="font-semibold mb-1" style="color:var(--ink);">訂單摘要</div>
+          <div id="summary-pay-list" class="text-slate-600"></div>
+          <div id="summary-wait-list" class="text-amber-700 mt-1"></div>
+          <div class="mt-2 pt-2" style="border-top:1px solid var(--line);">
+            <span class="font-bold" style="color:var(--ink);">應付金額：</span>
+            <span id="summary-total" class="font-bold text-lg" style="color:var(--brand-700);">NT$0</span>
+          </div>
+        </div>
+
+        <button id="submit-btn" type="submit" class="btn btn-primary btn-full">
+          確認報名並送出
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Success view -->
+  <section id="success-view">
+    <div class="text-center py-6">
+      <div class="text-5xl mb-4">✅</div>
+      <h1 class="section-title text-2xl">報名成功！</h1>
+      <p class="subtle mt-1">請依下方資訊完成匯款，以確保報名生效。</p>
+    </div>
+
+    <div class="card mb-4" id="success-order-info"></div>
+    <div class="bank-box mb-4" id="success-bank-info"></div>
+    <div id="success-waitlist" class="hidden mb-4 p-3 rounded-lg text-sm" style="background:#fffbeb;border:1px solid #fcd34d;color:#92400e;"></div>
+    <div id="success-line-box" class="line-box hidden mb-4"></div>
+
+    <div class="flex flex-col gap-3 mt-6">
+      <a href="/my-schedule" class="btn btn-primary btn-full" style="justify-content:center;">查我的課表</a>
+      <a href="/" class="btn btn-ghost btn-full" style="justify-content:center;">回首頁</a>
+    </div>
+  </section>
+
+</main>
+
+<!-- Sticky price bar -->
+<div id="price-bar" class="hidden">
+  <div>
+    <div class="text-xs font-semibold" style="color:var(--ink-mute);">已選付款場次</div>
+    <div id="price-bar-total" class="text-xl font-bold" style="color:var(--brand-700);">NT$0</div>
+  </div>
+  <button id="price-bar-go" class="btn btn-primary btn-sm" disabled>填寫資料 →</button>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script type="module" src="/group.js"></script>
+</body>
+</html>

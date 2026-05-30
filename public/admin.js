@@ -244,7 +244,7 @@ async function openEdit(id) {
     sel.appendChild(opt);
   }
 
-  for (const k of ['name','description','min_capacity','max_capacity','day_of_week','start_time','duration_minutes','registration_deadline_hours','recurrence','cycle_start_date','cycle_end_date']) {
+  for (const k of ['name','description','min_capacity','max_capacity','day_of_week','start_time','duration_minutes','registration_deadline_hours','recurrence','cycle_start_date','cycle_end_date','price_per_session']) {
     if (f[k]) f[k].value = t[k] ?? '';
   }
   f.id.value = t.id;
@@ -261,6 +261,9 @@ document.getElementById('tpl-form').addEventListener('submit', async (e) => {
   const f = e.currentTarget;
   const payload = Object.fromEntries(new FormData(f).entries());
   const id = payload.id; delete payload.id;
+  if (payload.price_per_session !== undefined) {
+    payload.price_per_session = Number(payload.price_per_session);
+  }
   try {
     if (id) {
       await api(`/api/admin/templates/${id}`, { method: 'PATCH', body: payload });
@@ -402,9 +405,6 @@ async function loadUsers() {
           <th>Email</th>
           <th>登入方式</th>
           <th>角色</th>
-          <th style="width:80px;">PT 點</th>
-          <th style="width:80px;">團體 點</th>
-          <th style="width:140px;">點數動作</th>
           <th>加入時間</th>
         </tr></thead>
         <tbody>
@@ -433,12 +433,6 @@ async function loadUsers() {
         });
       });
     }
-    el.querySelectorAll('button.grant-btn').forEach(btn => {
-      btn.addEventListener('click', () => openGrantModal(Number(btn.dataset.id), btn.dataset.name));
-    });
-    el.querySelectorAll('button.history-btn').forEach(btn => {
-      btn.addEventListener('click', () => openHistoryModal(Number(btn.dataset.id), btn.dataset.name));
-    });
   } catch (e) {
     el.innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
   }
@@ -466,12 +460,6 @@ function renderUserRow(r, canEdit) {
       <td class="subtle">${escapeHtml(r.email)}</td>
       <td>${loginBadge}</td>
       <td>${roleCell}</td>
-      <td>${r.one_on_one_balance ?? 0}</td>
-      <td>${r.group_balance ?? 0}</td>
-      <td>
-        <button class="btn btn-ghost btn-sm grant-btn" data-id="${r.id}" data-name="${escapeHtml(r.name)}">加點</button>
-        <button class="btn btn-ghost btn-sm history-btn" data-id="${r.id}" data-name="${escapeHtml(r.name)}">歷史</button>
-      </td>
       <td class="subtle">${fmtDate(r.created_at)}</td>
     </tr>`;
 }
@@ -621,6 +609,122 @@ document.getElementById('promote-coach-form')?.addEventListener('submit', async 
   } catch (err) { toast(`錯誤：${err.message}`, 'error'); }
 });
 
+// --- Create coach account form ---
+document.getElementById('create-coach-account-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const errBox = document.getElementById('create-coach-account-error');
+  const btn = document.getElementById('create-coach-account-btn');
+  errBox.classList.add('hidden');
+  errBox.textContent = '';
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = '建立中…';
+
+  const data = Object.fromEntries(new FormData(form).entries());
+  try {
+    await api('/api/admin/coaches/account', { method: 'POST', body: { email: data.email, password: data.password, name: data.name } });
+    toast('教練帳號已建立，請於下方啟用', 'success');
+    form.reset();
+    loadCoachMgmt();
+  } catch (err) {
+    const errorMsgs = {
+      email_exists: '此 Email 已被使用',
+      invalid_email: 'Email 格式不正確',
+      password_too_short: '密碼至少需要 8 個字元',
+      missing_name: '請輸入姓名',
+    };
+    const code = err.data?.error;
+    const msg = errorMsgs[code] || `建立失敗：${err.message}`;
+    errBox.textContent = msg;
+    errBox.classList.remove('hidden');
+    toast(msg, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+});
+
+// --- Pending bank-transfer orders ---
+async function loadPendingOrders() {
+  const container = document.getElementById('pending-orders-list');
+  if (!container) return;
+  container.innerHTML = '<div class="subtle p-4">載入中…</div>';
+  try {
+    const orders = await api('/api/admin/group-orders');
+    if (!orders.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="empty-state-icon">✅</span>
+          <p>目前沒有待核對的匯款</p>
+        </div>`;
+      return;
+    }
+    container.innerHTML = orders.map(o => {
+      const sessionRows = o.sessions.length
+        ? o.sessions.map(s => `<li class="subtle text-xs">${escapeHtml(s.course_name)} @ ${escapeHtml(s.start_at)}</li>`).join('')
+        : '<li class="subtle text-xs">（無場次）</li>';
+      return `
+        <article class="card">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <div class="flex-1 min-w-[220px]">
+              <div class="flex items-center gap-2 mb-1">
+                <h3 class="card-title">${escapeHtml(o.customer_name)}</h3>
+                <span class="badge badge-waitlisted">待核對</span>
+              </div>
+              <div class="meta mb-2">
+                <span class="meta-item">📞 ${escapeHtml(o.customer_phone)}</span>
+                <span class="meta-item">💰 NT$${Number(o.total_amount).toLocaleString()}</span>
+                <span class="meta-item">⏰ 到期 ${escapeHtml(fmtDate(o.expires_at))}</span>
+              </div>
+              <ul class="list-disc list-inside space-y-0.5">${sessionRows}</ul>
+            </div>
+            <div class="flex flex-col gap-2 min-w-[110px]">
+              <button data-id="${o.id}" class="confirm-order-btn btn btn-primary btn-sm">已收款</button>
+              <button data-id="${o.id}" class="cancel-order-btn btn btn-danger btn-sm">取消訂單</button>
+            </div>
+          </div>
+        </article>`;
+    }).join('');
+
+    container.querySelectorAll('.confirm-order-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`確認已收到「${btn.closest('article').querySelector('.card-title').textContent}」的匯款？`)) return;
+        btn.disabled = true;
+        try {
+          await api(`/api/admin/group-orders/${btn.dataset.id}/confirm`, { method: 'POST' });
+          toast('已確認收款，訂單完成', 'success');
+          loadPendingOrders();
+        } catch (e) {
+          const msgs = { order_not_found: '找不到訂單', order_cancelled: '訂單已取消' };
+          toast(msgs[e.data?.error] || `確認失敗：${e.message}`, 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    container.querySelectorAll('.cancel-order-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('確定取消此訂單？已佔的名額會釋出並通知候補者。')) return;
+        btn.disabled = true;
+        try {
+          await api(`/api/admin/group-orders/${btn.dataset.id}/cancel`, { method: 'POST' });
+          toast('已取消訂單', 'success');
+          loadPendingOrders();
+        } catch (e) {
+          const msgs = { order_not_found: '找不到訂單', order_already_paid: '訂單已付款', forbidden: '無權操作此訂單' };
+          toast(msgs[e.data?.error] || `取消失敗：${e.message}`, 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (e) {
+    container.innerHTML = `<div class="p-4 text-red-500">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+document.getElementById('btn-reload-orders')?.addEventListener('click', loadPendingOrders);
+
 loadCategories();
 loadTemplates();
 loadUsers();
@@ -628,85 +732,5 @@ loadNotifs();
 loadCoachMgmt();
 loadBackupSummary();
 bindBackupHandlers();
+loadPendingOrders();
 
-function openGrantModal(userId, userName) {
-  const dlg = document.getElementById('grant-modal');
-  document.getElementById('grant-target-name').textContent = userName;
-  const form = document.getElementById('grant-form');
-  form.reset();
-  dlg.dataset.userId = String(userId);
-  dlg.showModal();
-}
-
-document.getElementById('grant-cancel').addEventListener('click', () => {
-  document.getElementById('grant-modal').close();
-});
-
-document.getElementById('grant-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const dlg = document.getElementById('grant-modal');
-  const userId = Number(dlg.dataset.userId);
-  const fd = new FormData(e.target);
-  try {
-    await api(`/api/admin/users/${userId}/points/grant`, {
-      method: 'POST',
-      body: {
-        pool: fd.get('pool'),
-        amount: Number(fd.get('amount')),
-        note: fd.get('note'),
-      },
-    });
-    toast('加點成功', 'success');
-    dlg.close();
-    loadUsers();
-  } catch (err) {
-    const map = {
-      insufficient_points: '結果餘額會 < 0，無法執行',
-      invalid_amount: '金額不可為 0 或非整數',
-      missing_note: '備註必填',
-      invalid_pool: '池子設定錯誤',
-    };
-    toast(map[err.data?.error] || `加點失敗：${err.message}`, 'error');
-  }
-});
-
-async function openHistoryModal(userId, userName) {
-  const dlg = document.getElementById('history-modal');
-  document.getElementById('history-target-name').textContent = userName;
-  dlg.dataset.userId = String(userId);
-  await loadHistory(userId, '');
-  dlg.showModal();
-}
-
-document.getElementById('history-close').addEventListener('click', () => {
-  document.getElementById('history-modal').close();
-});
-
-document.getElementById('history-pool-filter').addEventListener('change', async (e) => {
-  const userId = Number(document.getElementById('history-modal').dataset.userId);
-  await loadHistory(userId, e.target.value);
-});
-
-async function loadHistory(userId, pool) {
-  const list = document.getElementById('history-list');
-  list.innerHTML = '載入中...';
-  const qs = pool ? `?pool=${pool}&limit=100` : '?limit=100';
-  try {
-    const rows = await api(`/api/admin/users/${userId}/points/transactions${qs}`);
-    if (!rows.length) { list.innerHTML = '<div class="subtle">無紀錄</div>'; return; }
-    list.innerHTML = rows.map(r => {
-      const sign = r.amount > 0 ? `+${r.amount}` : String(r.amount);
-      const color = r.amount > 0 ? 'color:#15803d' : 'color:#b91c1c';
-      return `<div style="padding:4px 0; border-bottom:1px solid #f0f0f0;">
-        <span style="color:#666;">${r.created_at}</span>
-        &nbsp;<span style="${color}; font-weight:600;">${sign}</span>
-        &nbsp;<span style="color:#666;">[${r.pool}]</span>
-        &nbsp;<span style="color:#888;">${r.source}</span>
-        &nbsp;${escapeHtml(r.note)}
-        &nbsp;<span style="color:#888;">by ${escapeHtml(r.actor_name)}</span>
-      </div>`;
-    }).join('');
-  } catch (err) {
-    list.innerHTML = `<div style="color:red;">載入失敗：${escapeHtml(err.message)}</div>`;
-  }
-}

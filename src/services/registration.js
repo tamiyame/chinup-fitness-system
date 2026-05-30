@@ -1,6 +1,5 @@
 import { db, tx, nowLocal } from '../db/connection.js';
 import { notify } from './notifications.js';
-import { recordTransaction } from './pointService.js';
 
 export class ApiError extends Error {
   constructor(status, code, detail = null) {
@@ -90,17 +89,6 @@ export function register({ sessionId, userId }) {
     }
     recalcAndSave(sessionId);
 
-    recordTransaction({
-      memberId: userId,
-      pool: 'group',
-      amount: -1,
-      note: `報名 #${registrationId}`,
-      actorId: userId,
-      source: 'registration_deduct',
-      relatedRegistrationId: registrationId,
-      relatedSessionId: sessionId,
-    });
-
     const vars = {
       course_name: tpl.name,
       start_at: session.start_at,
@@ -129,17 +117,6 @@ export function cancelRegistration({ registrationId, userId }) {
 
     const wasConfirmed = reg.status === 'confirmed';
     updateRegStatus.run('cancelled', null, reg.id);
-
-    recordTransaction({
-      memberId: userId,
-      pool: 'group',
-      amount: 1,
-      note: `取消 #${reg.id}`,
-      actorId: userId,
-      source: 'registration_refund',
-      relatedRegistrationId: reg.id,
-      relatedSessionId: session.id,
-    });
 
     notify({
       userId,

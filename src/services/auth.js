@@ -50,6 +50,7 @@ export function login({ email, password }) {
   const user = getUserByEmail.get(email);
   if (!user) throw new ApiError(401, 'invalid_credentials');
   if (!verifyPassword(password, user.password_hash)) throw new ApiError(401, 'invalid_credentials');
+  if (user.role === 'user') throw new ApiError(403, 'user_login_disabled');
   const session = createSession(user.id);
   return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt };
 }
@@ -90,6 +91,10 @@ export function registerWithPassword({ email, password, name, phone, notificatio
   return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt, pending_coach: as_coach };
 }
 
+export function createCoachAccount({ email, password, name }) {
+  return registerWithPassword({ email, password, name, as_coach: true });
+}
+
 // Google OAuth: upsert user by google_id, else link by email, else create.
 // Password is stored as a sentinel that can never match scrypt verification.
 const GOOGLE_SENTINEL = 'oauth:google';
@@ -118,6 +123,8 @@ export function findOrCreateGoogleUser({ googleId, email, name }) {
 }
 
 export function loginAsGoogleUser(user) {
+  // Only admin/coach may log in (members use the public phone+name flow) — mirror login().
+  if (user.role === 'user') throw new ApiError(403, 'user_login_disabled');
   const session = createSession(user.id);
   return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt };
 }

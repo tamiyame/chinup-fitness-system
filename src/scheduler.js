@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { processDeadlines, processReminders } from './services/courseService.js';
 import { processFailedNotifications } from './services/notifications.js';
 import { runBackup } from './services/backupService.js';
+import { expirePendingOrders } from './services/groupOrderService.js';
 
 export function startScheduler() {
   // 每小時整點跑截止判定
@@ -21,6 +22,16 @@ export function startScheduler() {
       if (r.length) console.log('[scheduler] reminders sent:', r);
     } catch (e) {
       console.error('[scheduler] reminder error:', e);
+    }
+  });
+
+  // 每 10 分鐘釋出逾時未付的 pending 訂單並遞補候補
+  cron.schedule('*/10 * * * *', () => {
+    try {
+      const r = expirePendingOrders();
+      if (r.expired) console.log('[scheduler] expired pending orders:', r.expired);
+    } catch (e) {
+      console.error('[scheduler] expire-orders error:', e);
     }
   });
 

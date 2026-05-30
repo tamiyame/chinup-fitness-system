@@ -2,16 +2,15 @@ import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { expandTemplate, RECURRENCES } from './schedule.js';
 import { notify } from './notifications.js';
 import { ApiError } from './registration.js';
-import { recordTransaction } from './pointService.js';
 
 const insertTemplate = db.prepare(`
   INSERT INTO course_templates
     (name, description, min_capacity, max_capacity, day_of_week, start_time,
      duration_minutes, recurrence, cycle_start_date, cycle_end_date,
-     registration_deadline_hours, status)
+     registration_deadline_hours, status, price_per_session)
   VALUES (@name, @description, @min_capacity, @max_capacity, @day_of_week, @start_time,
           @duration_minutes, @recurrence, @cycle_start_date, @cycle_end_date,
-          @registration_deadline_hours, @status)
+          @registration_deadline_hours, @status, @price_per_session)
 `);
 
 const insertSession = db.prepare(`
@@ -27,7 +26,8 @@ const updateTemplate = db.prepare(`
     day_of_week=@day_of_week, start_time=@start_time,
     duration_minutes=@duration_minutes, recurrence=@recurrence,
     cycle_start_date=@cycle_start_date, cycle_end_date=@cycle_end_date,
-    registration_deadline_hours=@registration_deadline_hours, status=@status
+    registration_deadline_hours=@registration_deadline_hours, status=@status,
+    price_per_session=@price_per_session
   WHERE id=@id
 `);
 
@@ -57,6 +57,7 @@ function normalize(t) {
     cycle_end_date: t.cycle_end_date,
     registration_deadline_hours: Number(t.registration_deadline_hours ?? 24),
     status: t.status ?? 'published',
+    price_per_session: Number(t.price_per_session ?? 0),
   };
 }
 
@@ -172,21 +173,7 @@ export function processDeadlines() {
         results.push({ sessionId: s.id, action: 'confirmed', count: regs.length });
       } else {
         db.prepare("UPDATE course_sessions SET status = 'cancelled' WHERE id = ?").run(s.id);
-        // 所有 confirmed / waitlisted 都要通知，並把狀態設為 rejected
-        const regs = db.prepare("SELECT user_id, id FROM registrations WHERE session_id = ? AND status IN ('confirmed','waitlisted')").all(s.id);
-        // Refund each active participant BEFORE flipping statuses (idempotency: second run finds zero)
-        for (const reg of regs) {
-          recordTransaction({
-            memberId: reg.user_id,
-            pool: 'group',
-            amount: 1,
-            note: `場次未成班 #${s.id}`,
-            actorId: reg.user_id,
-            source: 'session_refund',
-            relatedRegistrationId: reg.id,
-            relatedSessionId: s.id,
-          });
-        }
+        const regs = db.prepare("SELECT user_id, id FROM registrations WHERE session_id = ? AND status IN ('confirmed','waitlisted','pending')").all(s.id);
         const upd = db.prepare("UPDATE registrations SET status = 'rejected' WHERE id = ?");
         for (const r of regs) {
           upd.run(r.id);

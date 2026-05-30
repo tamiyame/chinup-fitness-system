@@ -126,14 +126,38 @@ export async function bootAuth({ requireAdmin = false } = {}) {
   return user;
 }
 
+// Soft public init: show auth bar if logged in; do nothing (no redirect) for anonymous visitors.
+export async function bootPublic() {
+  const token = getToken();
+  if (!token) {
+    // No token — anonymous visitor. Just reveal the body and return.
+    document.body.style.visibility = 'visible';
+    return null;
+  }
+  let user;
+  try {
+    user = await api('/api/auth/me');
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } catch {
+    // Token invalid/expired — treat as anonymous, no redirect.
+    document.body.style.visibility = 'visible';
+    return null;
+  }
+  await renderAuthBar(user);
+  document.body.style.visibility = 'visible';
+  return user;
+}
+
 async function renderAuthBar(user) {
-  // Hide admin nav link for non-admin users
-  document.querySelectorAll('a[href="/admin.html"]').forEach((el) => {
-    el.style.display = ['admin', 'owner'].includes(user.role) ? '' : 'none';
+  // Show admin nav link only for admin/owner — toggle via .admin-only class
+  const showAdmin = ['admin', 'owner'].includes(user.role);
+  document.querySelectorAll('.admin-only').forEach((el) => {
+    if (showAdmin) el.classList.remove('hidden');
+    else el.classList.add('hidden');
   });
 
-  // Show coach nav link only for coach/admin/owner
-  const showCoach = ['coach', 'admin', 'owner'].includes(user.role);
+  // Show coach nav link only for coach (not admin/owner)
+  const showCoach = user.role === 'coach';
   document.querySelectorAll('.coach-only').forEach((el) => {
     if (showCoach) el.classList.remove('hidden');
     else el.classList.add('hidden');
@@ -149,36 +173,11 @@ async function renderAuthBar(user) {
   };
   const badge = badgeMap[user.role] || badgeMap.user;
 
-  const isMember = user.role === 'user';
-
-  // Fetch points balance for members only
-  let pillHtml = '';
-  if (isMember) {
-    try {
-      const bal = await api('/api/my/points/balance');
-      const low = bal.one_on_one <= 0 || bal.group <= 0;
-      pillHtml = `
-        <span class="badge ${low ? 'badge-cancelled' : 'badge-confirmed'}"
-              title="${low ? '某池餘額為 0，請聯絡管理員儲值' : '剩餘點數'}"
-              style="font-size:10px; margin-right:8px;">
-          PT ${bal.one_on_one} · 團 ${bal.group}
-        </span>`;
-    } catch {
-      pillHtml = '';
-    }
-  }
-
-  // Only members see name + email — owner/admin/coach are identified by their role badge.
-  const nameHtml = isMember
-    ? `<span class="text-sm font-medium">${escapeHtml(user.name)}</span>
-       <span class="subtle hidden md:inline">${escapeHtml(user.email)}</span>`
-    : '';
-
+  // Only admin/owner/coach can be logged in now (members use the public phone+name flow),
+  // so identity is just the role badge — no points pill, no name/email line.
   el.innerHTML = `
     <div class="flex items-center gap-2">
-      ${pillHtml}
       ${badge}
-      ${nameHtml}
     </div>
     <button id="logout-btn" class="btn btn-ghost btn-sm">登出</button>
   `;

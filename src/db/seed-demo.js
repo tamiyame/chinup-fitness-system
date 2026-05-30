@@ -6,8 +6,10 @@ import { hashPassword } from '../services/auth.js';
 import { createCoach, setCoachActive, getCoachByUser } from '../services/coachService.js';
 import { addRule, addException } from '../services/availabilityService.js';
 import { createBooking } from '../services/bookingService.js';
-import { adminGrant } from '../services/pointService.js';
 
+// point_transactions is a retained (no longer written) table whose FKs still
+// reference sessions/registrations/users; clear it first so the wipe below
+// doesn't trip a FOREIGN KEY constraint on databases that hold legacy rows.
 db.exec("DELETE FROM point_transactions; DELETE FROM auth_sessions; DELETE FROM notifications; DELETE FROM registrations; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM users;");
 
 const insertUser = db.prepare(
@@ -51,23 +53,6 @@ const t3 = createTemplate({
   cycle_start_date: '2026-05-01', cycle_end_date: '2026-12-31',
   registration_deadline_hours: 24,
 });
-
-// Phase 2: seed initial points for demo members. Must run BEFORE the demo booking
-// and BEFORE group registrations, otherwise register() throws insufficient_points.
-const ownerForSeed = db.prepare("SELECT id FROM users WHERE role IN ('owner', 'admin') ORDER BY role='owner' DESC LIMIT 1").get();
-if (ownerForSeed) {
-  const demoMembers = db.prepare("SELECT id FROM users WHERE role = 'user' AND email LIKE 'user%@chinup.local' ORDER BY id").all();
-  let granted = 0;
-  for (const m of demoMembers) {
-    const exists = db.prepare("SELECT 1 FROM point_transactions WHERE member_id = ? AND note = 'seed-demo points'").get(m.id);
-    if (!exists) {
-      adminGrant({ memberId: m.id, pool: 'one_on_one', amount: 5, note: 'seed-demo points', adminId: ownerForSeed.id });
-      adminGrant({ memberId: m.id, pool: 'group', amount: 10, note: 'seed-demo points', adminId: ownerForSeed.id });
-      granted++;
-    }
-  }
-  console.log(`[seed] granted points to ${granted} demo members (${demoMembers.length - granted} already seeded)`);
-}
 
 // 為第一個場次製造滿員 + 候補
 function firstSessionId(tplId) {
@@ -148,7 +133,7 @@ if (db.prepare('SELECT COUNT(*) AS c FROM coach_availability_rules WHERE coach_i
   console.log(`[seed] coach #${coach.id} rules + exception ready`);
 }
 
-// One demo booking 2 weeks out on a Wednesday at 10:00 (points already seeded above)
+// One demo booking 2 weeks out on a Wednesday at 10:00
 const coachForBooking = db.prepare("SELECT id FROM coaches WHERE display_name = '王教練'").get();
 if (coachForBooking) {
   const today = new Date();

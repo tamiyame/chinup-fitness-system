@@ -23,7 +23,6 @@
         <a href="/" class="nav-link">課程</a>
         <a href="/coaches.html" class="nav-link">一對一預約</a>
         <a href="/my-schedule" class="nav-link">我的課表</a>
-        <a href="/line.html" class="nav-link">🔔 LINE 通知</a>
         <a href="/admin.html" class="nav-link active">管理後台</a>
         <a href="/coach.html" class="nav-link coach-only hidden">教練後台</a>
       </div>
@@ -38,7 +37,6 @@
       <a href="/" class="nav-link-mobile">課程</a>
       <a href="/coaches.html" class="nav-link-mobile">一對一預約</a>
       <a href="/my-schedule" class="nav-link-mobile">我的課表</a>
-      <a href="/line.html" class="nav-link-mobile">🔔 LINE 通知</a>
       <a href="/admin.html" class="nav-link-mobile active">管理後台</a>
       <a href="/coach.html" class="nav-link-mobile coach-only hidden">教練後台</a>
     </div>
@@ -90,6 +88,15 @@
     <div id="templates" class="grid gap-3"></div>
   </section>
 
+  <!-- pending bank-transfer orders -->
+  <section id="pending-orders" class="mb-10">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="section-title">待核對匯款</h2>
+      <button id="btn-reload-orders" class="btn btn-ghost btn-sm">↻ 重新整理</button>
+    </div>
+    <div id="pending-orders-list" class="grid gap-3"></div>
+  </section>
+
   <!-- ops -->
   <section class="mb-10">
     <h2 class="section-title mb-4">系統操作</h2>
@@ -112,53 +119,6 @@
       <div id="users-table"></div>
     </div>
   </section>
-
-  <!-- grant modal -->
-  <dialog id="grant-modal" style="border:none; border-radius:8px; padding:0; max-width:400px; width:90%;">
-    <div style="padding:20px;">
-      <h3 style="font-weight:600; margin-bottom:12px;">加點：<span id="grant-target-name"></span></h3>
-      <form id="grant-form" method="dialog">
-        <div style="margin-bottom:10px;">
-          <label style="display:block; font-size:13px; margin-bottom:4px;">Pool</label>
-          <select name="pool" required style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px;">
-            <option value="one_on_one">一對一</option>
-            <option value="group">團體課</option>
-          </select>
-        </div>
-        <div style="margin-bottom:10px;">
-          <label style="display:block; font-size:13px; margin-bottom:4px;">金額（可負）</label>
-          <input name="amount" type="number" step="1" required style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px;">
-        </div>
-        <div style="margin-bottom:14px;">
-          <label style="display:block; font-size:13px; margin-bottom:4px;">備註（必填）</label>
-          <input name="note" type="text" required maxlength="200" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px;" placeholder="例：PT 10 堂裝">
-        </div>
-        <div style="display:flex; gap:8px; justify-content:flex-end;">
-          <button type="button" id="grant-cancel" class="btn btn-ghost btn-sm">取消</button>
-          <button type="submit" class="btn btn-primary btn-sm">送出</button>
-        </div>
-      </form>
-    </div>
-  </dialog>
-
-  <!-- history modal -->
-  <dialog id="history-modal" style="border:none; border-radius:8px; padding:0; max-width:700px; width:95%; max-height:80vh; overflow:auto;">
-    <div style="padding:20px;">
-      <h3 style="font-weight:600; margin-bottom:8px;">點數紀錄：<span id="history-target-name"></span></h3>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:12px;">Pool 篩選：</label>
-        <select id="history-pool-filter" style="padding:4px; border:1px solid #ccc; border-radius:4px;">
-          <option value="">全部</option>
-          <option value="one_on_one">一對一</option>
-          <option value="group">團體課</option>
-        </select>
-      </div>
-      <div id="history-list" style="font-family:monospace; font-size:12px; max-height:50vh; overflow:auto;"></div>
-      <div style="display:flex; justify-content:flex-end; margin-top:14px;">
-        <button id="history-close" class="btn btn-ghost btn-sm">關閉</button>
-      </div>
-    </div>
-  </dialog>
 
   <!-- backup management modal -->
   <dialog id="backup-modal" style="border:none; border-radius:8px; padding:0; max-width:700px; width:95%; max-height:80vh; overflow:auto;">
@@ -196,6 +156,31 @@
       <h2 class="section-title">教練管理</h2>
     </div>
     <div id="coach-mgmt-list"></div>
+
+    <!-- Create coach account form -->
+    <div class="card mt-4">
+      <h3 class="font-semibold mb-1">建立教練帳號</h3>
+      <p class="subtle text-xs mb-3">建立後帳號狀態為「待啟用」，請於上方教練列表中點「啟用」才能讓教練登入使用。</p>
+      <form id="create-coach-account-form" class="space-y-3">
+        <div>
+          <label class="form-label">姓名 <span class="text-red-500">*</span></label>
+          <input name="name" type="text" required class="form-input" placeholder="教練姓名">
+        </div>
+        <div>
+          <label class="form-label">Email <span class="text-red-500">*</span></label>
+          <input name="email" type="email" required class="form-input" placeholder="coach@example.com">
+        </div>
+        <div>
+          <label class="form-label">密碼 <span class="text-red-500">*</span>（至少 8 碼）</label>
+          <input name="password" type="password" required minlength="8" class="form-input" placeholder="至少 8 個字元">
+        </div>
+        <div id="create-coach-account-error" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2"></div>
+        <div class="pt-1">
+          <button type="submit" id="create-coach-account-btn" class="btn btn-primary">建立教練帳號</button>
+        </div>
+      </form>
+    </div>
+
     <details class="mt-3">
       <summary class="text-sm cursor-pointer">+ 由現有 user 升級為教練</summary>
       <form id="promote-coach-form" class="mt-2 flex gap-2 items-center">
@@ -268,6 +253,10 @@
       <div class="grid grid-cols-2 gap-4">
         <div><label class="form-label">週期起始</label><input name="cycle_start_date" type="date" required class="form-input"></div>
         <div><label class="form-label">週期結束</label><input name="cycle_end_date" type="date" required class="form-input"></div>
+      </div>
+      <div>
+        <label class="form-label">單堂價格</label>
+        <input name="price_per_session" id="tpl-price" type="number" min="0" step="1" value="0" class="form-input" placeholder="0">
       </div>
       <div class="flex justify-end gap-2 pt-4 border-t border-slate-100">
         <button type="button" id="cancel-btn-2" class="btn btn-ghost">取消</button>
