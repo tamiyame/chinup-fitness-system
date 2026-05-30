@@ -180,7 +180,7 @@ function renderTemplate(tpl) {
   ` : '';
 
   return `
-  <details class="day-group" open>
+  <details class="day-group">
     <summary>
       <div class="day-chip">${sessionCount}<span class="day-chip-unit">場</span></div>
       <div class="day-title">
@@ -343,7 +343,8 @@ async function loadCourses() {
     }
 
     const listEl = $('course-list');
-    listEl.innerHTML = templates.map(t => renderTemplate(t)).join('');
+    // 卡片反序顯示（allTemplates 維持原序供 id 查找用）
+    listEl.innerHTML = [...templates].reverse().map(t => renderTemplate(t)).join('');
     listEl.classList.remove('hidden');
 
     // bind click handlers on session rows
