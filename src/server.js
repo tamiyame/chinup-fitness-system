@@ -61,7 +61,7 @@ import {
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
-import { validateDiscount, getOneOnOnePrice } from './services/discountService.js';
+import { validateDiscount, getOneOnOnePrice, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting } from './services/discountService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -809,6 +809,23 @@ app.get('/api/admin/backups/:file', requireAdmin, asyncHandler((req, res) => {
   res.setHeader('Content-Type', 'application/octet-stream');
   res.setHeader('Content-Disposition', `attachment; filename="${basename(full)}"`);
   createReadStream(full).pipe(res);
+}));
+
+// --- Admin: Discount Codes CRUD ---
+app.get('/api/admin/discount-codes', requireAdmin, asyncHandler((req, res) => res.json(listDiscountCodes())));
+app.post('/api/admin/discount-codes', requireAdmin, asyncHandler((req, res) => res.status(201).json(createDiscountCode(req.body || {}))));
+app.patch('/api/admin/discount-codes/:id', requireAdmin, asyncHandler((req, res) => res.json(updateDiscountCode(Number(req.params.id), req.body || {}))));
+app.delete('/api/admin/discount-codes/:id', requireAdmin, asyncHandler((req, res) => res.json(deleteDiscountCode(Number(req.params.id)))));
+
+// --- Admin: Settings ---
+app.get('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
+  res.json({ one_on_one_price: Number(getSetting('one_on_one_price') || '1500') });
+}));
+app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
+  const p = Number((req.body || {}).one_on_one_price);
+  if (!Number.isInteger(p) || p < 0) return res.status(400).json({ error: 'invalid_price' });
+  setSetting('one_on_one_price', String(p));
+  res.json({ one_on_one_price: p });
 }));
 
 const PORT = Number(process.env.PORT || 3000);
