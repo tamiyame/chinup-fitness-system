@@ -3,6 +3,7 @@ import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
 import { notify } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
+import { applyDiscountTx, releaseRedemption } from './discountService.js';
 
 // 收款資訊（健身房固定，可改用環境變數）
 export const BANK_INFO = process.env.BANK_INFO || '玉山銀行 (808) 1234-567-890123 戶名：CHINUP';
@@ -61,7 +62,7 @@ function validateSelectable(sessionId) {
  * 回 { orderId, total, bankInfo, expiresAt, waitlisted:[sessionId...] }
  * pay 桶任一場已滿 → throw 409 { fullSessionIds }（整批不寫）。
  */
-export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSessionIds = [] }) {
+export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSessionIds = [], discountCode = null }) {
   if (paySessionIds.length === 0 && waitlistSessionIds.length === 0) {
     throw new ApiError(400, 'no_sessions_selected');
   }
@@ -96,6 +97,13 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
     ).lastInsertRowid;
     const order = db.prepare('SELECT expires_at FROM group_orders WHERE id = ?').get(orderId);
 
+    // 折扣：原價 = total（付款場次加總）。套用在同一 tx 內（防併發超用）。
+    let originalAmount = total, discountAmount = null, discountCode_ = null, finalTotal = total;
+    const applied = applyDiscountTx({ code: discountCode, phone, subtotal: total, kind: 'group_order', refId: orderId });
+    if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalTotal = applied.finalTotal; }
+    db.prepare('UPDATE group_orders SET original_amount=?, discount_amount=?, discount_code=?, total_amount=? WHERE id=?')
+      .run(originalAmount, discountAmount, discountCode_, finalTotal, orderId);
+
     for (const { sid, price, dup } of payRows) {
       if (dup) reactivateReg.run('pending', orderId, price, dup.id);
       else insertReg.run(sid, user.id, 'pending', orderId, price);
@@ -112,7 +120,8 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
       waitlisted.push(sid);
     }
 
-    const result = { orderId, total, bankInfo: BANK_INFO, expiresAt: order.expires_at, waitlisted, memberId: user.id };
+    const result = { orderId, total: finalTotal, originalAmount, discountAmount, discountCode: discountCode_,
+      bankInfo: BANK_INFO, expiresAt: order.expires_at, waitlisted, memberId: user.id };
     if (!user.line_user_id) result.lineBindCode = generateBindCode(user.id).code;
     return result;
   });
@@ -181,6 +190,7 @@ export function cancelGroupOrder({ orderId, phone, name }) {
     const regs = db.prepare("SELECT session_id FROM registrations WHERE order_id=? AND status='pending'").all(orderId);
     db.prepare("UPDATE registrations SET status='cancelled' WHERE order_id=? AND status='pending'").run(orderId);
     db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=? WHERE id=?").run(nowLocal(), orderId);
+    releaseRedemption({ kind: 'group_order', refId: orderId });
     for (const r of regs) promoteWaitlist(r.session_id);
     return { ok: true };
   });
@@ -243,6 +253,7 @@ export function expirePendingOrders() {
         const regs = db.prepare("SELECT session_id FROM registrations WHERE order_id=? AND status='pending'").all(id);
         db.prepare("UPDATE registrations SET status='cancelled' WHERE order_id=? AND status='pending'").run(id);
         db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=? WHERE id=?").run(now, id);
+        releaseRedemption({ kind: 'group_order', refId: id });
         for (const r of regs) promoteWaitlist(r.session_id);
       });
       expired++;
@@ -302,7 +313,8 @@ export function getPublicSchedule({ phone, name }) {
     SELECT r.id, r.status, r.amount_due, r.order_id,
            s.id AS session_id, s.start_at, s.end_at, s.status AS session_status,
            t.name AS course_name, o.status AS order_status, o.expires_at AS order_expires_at,
-           o.total_amount, o.id AS oid
+           o.total_amount, o.id AS oid,
+           o.total_amount AS order_total, o.discount_amount AS order_discount
     FROM registrations r
     JOIN course_sessions s ON s.id = r.session_id
     JOIN course_templates t ON t.id = s.template_id
@@ -316,6 +328,7 @@ export function getPublicSchedule({ phone, name }) {
     order_id: r.order_id, order_status: r.order_status, order_expires_at: r.order_expires_at,
     amount_due: r.amount_due, is_past: r.start_at < now,
     can_cancel: ['confirmed', 'waitlisted'].includes(r.status) && r.session_status === 'open' && r.start_at > now,
+    order_total: r.order_total, order_discount: r.order_discount,
   }));
 
   // 剩堂數 = 已付款(confirmed) 且未上(start_at>now)
