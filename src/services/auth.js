@@ -123,6 +123,8 @@ export function findOrCreateGoogleUser({ googleId, email, name }) {
 }
 
 export function loginAsGoogleUser(user) {
+  // Only admin/coach may log in (members use the public phone+name flow) — mirror login().
+  if (user.role === 'user') throw new ApiError(403, 'user_login_disabled');
   const session = createSession(user.id);
   return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt };
 }

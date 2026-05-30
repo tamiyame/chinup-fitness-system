@@ -176,19 +176,21 @@ function paymentLine(item) {
 }
 
 function cancelButton(item) {
+  // Pending unpaid group order: offer 放棄此訂單 while the session is still upcoming.
+  // The backend reports can_cancel=false for pending registrations (they are abandoned via the
+  // group-orders route, NOT the registration route), so this must be checked before the guard.
+  if (item.kind === 'registration' && item.status === 'pending' && item.order_id && !item.is_past) {
+    return `<button
+      class="cancel-btn btn btn-danger btn-sm"
+      data-kind="group-order"
+      data-order-id="${item.order_id}">放棄此訂單</button>`;
+  }
   if (!item.can_cancel) return '';
   if (item.kind === 'booking') {
     return `<button
       class="cancel-btn btn btn-danger btn-sm"
       data-kind="booking"
       data-id="${item.id}">取消</button>`;
-  }
-  // registration
-  if (item.status === 'pending' && item.order_id) {
-    return `<button
-      class="cancel-btn btn btn-danger btn-sm"
-      data-kind="group-order"
-      data-order-id="${item.order_id}">放棄此訂單</button>`;
   }
   // confirmed / waitlisted
   return `<button

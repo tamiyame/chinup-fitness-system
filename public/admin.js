@@ -639,7 +639,7 @@ async function loadPendingOrders() {
               <div class="meta mb-2">
                 <span class="meta-item">📞 ${escapeHtml(o.customer_phone)}</span>
                 <span class="meta-item">💰 NT$${Number(o.total_amount).toLocaleString()}</span>
-                <span class="meta-item">⏰ 到期 ${escapeHtml(o.expires_at)}</span>
+                <span class="meta-item">⏰ 到期 ${escapeHtml(fmtDate(o.expires_at))}</span>
               </div>
               <ul class="list-disc list-inside space-y-0.5">${sessionRows}</ul>
             </div>

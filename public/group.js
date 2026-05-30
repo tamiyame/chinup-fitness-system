@@ -364,7 +364,7 @@ $('booking-form').addEventListener('submit', async (e) => {
       let label = `場次 #${sid}`;
       for (const tpl of allTemplates) {
         const s = tpl.sessions.find(ss => ss.id === sid);
-        if (s) { label = `${escapeHtml(tpl.name)} ${escapeHtml(sessionLabel(s))}`; break; }
+        if (s) { label = `${tpl.name} ${sessionLabel(s)}`; break; }  // textContent sink → no escape (avoids double-escape)
       }
       errEl.textContent = `您已報名過此場次：${label}`;
       errEl.classList.remove('hidden');

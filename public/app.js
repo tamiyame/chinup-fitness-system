@@ -173,36 +173,11 @@ async function renderAuthBar(user) {
   };
   const badge = badgeMap[user.role] || badgeMap.user;
 
-  const isMember = user.role === 'user';
-
-  // Fetch points balance for members only
-  let pillHtml = '';
-  if (isMember) {
-    try {
-      const bal = await api('/api/my/points/balance');
-      const low = bal.one_on_one <= 0 || bal.group <= 0;
-      pillHtml = `
-        <span class="badge ${low ? 'badge-cancelled' : 'badge-confirmed'}"
-              title="${low ? '某池餘額為 0，請聯絡管理員儲值' : '剩餘點數'}"
-              style="font-size:10px; margin-right:8px;">
-          PT ${bal.one_on_one} · 團 ${bal.group}
-        </span>`;
-    } catch {
-      pillHtml = '';
-    }
-  }
-
-  // Only members see name + email — owner/admin/coach are identified by their role badge.
-  const nameHtml = isMember
-    ? `<span class="text-sm font-medium">${escapeHtml(user.name)}</span>
-       <span class="subtle hidden md:inline">${escapeHtml(user.email)}</span>`
-    : '';
-
+  // Only admin/owner/coach can be logged in now (members use the public phone+name flow),
+  // so identity is just the role badge — no points pill, no name/email line.
   el.innerHTML = `
     <div class="flex items-center gap-2">
-      ${pillHtml}
       ${badge}
-      ${nameHtml}
     </div>
     <button id="logout-btn" class="btn btn-ghost btn-sm">登出</button>
   `;

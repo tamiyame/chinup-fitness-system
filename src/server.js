@@ -249,10 +249,12 @@ app.get('/api/auth/google/callback', async (req, res) => {
     }
 
     const user = findOrCreateGoogleUser({ googleId: gu.id, email: gu.email, name: gu.name });
+    // Only admin/coach may log in (members use the public phone+name flow).
+    if (user.role === 'user') return res.redirect('/login.html?err=user_login_disabled');
     const session = loginAsGoogleUser(user);
 
     // Pass token back via URL fragment (not query) so it doesn't hit logs
-    const landing = user.role === 'admin' ? '/admin.html' : '/';
+    const landing = ['admin', 'owner'].includes(user.role) ? '/admin.html' : '/coach.html';
     res.redirect(`${landing}#token=${session.token}`);
   } catch (e) {
     console.error('[google] callback error:', e);

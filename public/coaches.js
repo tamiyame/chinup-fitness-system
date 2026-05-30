@@ -262,6 +262,7 @@ async function loadSlots() {
   for (const s of slots) {
     const btn = document.createElement('button');
     btn.className = 'btn-secondary text-sm';
+    btn.dataset.slot = s;  // so removeSlotFromGrid can drop it after a successful booking
     const d = new Date(s);
     btn.textContent = `${d.getMonth() + 1}/${d.getDate()}（${dow(d.getDay())[1]}）${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
     btn.addEventListener('click', () => openBookingModal(currentCoach, s));
