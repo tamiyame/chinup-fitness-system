@@ -97,14 +97,7 @@ function cardHtml(coach, { expanded = false } = {}) {
          aria-expanded="${expanded ? 'true' : 'false'}">
       ${avatarHtml(coach, 'card')}
       <div class="ccard-body">
-        <div class="ccard-name">
-          ${escapeHtml(coach.display_name)}
-          ${typeof coach.week_available_count === 'number'
-            ? (coach.week_available_count > 0
-                ? `<span class="ccard-avail">本週 ${coach.week_available_count} 時段</span>`
-                : `<span class="ccard-avail none">本週暫無</span>`)
-            : ''}
-        </div>
+        <div class="ccard-name">${escapeHtml(coach.display_name)}</div>
         ${tags ? `<div class="ccard-tags">${tags}</div>` : ''}
       </div>
       <div class="ccard-go" aria-hidden="true">›</div>
