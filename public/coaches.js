@@ -32,95 +32,147 @@ let currentlyExpandedId = null;
 // Cleared naturally by a full page reload; no TTL.
 const slotCacheByCoach = new Map();
 
+// ── 工具函式 ──────────────────────────────────────────────────────────────────
+
+/** 取中文字符串第一個字（正確處理多位元組）*/
 function firstChar(name) {
   if (!name) return '?';
-  // Array.from handles multi-byte / surrogate-pair characters correctly.
   return Array.from(name)[0];
 }
 
-function fmtSlotChip(iso) {
+/** 將 ISO datetime 格式化為 miniSlot 顯示用的日期行（如「6/2 二」）與時間行（如「10:00」）*/
+function fmtMiniSlot(iso) {
   const d = new Date(iso);
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const DOW_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
+  const md = `${d.getMonth() + 1}/${d.getDate()} ${DOW_SHORT[d.getDay()]}`;
+  const tm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return { md, tm };
+}
+
+/** 將 ISO datetime 格式化為時間字串（如「10:00」）*/
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** 將 ISO datetime 取出 YYYY-MM-DD 鍵值（本地時區）*/
+function isoToDateKey(iso) {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  return `${mm}/${dd} ${dow(d.getDay())} ${hh}:${min}`;
+  return `${y}-${m}-${dd}`;
 }
 
-function avatarHtml(coach) {
+/** 產生方向A 卡片頭像 HTML */
+function avatarHtml(coach, size = 'card') {
+  // size: 'card'（62px）| 'detail'（54px）
+  const cls = size === 'detail' ? 'detail-av' : 'ccard-avatar';
+  const fbCls = size === 'detail' ? 'detail-av-fallback' : 'ccard-avatar-fallback';
   if (coach.avatar_path) {
-    return `<img src="/avatars/${escapeHtml(coach.avatar_path)}" alt="">`;
+    return `<div class="${cls}"><img src="/avatars/${escapeHtml(coach.avatar_path)}" alt=""></div>`;
   }
-  return `<span class="ccard-avatar-fallback">${escapeHtml(firstChar(coach.display_name))}</span>`;
+  return `<div class="${cls}"><span class="${fbCls}">${escapeHtml(firstChar(coach.display_name))}</span></div>`;
 }
 
+/** 將 specialty 字串切成標籤陣列（以「、，,／/」或空白分割）*/
+function specialtyTags(specialty) {
+  if (!specialty) return [];
+  // 以全形逗號、半形逗號、頓號、斜線、全形斜線、空白切分
+  const parts = specialty.split(/[、，,／/\s]+/).map((s) => s.trim()).filter(Boolean);
+  return parts.length > 0 ? parts : [specialty.trim()].filter(Boolean);
+}
+
+/** 產生方向A 手風琴卡片 HTML */
 function cardHtml(coach, { expanded = false } = {}) {
-  const classes = ['ccard'];
-  if (expanded) classes.push('expanded');
+  const tags = specialtyTags(coach.specialty)
+    .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
+    .join('');
+
   return `
-    <div class="${classes.join(' ')}"
+    <div class="ccard${expanded ? ' expanded' : ''}"
          role="button"
          tabindex="0"
          data-coach-id="${coach.id}"
          aria-expanded="${expanded ? 'true' : 'false'}">
-      <div class="ccard-avatar">${avatarHtml(coach)}</div>
+      ${avatarHtml(coach, 'card')}
       <div class="ccard-body">
-        <div class="ccard-name">${escapeHtml(coach.display_name)}</div>
-        ${coach.specialty ? `<div class="ccard-spec">${escapeHtml(coach.specialty)}</div>` : ''}
+        <div class="ccard-name">
+          ${escapeHtml(coach.display_name)}
+          <span class="ccard-dot-on" title="可預約中" aria-label="可預約中"></span>
+        </div>
+        ${tags ? `<div class="ccard-tags">${tags}</div>` : ''}
       </div>
-      <div class="ccard-chev" aria-hidden="true">▾</div>
+      <div class="ccard-go" aria-hidden="true">›</div>
     </div>
   `;
 }
 
+/** 展開面板骨架：bio + 載入中的 slot-area + CTA */
 function expandSkeletonHtml(coach) {
   return `
-    ${coach.bio ? `<div class="bio">${escapeHtml(coach.bio)}</div>` : ''}
-    <div class="slot-label">最近可預約</div>
+    ${coach.bio ? `<div class="bioA">${escapeHtml(coach.bio)}</div>` : ''}
+    <div class="slotlabel">最近可預約</div>
     <div class="slot-area" data-coach-id="${coach.id}">
       <div class="slot-empty">載入中…</div>
     </div>
-    <button type="button" class="book-cta" data-coach-id="${coach.id}">預約${escapeHtml(coach.display_name)} →</button>
+    <button type="button" class="ctaA" data-coach-id="${coach.id}">預約 ${escapeHtml(coach.display_name)}</button>
   `;
 }
 
+/** 渲染展開面板（設定 class + innerHTML + 綁定 CTA）*/
 function renderExpand(targetEl, coach) {
   targetEl.className = 'ccard-expand';
   targetEl.innerHTML = expandSkeletonHtml(coach);
-  const cta = targetEl.querySelector('.book-cta');
+  // CTA 點擊 → 前往詳細頁（openCoach）
+  const cta = targetEl.querySelector('.ctaA');
   cta.addEventListener('click', () => openCoach(coach.id));
 }
 
+/** 將可預約 slots 渲染成橫向 miniSlot 卡片（前 3 個）+ 「看更多」*/
 function renderSlotsInto(slotArea, slots, coachId) {
   if (slots.length === 0) {
     slotArea.innerHTML = '<div class="slot-empty">目前無可預約時段</div>';
     return;
   }
-  const first3 = slots.slice(0, 3)
-    .map((s) => `<span class="slot-chip" role="button" tabindex="0" data-slot="${escapeHtml(s)}" data-coach-id="${coachId}">${escapeHtml(fmtSlotChip(s))}</span>`)
-    .join('');
-  slotArea.innerHTML = `
-    <div class="slot-chips">
-      ${first3}
-      <span class="slot-chip slot-chip-more" role="button" tabindex="0" data-coach-id="${coachId}">看更多 →</span>
-    </div>
+
+  // 前 3 個 miniSlot
+  const miniCards = slots.slice(0, 3).map((s) => {
+    const { md, tm } = fmtMiniSlot(s);
+    return `
+      <div class="miniSlot" role="button" tabindex="0"
+           data-slot="${escapeHtml(s)}" data-coach-id="${coachId}">
+        <div class="md">${escapeHtml(md)}</div>
+        <div class="tm">${escapeHtml(tm)}</div>
+      </div>
+    `;
+  }).join('');
+
+  // 「看更多 ›」假卡（點擊 → openCoach）
+  const moreCard = `
+    <div class="miniSlot-more" role="button" tabindex="0" data-coach-id="${coachId}">看更多 ›</div>
   `;
-  // Slot chips in accordion → open booking modal directly
-  slotArea.querySelectorAll('.slot-chip[data-slot]').forEach((chip) => {
+
+  slotArea.innerHTML = `<div class="miniSlots">${miniCards}${moreCard}</div>`;
+
+  // miniSlot 點擊 → 直接開 modal
+  slotArea.querySelectorAll('.miniSlot[data-slot]').forEach((el) => {
     const trigger = () => {
-      const coach = allCoachesById.get(Number(chip.dataset.coachId));
-      if (coach) openBookingModal(coach, chip.dataset.slot);
+      const coach = allCoachesById.get(Number(el.dataset.coachId));
+      if (coach) openBookingModal(coach, el.dataset.slot);
     };
-    chip.addEventListener('click', trigger);
-    chip.addEventListener('keydown', (ev) => {
+    el.addEventListener('click', trigger);
+    el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); trigger(); }
     });
   });
-  const moreChip = slotArea.querySelector('.slot-chip-more');
-  const trigger = () => openCoach(coachId);
-  moreChip.addEventListener('click', trigger);
-  moreChip.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); trigger(); }
+
+  // 「看更多」點擊 → openCoach
+  const moreEl = slotArea.querySelector('.miniSlot-more');
+  const moreTrigger = () => openCoach(coachId);
+  moreEl.addEventListener('click', moreTrigger);
+  moreEl.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); moreTrigger(); }
   });
 }
 
@@ -213,17 +265,20 @@ async function openCoach(id) {
   weekOffset = 0;
   currentCoach = await api(`/api/coaches/${id}`);
   const det = $('coach-detail');
+
+  // 詳細頁教練標頭：頭像（圓角方形）+ 名字 + 專長標籤
+  const tags = specialtyTags(currentCoach.specialty)
+    .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
+    .join('');
   det.innerHTML = `
-    <div class="flex items-center gap-4 mb-3">
-      <div class="w-16 h-16 rounded-full bg-slate-200 overflow-hidden flex-shrink-0">
-        ${currentCoach.avatar_path ? `<img src="/avatars/${currentCoach.avatar_path}" class="w-full h-full object-cover">` : ''}
-      </div>
+    <div class="detail-head">
+      ${avatarHtml(currentCoach, 'detail')}
       <div>
-        <h1 class="text-xl font-bold">${escapeHtml(currentCoach.display_name)}</h1>
-        <div class="text-sm text-slate-500">${escapeHtml(currentCoach.specialty || '')}</div>
+        <div class="detail-name">${escapeHtml(currentCoach.display_name)}</div>
+        <div class="detail-spec">${tags || escapeHtml(currentCoach.specialty || '')}</div>
       </div>
     </div>
-    ${currentCoach.bio ? `<p class="text-sm text-slate-700 whitespace-pre-line">${escapeHtml(currentCoach.bio)}</p>` : ''}
+    ${currentCoach.bio ? `<p class="text-sm" style="color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin-bottom:8px">${escapeHtml(currentCoach.bio)}</p>` : ''}
   `;
   show('detail');
   renderSlotControls();
@@ -260,25 +315,140 @@ function weekRange(offset) {
   return { from: f(start), to: f(end) };
 }
 
+// ── 日期選擇狀態（詳細頁）────────────────────────────────────────────────────
+let selectedDateKey = null;   // 目前選中的日期鍵值（YYYY-MM-DD）
+let weekSlotsByDate = {};     // { 'YYYY-MM-DD': [iso, ...] }
+
+/** 依日期鍵值渲染時段卡 grid */
+function renderTimegrid(dateKey) {
+  selectedDateKey = dateKey;
+  const grid = $('slot-grid');
+  const dayHead = $('slot-day-head');
+  grid.innerHTML = '';
+
+  const slots = weekSlotsByDate[dateKey] || [];
+
+  // 更新日期標頭
+  if (dateKey && slots.length >= 0) {
+    const d = new Date(dateKey + 'T00:00:00');
+    const DOW_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
+    dayHead.style.display = 'flex';
+    dayHead.innerHTML = `${d.getMonth() + 1}/${d.getDate()} 週${DOW_SHORT[d.getDay()]}<small>· ${slots.length} 個時段</small>`;
+  } else {
+    dayHead.style.display = 'none';
+  }
+
+  if (slots.length === 0) {
+    grid.innerHTML = '<div class="timegrid-empty">此日無可預約時段</div>';
+    return;
+  }
+
+  for (const s of slots) {
+    const el = document.createElement('div');
+    el.className = 'timeslot';
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.dataset.slot = s;
+    el.innerHTML = `<div class="t-main">${escapeHtml(fmtTime(s))}</div><div class="t-sub">60 分鐘</div>`;
+    // 點擊時段卡 → 直接開 modal（不停留 sel 狀態，modal 開啟即有 UI 回饋）
+    const trigger = () => openBookingModal(currentCoach, s);
+    el.addEventListener('click', trigger);
+    el.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); trigger(); }
+    });
+    grid.appendChild(el);
+  }
+}
+
+/** 渲染日期 rail，並預選第一個有 slot 的日期 */
+function renderDayRail(from, to, allSlots) {
+  const rail = $('day-rail');
+  rail.innerHTML = '';
+
+  // 建立日期 → slots 的 map
+  weekSlotsByDate = {};
+  for (const s of allSlots) {
+    const key = isoToDateKey(s);
+    if (!weekSlotsByDate[key]) weekSlotsByDate[key] = [];
+    weekSlotsByDate[key].push(s);
+  }
+
+  // 由 from 到 to 逐日建立 daypill
+  const DOW_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  const startD = new Date(fy, fm - 1, fd);
+  const endD = new Date(ty, tm - 1, td);
+
+  // 找第一個有 slot 的日期，預設選它
+  let firstWithSlot = null;
+  const pills = [];
+
+  for (let cur = new Date(startD); cur <= endD; cur.setDate(cur.getDate() + 1)) {
+    const yyyy = cur.getFullYear();
+    const mm = String(cur.getMonth() + 1).padStart(2, '0');
+    const dd = String(cur.getDate()).padStart(2, '0');
+    const key = `${yyyy}-${mm}-${dd}`;
+    const hasSlot = !!(weekSlotsByDate[key] && weekSlotsByDate[key].length > 0);
+    if (hasSlot && !firstWithSlot) firstWithSlot = key;
+
+    const pill = document.createElement('div');
+    pill.className = 'daypill' + (hasSlot ? '' : ' empty');
+    pill.dataset.dateKey = key;
+    pill.innerHTML = `
+      <div class="dow">${DOW_SHORT[cur.getDay()]}</div>
+      <div class="dnum">${cur.getDate()}</div>
+      <div class="ddot"></div>
+    `;
+
+    if (hasSlot) {
+      // 可點擊的 daypill
+      pill.setAttribute('role', 'button');
+      pill.setAttribute('tabindex', '0');
+      const selectDay = (k) => {
+        // 取消其他 sel
+        rail.querySelectorAll('.daypill.sel').forEach((p) => p.classList.remove('sel'));
+        pill.classList.add('sel');
+        renderTimegrid(k);
+      };
+      pill.addEventListener('click', () => selectDay(key));
+      pill.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); selectDay(key); }
+      });
+    }
+
+    rail.appendChild(pill);
+    pills.push({ key, pill, hasSlot });
+  }
+
+  // 預選第一個有 slot 的日期
+  if (firstWithSlot) {
+    const target = pills.find((p) => p.key === firstWithSlot);
+    if (target) target.pill.classList.add('sel');
+    renderTimegrid(firstWithSlot);
+  } else {
+    // 全無時段
+    $('slot-day-head').style.display = 'none';
+    $('slot-grid').innerHTML = '<div class="timegrid-empty">本週沒有可預約時段</div>';
+  }
+}
+
 async function loadSlots() {
   const { from, to } = weekRange(weekOffset);
   $('week-label').textContent = `${from} ~ ${to}`;
-  const slots = await api(`/api/coaches/${currentCoach.id}/availability?from=${from}&to=${to}`);
+
+  // 清空舊內容
+  const rail = $('day-rail');
   const grid = $('slot-grid');
+  const dayHead = $('slot-day-head');
+  rail.innerHTML = '';
   grid.innerHTML = '';
-  if (slots.length === 0) {
-    grid.innerHTML = '<p class="col-span-full text-slate-500 text-sm">本週沒有可預約時段</p>';
-    return;
-  }
-  for (const s of slots) {
-    const btn = document.createElement('button');
-    btn.className = 'btn-secondary text-sm';
-    btn.dataset.slot = s;  // so removeSlotFromGrid can drop it after a successful booking
-    const d = new Date(s);
-    btn.textContent = `${d.getMonth() + 1}/${d.getDate()}（${dow(d.getDay())[1]}）${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    btn.addEventListener('click', () => openBookingModal(currentCoach, s));
-    grid.appendChild(btn);
-  }
+  dayHead.style.display = 'none';
+
+  const slots = await api(`/api/coaches/${currentCoach.id}/availability?from=${from}&to=${to}`);
+
+  // 渲染日期 rail（含 timegrid）
+  renderDayRail(from, to, slots);
 }
 
 $('back-to-list').addEventListener('click', () => show('list'));
@@ -471,13 +641,27 @@ $('modal-submit-btn').addEventListener('click', async () => {
 });
 
 function removeSlotFromGrid(slotIso) {
-  // Remove from the detail view grid
+  // 從詳細頁 timegrid 移除已被預約的時段卡（.timeslot[data-slot]）
   const grid = $('slot-grid');
   if (grid) {
-    grid.querySelectorAll('button').forEach((btn) => {
-      // Check by slot ISO text match via data or by re-building the label
-      if (btn.dataset.slot === slotIso) btn.remove();
+    grid.querySelectorAll('[data-slot]').forEach((el) => {
+      if (el.dataset.slot === slotIso) el.remove();
     });
+  }
+  // 同步從 weekSlotsByDate 快取移除，避免重新選日後仍出現
+  if (slotIso && weekSlotsByDate) {
+    const key = isoToDateKey(slotIso);
+    if (weekSlotsByDate[key]) {
+      weekSlotsByDate[key] = weekSlotsByDate[key].filter((s) => s !== slotIso);
+      // 若移除後此日無時段，更新 daypill 為 .empty
+      if (weekSlotsByDate[key].length === 0) {
+        const rail = $('day-rail');
+        if (rail) {
+          const pill = rail.querySelector(`.daypill[data-date-key="${key}"]`);
+          if (pill) pill.classList.add('empty');
+        }
+      }
+    }
   }
 }
 
