@@ -3,6 +3,7 @@ import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
 import { notify, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
+import { applyDiscountTx, releaseRedemption, getOneOnOnePrice } from './discountService.js';
 
 const insertBookingStmt = db.prepare(`
   INSERT INTO bookings (coach_id, member_id, start_at, end_at, note)
@@ -87,7 +88,7 @@ export function createBooking({ coachId, memberId, startAt, note = null }) {
   return tx(() => createBookingCore({ coach, memberId, startAt, note }));
 }
 
-export function createBookingAnon({ coachId, startAt, name, phone, note = null }) {
+export function createBookingAnon({ coachId, startAt, name, phone, note = null, discountCode = null }) {
   if (!coachId || !startAt) throw new ApiError(400, 'missing_fields');
   const coach = getCoachStmt.get(coachId);
   if (!coach) throw new ApiError(404, 'coach_not_found');
@@ -96,6 +97,13 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null }
     const user = findOrCreateUserByPhone({ phone, name });
     const r = createBookingCore({ coach, memberId: user.id, startAt, note });
     if (!user.line_user_id) r.lineBindCode = generateBindCode(user.id).code;
+    const subtotal = getOneOnOnePrice();
+    let originalAmount = subtotal, discountAmount = null, discountCode_ = null, finalAmount = subtotal;
+    const applied = applyDiscountTx({ code: discountCode, phone, subtotal, kind: 'booking', refId: r.id });
+    if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalAmount = applied.finalTotal; }
+    db.prepare('UPDATE bookings SET original_amount=?, discount_amount=?, discount_code=? WHERE id=?')
+      .run(originalAmount, discountAmount, discountCode_, r.id);
+    r.originalAmount = originalAmount; r.discountAmount = discountAmount; r.discountCode = discountCode_; r.finalAmount = finalAmount;
     return r;
   });
 }
@@ -151,6 +159,7 @@ export function cancelBookingAnon({ bookingId, phone, name }) {
     const user = getUserByPhoneAndName({ phone, name });
     if (!user || user.id !== b.member_id) throw new ApiError(403, 'forbidden');
     cancelBookingStmt.run(nowLocal(), user.id, null, bookingId);
+    releaseRedemption({ kind: 'booking', refId: bookingId });
     const coach = getCoachStmt.get(b.coach_id);
     const memberRow = getUserNameStmt.get(b.member_id);
     if (coach && memberRow) {
