@@ -156,6 +156,31 @@
       <h2 class="section-title">教練管理</h2>
     </div>
     <div id="coach-mgmt-list"></div>
+
+    <!-- Create coach account form -->
+    <div class="card mt-4">
+      <h3 class="font-semibold mb-1">建立教練帳號</h3>
+      <p class="subtle text-xs mb-3">建立後帳號狀態為「待啟用」，請於上方教練列表中點「啟用」才能讓教練登入使用。</p>
+      <form id="create-coach-account-form" class="space-y-3">
+        <div>
+          <label class="form-label">姓名 <span class="text-red-500">*</span></label>
+          <input name="name" type="text" required class="form-input" placeholder="教練姓名">
+        </div>
+        <div>
+          <label class="form-label">Email <span class="text-red-500">*</span></label>
+          <input name="email" type="email" required class="form-input" placeholder="coach@example.com">
+        </div>
+        <div>
+          <label class="form-label">密碼 <span class="text-red-500">*</span>（至少 8 碼）</label>
+          <input name="password" type="password" required minlength="8" class="form-input" placeholder="至少 8 個字元">
+        </div>
+        <div id="create-coach-account-error" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2"></div>
+        <div class="pt-1">
+          <button type="submit" id="create-coach-account-btn" class="btn btn-primary">建立教練帳號</button>
+        </div>
+      </form>
+    </div>
+
     <details class="mt-3">
       <summary class="text-sm cursor-pointer">+ 由現有 user 升級為教練</summary>
       <form id="promote-coach-form" class="mt-2 flex gap-2 items-center">

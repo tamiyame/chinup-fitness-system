@@ -609,6 +609,42 @@ document.getElementById('promote-coach-form')?.addEventListener('submit', async 
   } catch (err) { toast(`錯誤：${err.message}`, 'error'); }
 });
 
+// --- Create coach account form ---
+document.getElementById('create-coach-account-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const errBox = document.getElementById('create-coach-account-error');
+  const btn = document.getElementById('create-coach-account-btn');
+  errBox.classList.add('hidden');
+  errBox.textContent = '';
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = '建立中…';
+
+  const data = Object.fromEntries(new FormData(form).entries());
+  try {
+    await api('/api/admin/coaches/account', { method: 'POST', body: { email: data.email, password: data.password, name: data.name } });
+    toast('教練帳號已建立，請於下方啟用', 'success');
+    form.reset();
+    loadCoachMgmt();
+  } catch (err) {
+    const errorMsgs = {
+      email_exists: '此 Email 已被使用',
+      invalid_email: 'Email 格式不正確',
+      password_too_short: '密碼至少需要 8 個字元',
+      missing_name: '請輸入姓名',
+    };
+    const code = err.data?.error;
+    const msg = errorMsgs[code] || `建立失敗：${err.message}`;
+    errBox.textContent = msg;
+    errBox.classList.remove('hidden');
+    toast(msg, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+});
+
 // --- Pending bank-transfer orders ---
 async function loadPendingOrders() {
   const container = document.getElementById('pending-orders-list');
