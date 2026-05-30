@@ -35,3 +35,22 @@ export function validateDiscount({ code, phone, subtotal }) {
   const { discountAmount, finalTotal } = computeDiscount(c.discount_type, c.discount_value, subtotal);
   return { codeId: c.id, code: c.code, type: c.discount_type, value: c.discount_value, discountAmount, finalTotal, subtotal };
 }
+
+const insertRedemption = db.prepare(
+  'INSERT INTO discount_redemptions (code_id, phone, kind, ref_id, amount) VALUES (?, ?, ?, ?, ?)'
+);
+const deleteRedemption = db.prepare('DELETE FROM discount_redemptions WHERE kind = ? AND ref_id = ?');
+
+/** 在 caller 的 tx() 內呼叫：重新 validate（含用量上限即時 COUNT）→ 記 redemption。
+ *  code 為空 → 回 null（不套用）。回 { discountCode, discountAmount, finalTotal, originalAmount }。 */
+export function applyDiscountTx({ code, phone, subtotal, kind, refId }) {
+  const norm = normalizeCode(code);
+  if (!norm) return null;
+  const v = validateDiscount({ code: norm, phone, subtotal });
+  insertRedemption.run(v.codeId, phone, kind, refId, v.discountAmount);
+  return { discountCode: v.code, discountAmount: v.discountAmount, finalTotal: v.finalTotal, originalAmount: subtotal };
+}
+
+export function releaseRedemption({ kind, refId }) {
+  deleteRedemption.run(kind, refId);
+}

@@ -29,5 +29,27 @@ expect('not started → code_not_started', ()=>{ try{validateDiscount({code:'TES
 mk({code:'TESTD_MIN', discount_type:'fixed', discount_value:100, active:1, min_amount:2000});
 expect('below min → below_min_amount', ()=>{ try{validateDiscount({code:'TESTD_MIN',phone:'0994000001',subtotal:1000});assert.fail();}catch(e){assert.equal(e.code,'below_min_amount');} });
 
-reset();
 console.log('[discount-service] D2 done');
+
+import { applyDiscountTx, releaseRedemption } from '../src/services/discountService.js';
+import { tx } from '../src/db/connection.js';
+
+console.log('[discount-service] D3 start');
+const idMax = mk({code:'TESTD_MAX', discount_type:'fixed', discount_value:100, active:1, max_uses:1});
+expect('apply records redemption + returns folded', ()=>{
+  const r = tx(()=>applyDiscountTx({code:'TESTD_MAX',phone:'0994000010',subtotal:500,kind:'group_order',refId:999001}));
+  assert.equal(r.discountAmount,100); assert.equal(r.finalTotal,400); assert.equal(r.discountCode,'TESTD_MAX');
+});
+expect('max_uses exhausted on 2nd', ()=>{ try{tx(()=>applyDiscountTx({code:'TESTD_MAX',phone:'0994000011',subtotal:500,kind:'group_order',refId:999002}));assert.fail();}catch(e){assert.equal(e.code,'code_exhausted');} });
+expect('release frees the use', ()=>{ releaseRedemption({kind:'group_order',refId:999001}); const r=tx(()=>applyDiscountTx({code:'TESTD_MAX',phone:'0994000012',subtotal:500,kind:'group_order',refId:999003})); assert(r.discountAmount===100); releaseRedemption({kind:'group_order',refId:999003}); });
+
+const idPer = mk({code:'TESTD_PER', discount_type:'percent', discount_value:50, active:1, per_phone_limit:1});
+expect('per_phone exhausted on same phone 2nd use', ()=>{
+  tx(()=>applyDiscountTx({code:'TESTD_PER',phone:'0994000020',subtotal:1000,kind:'booking',refId:999010}));
+  try{tx(()=>applyDiscountTx({code:'TESTD_PER',phone:'0994000020',subtotal:1000,kind:'booking',refId:999011}));assert.fail();}catch(e){assert.equal(e.code,'per_phone_exhausted');}
+});
+expect('different phone still ok', ()=>{ const r=tx(()=>applyDiscountTx({code:'TESTD_PER',phone:'0994000021',subtotal:1000,kind:'booking',refId:999012})); assert.equal(r.discountAmount,500); });
+expect('empty code → applyDiscountTx returns null', ()=>{ assert.equal(tx(()=>applyDiscountTx({code:'',phone:'0994000099',subtotal:500,kind:'group_order',refId:999099})),null); });
+console.log('[discount-service] D3 done');
+
+reset();
