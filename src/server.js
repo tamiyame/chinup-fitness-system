@@ -61,6 +61,7 @@ import {
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
+import { validateDiscount, getOneOnOnePrice } from './services/discountService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -599,18 +600,41 @@ app.get('/api/public/group-courses', asyncHandler((req, res) => {
   res.json(svcPublicCourses());
 }));
 
+app.get('/api/public/one-on-one-price', asyncHandler((req, res) => {
+  res.json({ price: getOneOnOnePrice() });
+}));
+
+app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
+  const { code, phone, kind, sessionIds } = req.body || {};
+  let subtotal;
+  if (kind === 'one_on_one') {
+    subtotal = getOneOnOnePrice();
+  } else {
+    // group：由 sessionIds 即時加總付款場次單價（server 權威）
+    const ids = (sessionIds || []).map(Number);
+    subtotal = ids.reduce((sum, sid) => {
+      const s = db.prepare('SELECT template_id FROM course_sessions WHERE id=?').get(sid);
+      const tpl = s ? db.prepare('SELECT price_per_session FROM course_templates WHERE id=?').get(s.template_id) : null;
+      return sum + (tpl ? tpl.price_per_session : 0);
+    }, 0);
+  }
+  const v = validateDiscount({ code, phone, subtotal });
+  res.json({ valid: true, discount_type: v.type, discount_value: v.value, discount_amount: v.discountAmount, original: v.subtotal, final_total: v.finalTotal });
+}));
+
 app.post('/api/public/bookings', asyncHandler((req, res) => {
-  const { coachId, startAt, name, phone, note } = req.body || {};
-  const r = svcCreateBookingAnon({ coachId: Number(coachId), startAt, name, phone, note: note || null });
+  const { coachId, startAt, name, phone, note, discountCode } = req.body || {};
+  const r = svcCreateBookingAnon({ coachId: Number(coachId), startAt, name, phone, note: note || null, discountCode: discountCode || null });
   res.status(201).json(r);
 }));
 
 app.post('/api/public/group-orders', asyncHandler((req, res) => {
-  const { name, phone, paySessionIds, waitlistSessionIds } = req.body || {};
+  const { name, phone, paySessionIds, waitlistSessionIds, discountCode } = req.body || {};
   const r = svcCreateGroupOrder({
     name, phone,
     paySessionIds: (paySessionIds || []).map(Number),
     waitlistSessionIds: (waitlistSessionIds || []).map(Number),
+    discountCode: discountCode || null,
   });
   res.status(201).json(r);
 }));
