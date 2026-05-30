@@ -388,7 +388,7 @@ $('modal-apply-discount').addEventListener('click', async () => {
     } else if (errCode === 'code_not_started') {
       msg = '此折扣碼尚未開始使用';
     } else if (errCode === 'below_min_amount') {
-      const min = err.data?.min_amount;
+      const min = err.data?.detail?.min_amount;
       msg = `訂單金額未達折扣碼最低消費 $${min != null ? min.toLocaleString() : ''}`;
     } else if (errCode === 'code_exhausted') {
       msg = '此折扣碼已達使用上限';

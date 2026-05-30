@@ -283,9 +283,11 @@ document.addEventListener('DOMContentLoaded', () => {
           body: { kind: 'group', code, phone: rawPhone, sessionIds: payIds },
         });
         appliedDiscount = {
+          // Display-only label (rendered via textContent in updateOrderSummary, which escapes —
+          // so no escapeHtml here). Use the server-returned discount_value, not a client reverse-calc.
           code: result.discount_type === 'percent'
-            ? `${escapeHtml(code.toUpperCase())}（折${100 - Math.round((result.final_total / result.original) * 100)}%）`
-            : escapeHtml(code.toUpperCase()),
+            ? `${code.toUpperCase()}（減${result.discount_value}%）`
+            : code.toUpperCase(),
           discountAmount: result.discount_amount,
           finalTotal: result.final_total,
         };
@@ -306,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (errCode === 'code_not_started') {
           msg = '此折扣碼尚未開始使用';
         } else if (errCode === 'below_min_amount') {
-          const min = err.data?.min_amount;
+          const min = err.data?.detail?.min_amount;
           msg = `訂單金額未達折扣碼最低消費 NT$${min != null ? min.toLocaleString() : ''}`;
         } else if (errCode === 'code_exhausted') {
           msg = '此折扣碼已達使用上限';
