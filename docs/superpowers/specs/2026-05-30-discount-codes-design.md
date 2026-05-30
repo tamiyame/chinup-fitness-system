@@ -116,7 +116,7 @@ getOneOnOnePrice() -> int   // parseInt(getSetting('one_on_one_price') || '1500'
 **權威套用點**：
 - `groupOrderService.createGroupOrder`：算出 pay subtotal 後、寫 order 前（同一 tx），若帶 `discountCode` → `applyDiscountTx({kind:'group_order', refId: orderId, subtotal})`；`group_orders` 寫入 original/discount/total(折後)。min_amount 比 subtotal。
 - `bookingService.createBookingAnon`：subtotal ＝ `getOneOnOnePrice()`；若帶 `discountCode` → `applyDiscountTx({kind:'booking', refId: bookingId, subtotal})`；booking 寫入三欄。
-- **釋放**：`cancelGroupOrder` / `expirePendingOrders` / `cancelBookingAnon` / `courseService.processDeadlines`（未開課 reject）→ 對受影響 order/booking 呼叫 `releaseRedemption`。
+- **釋放**（實作定案 `5e3f8e6`）：1v1 經 `cancelBookingAnon` 與 `cancelBooking`（登入取消）皆 `releaseRedemption({kind:'booking'})`；團體經 helper `releaseOrderRedemptionIfInactive(orderId)`（訂單無剩餘有效報名才釋放）由 `cancelRegistrationPublic` 與 `courseService.processDeadlines`（未開課 reject 後對受影響 order）呼叫，`cancelGroupOrder`/`expirePendingOrders` 維持整筆 pending 釋放。多場次訂單只取消其中一場不釋放（仍有有效場次）。
 - 候補遞補（`promoteWaitlist`）建立的新 order 不帶折扣碼。
 
 ## 5. 公開 Endpoints（無需 auth）

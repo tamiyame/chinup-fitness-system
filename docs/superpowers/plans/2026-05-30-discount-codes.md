@@ -434,7 +434,10 @@ Run → FAIL。
 
 - 在 `cancelGroupOrder` 將 order 設 cancelled 後加 `releaseRedemption({ kind: 'group_order', refId: orderId });`（用內容定位 `UPDATE group_orders SET status='cancelled', cancelled_at=?`）。
 - 在 `expirePendingOrders` 對每筆過期 order 設 cancelled 後同樣加 `releaseRedemption({ kind: 'group_order', refId: id });`（用內容定位該 sweep 迴圈）。
-- **釋放只在「訂單層級」取消時做**（cancelGroupOrder / expirePendingOrders）。spec §4 曾列 `processDeadlines`，但那是「單一場次未開課 → reject 該場 registration」，訂單本身未取消（可能還含其他有效場次），故**不**在 processDeadlines 釋放 redemption（避免一場未開就退掉整筆訂單的折扣使用）。此為對 spec 的實作面釐清。
+- **釋放規則（post-review 定案，commit `5e3f8e6`）：所有讓 booking/order 失效的路徑都要釋放，但 group order 採「整筆訂單無剩餘有效報名才釋放」以保護多場次訂單。** 具體：
+  - 1v1：`cancelBookingAnon` 與 `cancelBooking`（教練/會員登入取消）皆 `releaseRedemption({kind:'booking',refId})`。
+  - 團體：新 helper `releaseOrderRedemptionIfInactive(orderId)`（該 order 無任何 pending/confirmed/waitlisted reg 時才釋放），由 `cancelRegistrationPublic` 與 `courseService.processDeadlines`（未開課 reject 後，對受影響的 distinct order_id 逐一呼叫）使用；`cancelGroupOrder`/`expirePendingOrders` 維持原本的整筆 pending 釋放。
+  - 理由：單場次訂單或整筆全被取消 → 釋放（客人沒上到課，折扣用量不應被永久占用，holistic review 確認 paid 單場次會永久外洩）；多場次訂單只取消其中一場 → 不釋放（仍有有效場次）。修正了原本「不在 processDeadlines 釋放」的偏差。
 
 - [ ] **Step 3: schedule 顯示折後總額**
 
