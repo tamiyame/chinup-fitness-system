@@ -85,11 +85,23 @@
         <span id="modal-name-err" class="text-xs text-red-500 mt-1 block"></span>
       </label>
 
-      <label class="block mb-4">
+      <label class="block mb-3">
         <span class="text-sm font-medium text-slate-700">電話 <span class="text-red-500">*</span></span>
         <input id="modal-phone" type="tel" inputmode="numeric" class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="例：0912345678">
         <span id="modal-phone-err" class="text-xs text-red-500 mt-1 block"></span>
       </label>
+
+      <div id="modal-price-row" class="text-sm text-slate-600 mb-3 hidden">
+        <span id="modal-price-label"></span>
+      </div>
+
+      <div class="mb-3">
+        <div class="flex gap-2">
+          <input id="modal-discount-code" type="text" class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="折扣碼（選填）">
+          <button id="modal-apply-discount" type="button" class="btn-secondary text-sm px-3">套用</button>
+        </div>
+        <span id="modal-discount-msg" class="text-xs mt-1 block hidden"></span>
+      </div>
 
       <span id="modal-general-err" class="text-sm text-red-600 block mb-3"></span>
 

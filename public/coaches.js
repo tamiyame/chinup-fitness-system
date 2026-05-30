@@ -12,6 +12,17 @@ function show(name) {
 let currentCoach = null;
 let weekOffset = 0;
 
+// ── 1v1 price ────────────────────────────────────────────────────────────────
+let oneOnOnePrice = null;
+(async () => {
+  try {
+    const res = await api('/api/public/one-on-one-price');
+    oneOnOnePrice = res.price;
+  } catch (e) {
+    // price display will be suppressed if load fails
+  }
+})();
+
 // --- Coach-list accordion + slot cache -------------------------------------
 
 // Only one card is expanded at a time. null = nothing expanded.
@@ -276,10 +287,13 @@ $('back-to-list').addEventListener('click', () => show('list'));
 
 let modalCoach = null;
 let modalSlot = null;
+// Discount state: null or { code, discountAmount, finalTotal }
+let modalAppliedDiscount = null;
 
 function openBookingModal(coach, slotIso) {
   modalCoach = coach;
   modalSlot = slotIso;
+  modalAppliedDiscount = null;
 
   $('modal-coach-name').textContent = coach.display_name;
   $('modal-slot-time').textContent = fmtDate(slotIso) + '（60 分鐘）';
@@ -291,6 +305,21 @@ function openBookingModal(coach, slotIso) {
   $('modal-submit-btn').disabled = false;
   $('modal-submit-btn').textContent = '確認預約';
 
+  // Reset discount fields
+  $('modal-discount-code').value = '';
+  $('modal-discount-msg').textContent = '';
+  $('modal-discount-msg').classList.add('hidden');
+
+  // Show single-session price
+  const priceRow = $('modal-price-row');
+  const priceLabel = $('modal-price-label');
+  if (oneOnOnePrice != null) {
+    priceLabel.textContent = `單堂 $${oneOnOnePrice.toLocaleString()}`;
+    priceRow.classList.remove('hidden');
+  } else {
+    priceRow.classList.add('hidden');
+  }
+
   $('booking-modal').classList.remove('hidden');
   $('modal-name').focus();
 }
@@ -299,6 +328,7 @@ function closeBookingModal() {
   $('booking-modal').classList.add('hidden');
   modalCoach = null;
   modalSlot = null;
+  modalAppliedDiscount = null;
 }
 
 $('modal-close-btn').addEventListener('click', closeBookingModal);
@@ -307,6 +337,73 @@ $('booking-modal').addEventListener('click', (ev) => {
 });
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') closeBookingModal();
+});
+
+// ── Discount apply handler ────────────────────────────────────────────────────
+$('modal-apply-discount').addEventListener('click', async () => {
+  const code = $('modal-discount-code').value.trim();
+  const msgEl = $('modal-discount-msg');
+  msgEl.classList.add('hidden');
+  msgEl.textContent = '';
+  modalAppliedDiscount = null;
+
+  if (!code) {
+    msgEl.textContent = '請輸入折扣碼';
+    msgEl.style.color = '#b91c1c';
+    msgEl.classList.remove('hidden');
+    return;
+  }
+
+  const rawPhone = $('modal-phone').value.replace(/\D/g, '');
+  if (!rawPhone) {
+    msgEl.textContent = '請先填寫電話號碼再套用折扣碼';
+    msgEl.style.color = '#b91c1c';
+    msgEl.classList.remove('hidden');
+    return;
+  }
+
+  const applyBtn = $('modal-apply-discount');
+  applyBtn.disabled = true;
+  applyBtn.textContent = '套用中…';
+
+  try {
+    const result = await api('/api/public/discounts/validate', {
+      method: 'POST',
+      body: { kind: 'one_on_one', code, phone: rawPhone },
+    });
+    modalAppliedDiscount = { code: code.toUpperCase(), discountAmount: result.discount_amount, finalTotal: result.final_total };
+    msgEl.textContent = `折扣套用成功：折後現場應付 $${result.final_total.toLocaleString()}`;
+    msgEl.style.color = '#15803d';
+    msgEl.classList.remove('hidden');
+  } catch (err) {
+    modalAppliedDiscount = null;
+    const errCode = err.data?.error;
+    let msg;
+    if (errCode === 'invalid_code') {
+      msg = '折扣碼無效，請確認後重試';
+    } else if (errCode === 'code_inactive') {
+      msg = '此折扣碼目前已停用';
+    } else if (errCode === 'code_expired') {
+      msg = '此折扣碼已過期';
+    } else if (errCode === 'code_not_started') {
+      msg = '此折扣碼尚未開始使用';
+    } else if (errCode === 'below_min_amount') {
+      const min = err.data?.min_amount;
+      msg = `訂單金額未達折扣碼最低消費 $${min != null ? min.toLocaleString() : ''}`;
+    } else if (errCode === 'code_exhausted') {
+      msg = '此折扣碼已達使用上限';
+    } else if (errCode === 'per_phone_exhausted') {
+      msg = '此折扣碼每人使用次數已達上限';
+    } else {
+      msg = `折扣碼套用失敗：${escapeHtml(err.message)}`;
+    }
+    msgEl.textContent = msg;
+    msgEl.style.color = '#b91c1c';
+    msgEl.classList.remove('hidden');
+  } finally {
+    applyBtn.disabled = false;
+    applyBtn.textContent = '套用';
+  }
 });
 
 $('modal-submit-btn').addEventListener('click', async () => {
@@ -336,9 +433,11 @@ $('modal-submit-btn').addEventListener('click', async () => {
   btn.textContent = '送出中…';
 
   try {
+    const bookingBody = { coachId: modalCoach.id, startAt: modalSlot, name: nameVal, phone: phoneNormalized };
+    if (modalAppliedDiscount) bookingBody.discountCode = modalAppliedDiscount.code;
     const result = await api('/api/public/bookings', {
       method: 'POST',
-      body: { coachId: modalCoach.id, startAt: modalSlot, name: nameVal, phone: phoneNormalized },
+      body: bookingBody,
     });
     // Success
     closeBookingModal();
@@ -400,6 +499,25 @@ function showSuccessView(bookingResult) {
     `;
   }
 
+  let paymentHtml;
+  if (bookingResult.discountAmount) {
+    paymentHtml = `
+      <div class="mt-3 text-sm text-slate-600">原價：$${escapeHtml(String(bookingResult.originalAmount))}</div>
+      <div class="text-sm" style="color:#15803d;">折扣：−$${escapeHtml(String(bookingResult.discountAmount))}${bookingResult.discountCode ? ` (${escapeHtml(bookingResult.discountCode)})` : ''}</div>
+      <div class="mt-1"><span class="text-slate-500 text-sm">折後現場應付（現場收費）</span><br>
+        <strong style="font-size:20px;color:var(--brand-700, #0369a1);">$${escapeHtml(String(bookingResult.finalAmount))}</strong>
+      </div>
+    `;
+  } else if (bookingResult.finalAmount != null) {
+    paymentHtml = `
+      <div class="mt-2"><span class="text-slate-500 text-sm">現場應付（現場收費）</span><br>
+        <strong style="font-size:20px;color:var(--brand-700, #0369a1);">$${escapeHtml(String(bookingResult.finalAmount))}</strong>
+      </div>
+    `;
+  } else {
+    paymentHtml = '';
+  }
+
   successEl.innerHTML = `
     <div class="text-center py-6">
       <div class="text-5xl mb-4">✅</div>
@@ -407,6 +525,7 @@ function showSuccessView(bookingResult) {
       <div class="card mt-4 mb-2 text-left">
         <div class="mb-2"><span class="text-slate-500">教練</span><br><strong>${coachName}</strong></div>
         <div><span class="text-slate-500">時間</span><br><strong>${slotTime}</strong></div>
+        ${paymentHtml}
       </div>
       ${lineHtml}
       <div class="mt-6 flex flex-col gap-3">
