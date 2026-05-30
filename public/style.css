@@ -576,134 +576,380 @@ details.session-row summary:hover { background: #f8faf9; }
 .btn-warn { background: #d97706; color: white; }
 .btn-warn:hover { background: #b45309; transform: translateY(-1px); }
 
-/* ============ Coaches list (accordion) ============ */
+/* ============ 頁面標題 / 通用按鈕補丁 ============ */
+.page-title {
+  font-size: clamp(22px, 3vw, 28px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+/* btn-secondary：幾個頁面共用，Tailwind CDN 沒提供 */
+.btn-secondary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px; font-weight: 600;
+  background: var(--surface);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.btn-secondary:hover { background: #f1f5f9; border-color: #cbd5e1; }
+.btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ============ Coaches — 方向 A 質感卡（手風琴清單）============ */
+
+/* 清單容器間距 */
+#coach-list { display: flex; flex-direction: column; gap: 0; }
+
+/* 卡片主體 */
 .ccard {
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 12px;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 16px;
   display: flex;
+  gap: 14px;
   align-items: center;
-  gap: 12px;
   cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease;
+  border: 1px solid transparent;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+  margin-bottom: 12px;
 }
-.ccard:hover { border-color: rgba(56, 189, 248, 0.4); }
+.ccard:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
 .ccard:focus-visible {
   outline: 2px solid var(--brand-600);
   outline-offset: 2px;
 }
-.ccard.pinned {
-  border-color: #fcd34d;
-  background: #fffefb;
+/* 展開狀態：底部圓角取消，讓展開面板接合 */
+.ccard.expanded {
+  border-radius: 16px 16px 0 0;
+  margin-bottom: 0;
+  box-shadow: var(--shadow);
+  transform: none;
 }
-.ccard.pinned:hover { border-color: #f59e0b; }
 
+/* 頭像：62px 圓角方形 */
 .ccard-avatar {
-  width: 44px; height: 44px;
-  border-radius: 50%;
-  background: #e2e8f0;
+  width: 62px; height: 62px;
+  border-radius: 15px;
   flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
   overflow: hidden;
+  background: linear-gradient(140deg, var(--brand-50), var(--brand-100));
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 0 1px rgba(15,23,42,.04), var(--shadow-sm);
 }
 .ccard-avatar img { width: 100%; height: 100%; object-fit: cover; }
+/* 無頭像時的首字 fallback */
 .ccard-avatar-fallback {
-  color: #475569;
+  font-size: 24px;
   font-weight: 700;
-  font-size: 18px;
-  line-height: 1;
+  color: var(--brand-700);
   user-select: none;
+  line-height: 1;
 }
 
+/* 卡片文字區 */
 .ccard-body { flex: 1; min-width: 0; }
 .ccard-name {
-  font-weight: 700; color: var(--ink); font-size: 14px;
-  line-height: 1.3;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
-.ccard-spec {
-  font-size: 12px; color: var(--ink-soft); margin-top: 2px;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+/* 本週可預約時段徽章（取代恆亮綠點，顯示真實時段數）*/
+.ccard-avail {
+  flex-shrink: 0;
+  font-size: 11px; font-weight: 700;
+  color: #047857;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
 }
-.ccard-chev { color: #94a3b8; font-size: 18px; flex-shrink: 0; transition: transform 160ms ease; }
-.ccard.expanded .ccard-chev { transform: rotate(180deg); }
+.ccard-avail.none {
+  color: var(--ink-mute);
+  background: #f1f5f9;
+  border-color: var(--line);
+}
 
+/* 專長標籤列 */
+.ccard-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+.tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand-700);
+  background: var(--brand-50);
+  border: 1px solid var(--brand-100);
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+/* 右側 chevron 圓形按鈕 */
+.ccard-go {
+  flex-shrink: 0;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--canvas);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--brand-600);
+  font-size: 18px;
+  align-self: center;
+  transition: background 180ms ease, color 180ms ease, transform 240ms ease;
+}
+.ccard.expanded .ccard-go {
+  background: var(--brand-600);
+  color: #fff;
+  transform: rotate(90deg);
+}
+
+/* ── 展開面板 ── */
 .ccard-expand {
-  background: #f8fafc;
-  border: 1px solid var(--line);
-  border-top: none;
-  border-radius: 0 0 14px 14px;
-  padding: 12px 14px 14px;
-  margin: -1px 0 8px;   /* -1px pulls expand panel flush against card border */
-  font-size: 12px;
+  background: var(--surface);
+  border-radius: 0 0 16px 16px;
+  box-shadow: var(--shadow);
+  padding: 6px 16px 16px;
+  margin-bottom: 12px;
+  position: relative;
 }
-.ccard.pinned + .ccard-expand {
-  border-color: #fcd34d;
+/* 分隔線 */
+.ccard-expand::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 16px; right: 16px;
+  height: 1px;
+  background: var(--line);
 }
-.ccard-expand .bio {
+
+/* Bio 文字 */
+.bioA {
+  font-size: 13px;
   color: var(--ink-soft);
-  line-height: 1.5;
-  margin-bottom: 10px;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  line-height: 1.6;
+  padding-top: 13px;
   white-space: pre-line;
 }
-.ccard-expand .slot-label {
+
+/* 「最近可預約」小標題 */
+.slotlabel {
   font-size: 11px;
-  color: var(--ink-soft);
-  font-weight: 600;
-  margin-bottom: 6px;
+  font-weight: 700;
+  color: var(--ink-mute);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 14px 0 9px;
 }
-.ccard-expand .slot-empty {
+
+/* 橫向 mini 時段卡列 */
+.miniSlots {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  margin-bottom: 14px;
+  scrollbar-width: none;
+}
+.miniSlots::-webkit-scrollbar { display: none; }
+
+.miniSlot {
+  flex-shrink: 0;
+  text-align: center;
+  border: 1.5px solid var(--brand-100);
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: #fff;
+  min-width: 62px;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.miniSlot:hover { border-color: var(--brand-600); background: var(--brand-50); }
+.miniSlot .md { font-size: 10px; color: var(--ink-mute); font-weight: 600; }
+.miniSlot .tm { font-size: 15px; font-weight: 700; color: var(--ink); margin-top: 1px; }
+
+/* 「看更多 ›」假卡 */
+.miniSlot-more {
+  flex-shrink: 0;
+  text-align: center;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: #fff;
+  min-width: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-700);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.miniSlot-more:hover { background: var(--brand-50); border-color: var(--brand-500); }
+
+/* 無時段提示 */
+.slot-empty {
   font-size: 12px;
   color: var(--ink-mute);
   margin-bottom: 12px;
 }
 
-.slot-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.slot-chip {
-  background: white; border: 1px solid var(--line);
-  padding: 4px 10px; border-radius: 8px; font-size: 11px;
-  color: var(--ink);
-  white-space: nowrap;
-}
-.slot-chip-more { color: var(--brand-700); border-color: #bae6fd; }
-
-.book-cta {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
+/* 預約 CTA 按鈕 */
+.ctaA {
+  display: block;
   width: 100%;
-  padding: 9px;
-  border-radius: 10px;
+  padding: 13px;
+  border-radius: 12px;
   background: var(--brand-600);
-  color: white;
-  font-weight: 700; font-size: 13px;
-  text-decoration: none;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
   border: none;
   cursor: pointer;
-  transition: background 160ms ease;
+  box-shadow: var(--shadow-brand);
+  transition: background 150ms ease;
 }
-.book-cta:hover { background: var(--brand-700); }
-
-.section-recent-label {
-  font-size: 11px; font-weight: 700; color: var(--ink-soft);
-  letter-spacing: 0.08em; text-transform: uppercase;
-  margin: 4px 0 8px;
-  display: flex; align-items: center; gap: 8px;
-}
-.section-recent-label .ago-badge {
-  background: #fffbeb; color: #a16207; border: 1px solid #fcd34d;
-  font-size: 10px; padding: 2px 6px; border-radius: 999px;
-  text-transform: none; letter-spacing: 0; font-weight: 600;
-}
+.ctaA:hover { background: var(--brand-700); }
 
 .section-all-label {
   font-size: 11px; font-weight: 700; color: var(--ink-soft);
   letter-spacing: 0.08em; text-transform: uppercase;
   margin: 18px 0 8px;
+}
+
+/* ============ 教練詳細頁標頭 ============ */
+.detail-head {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.detail-av {
+  width: 54px; height: 54px;
+  border-radius: 14px;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: linear-gradient(140deg, var(--brand-50), var(--brand-100));
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+.detail-av img { width: 100%; height: 100%; object-fit: cover; }
+.detail-av-fallback {
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--brand-700);
+  user-select: none;
+  line-height: 1;
+}
+.detail-name { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
+.detail-spec { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+
+/* ============ 日期橫向 rail（詳細頁）============ */
+.dayrail {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 10px;
+  margin: 0 0 4px;
+  scrollbar-width: none;
+}
+.dayrail::-webkit-scrollbar { display: none; }
+
+.daypill {
+  flex-shrink: 0;
+  width: 54px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 9px 0;
+  text-align: center;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+.daypill .dow { font-size: 11px; color: var(--ink-mute); font-weight: 600; }
+.daypill .dnum { font-size: 18px; font-weight: 700; margin-top: 1px; color: var(--ink); }
+.daypill .ddot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--brand-500);
+  margin: 5px auto 0;
+}
+/* 選中狀態 */
+.daypill.sel {
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+  box-shadow: var(--shadow-brand);
+}
+.daypill.sel .dow,
+.daypill.sel .dnum { color: #fff; }
+.daypill.sel .ddot { background: rgba(255,255,255,.7); }
+/* 無時段：淡化不可點 */
+.daypill.empty { opacity: 0.4; cursor: not-allowed; }
+.daypill.empty .ddot { background: transparent; }
+
+/* 當日時段標題 */
+.slot-day-head {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 16px 0 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.slot-day-head small { font-size: 12px; color: var(--ink-mute); font-weight: 500; }
+
+/* ============ 時段卡 grid（詳細頁）============ */
+.timegrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+.timeslot {
+  border: 1.5px solid var(--brand-100);
+  border-radius: 13px;
+  background: #fff;
+  padding: 11px 6px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+  position: relative;
+}
+.timeslot:hover {
+  border-color: var(--brand-600);
+  background: var(--brand-50);
+  transform: translateY(-1px);
+}
+.timeslot .t-main { font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+.timeslot .t-sub { font-size: 10px; color: var(--ink-mute); margin-top: 2px; }
+/* 選中狀態（點擊後立即開 modal）*/
+.timeslot.sel {
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+  box-shadow: var(--shadow-brand);
+}
+.timeslot.sel .t-main { color: #fff; }
+.timeslot.sel .t-sub { color: rgba(255,255,255,.8); }
+
+/* 無時段文字 */
+.timegrid-empty {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  color: var(--ink-mute);
+  padding: 16px 0 8px;
 }

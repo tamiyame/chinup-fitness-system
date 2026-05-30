@@ -56,11 +56,21 @@
   </div>
 
   <div id="view-detail" class="hidden">
+    <!-- 返回列表 -->
     <button id="back-to-list" class="text-sm text-sky-600 mb-3">← 回到教練列表</button>
+    <!-- 教練標頭（頭像 + 名字 + 專長）由 JS 填入 -->
     <div id="coach-detail"></div>
+
+    <!-- 可預約時段區塊 -->
     <h2 class="section-title mt-6">可預約時段</h2>
+    <!-- 上/下週導覽（由 JS renderSlotControls 填入）-->
     <div id="slot-controls" class="flex items-center gap-3 mb-3"></div>
-    <div id="slot-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2"></div>
+    <!-- 日期橫向 rail（由 JS 填入）-->
+    <div id="day-rail" class="dayrail"></div>
+    <!-- 當日時段標題（由 JS 填入）-->
+    <div id="slot-day-head" class="slot-day-head" style="display:none"></div>
+    <!-- 3 欄時段卡 grid（由 JS 填入）-->
+    <div id="slot-grid" class="timegrid"></div>
   </div>
 
   <div id="view-success" class="hidden"></div>
