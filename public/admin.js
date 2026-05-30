@@ -725,6 +725,234 @@ async function loadPendingOrders() {
 
 document.getElementById('btn-reload-orders')?.addEventListener('click', loadPendingOrders);
 
+// --- 1v1 Single-session price ---
+async function loadOneOnOnePrice() {
+  try {
+    const r = await api('/api/admin/settings');
+    const input = document.getElementById('one-on-one-price');
+    if (input) input.value = r.one_on_one_price;
+  } catch (e) {
+    toast(`載入 1v1 單堂價失敗：${escapeHtml(e.message)}`, 'error');
+  }
+}
+
+document.getElementById('save-one-on-one-price')?.addEventListener('click', async () => {
+  const input = document.getElementById('one-on-one-price');
+  const price = Number(input?.value);
+  if (!Number.isInteger(price) || price < 0) {
+    toast('請輸入有效的金額（非負整數）', 'error');
+    return;
+  }
+  try {
+    await api('/api/admin/settings', { method: 'PATCH', body: { one_on_one_price: price } });
+    toast(`1v1 單堂價已更新為 NT$${price}`, 'success');
+  } catch (e) {
+    toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');
+  }
+});
+
+// --- Discount codes ---
+async function loadDiscountCodes() {
+  const container = document.getElementById('discount-codes-list');
+  if (!container) return;
+  container.innerHTML = '<div class="subtle p-4">載入中…</div>';
+  try {
+    const codes = await api('/api/admin/discount-codes');
+    if (!codes.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <span class="empty-state-icon">🏷️</span>
+          <p>尚無折扣碼</p>
+          <p class="subtle mt-1">使用上方表單建立第一個折扣碼</p>
+        </div>`;
+      return;
+    }
+    container.innerHTML = codes.map(c => {
+      const typeLabel = c.discount_type === 'percent' ? `減 ${c.discount_value}%` : `減 $${c.discount_value}`;
+      const usageText = c.max_uses != null ? `${c.used_count}/${c.max_uses}` : `已用 ${c.used_count}`;
+      const limits = [];
+      if (c.valid_from || c.valid_until) {
+        limits.push(`有效期：${escapeHtml(c.valid_from || '—')} ~ ${escapeHtml(c.valid_until || '—')}`);
+      }
+      limits.push(`使用量：${usageText}`);
+      if (c.per_phone_limit != null) limits.push(`每人上限 ${c.per_phone_limit} 次`);
+      if (c.min_amount != null) limits.push(`最低 NT$${c.min_amount}`);
+      return `
+        <article class="card" data-code-id="${c.id}">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <div class="flex-1 min-w-[220px]">
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <h3 class="card-title font-mono">${escapeHtml(c.code)}</h3>
+                <span class="badge badge-${c.discount_type === 'percent' ? 'confirmed' : 'waitlisted'}">${escapeHtml(typeLabel)}</span>
+                <span class="badge badge-${c.active ? 'open' : 'completed'}">${c.active ? '啟用中' : '已停用'}</span>
+              </div>
+              <div class="meta flex-wrap">
+                ${limits.map(l => `<span class="meta-item">${escapeHtml(l)}</span>`).join('')}
+              </div>
+              ${c.note ? `<p class="subtle text-xs mt-1">${escapeHtml(c.note)}</p>` : ''}
+            </div>
+            <div class="flex gap-2 flex-wrap">
+              <button
+                data-id="${c.id}"
+                data-active="${c.active}"
+                class="dc-toggle-btn btn btn-ghost btn-sm"
+              >${c.active ? '停用' : '啟用'}</button>
+              <button data-id="${c.id}" class="dc-edit-btn btn btn-ghost btn-sm">編輯</button>
+              <button data-id="${c.id}" class="dc-del-btn btn btn-danger btn-sm">刪除</button>
+            </div>
+          </div>
+        </article>`;
+    }).join('');
+
+    // toggle active/inactive
+    container.querySelectorAll('.dc-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.dataset.id);
+        const newActive = btn.dataset.active === '1' || btn.dataset.active === 'true' ? 0 : 1;
+        const code = btn.closest('article');
+        // collect current values from the rendered card to send full payload
+        const codeData = codes.find(c => c.id === id);
+        if (!codeData) return;
+        try {
+          await api(`/api/admin/discount-codes/${id}`, {
+            method: 'PATCH',
+            body: {
+              discount_type: codeData.discount_type,
+              discount_value: codeData.discount_value,
+              active: newActive,
+              valid_from: codeData.valid_from ?? '',
+              valid_until: codeData.valid_until ?? '',
+              max_uses: codeData.max_uses ?? '',
+              per_phone_limit: codeData.per_phone_limit ?? '',
+              min_amount: codeData.min_amount ?? '',
+              note: codeData.note ?? '',
+            },
+          });
+          toast(`折扣碼已${newActive ? '啟用' : '停用'}`, 'success');
+          loadDiscountCodes();
+        } catch (e) {
+          toast(`操作失敗：${escapeHtml(e.message)}`, 'error');
+        }
+      });
+    });
+
+    // edit: populate form
+    container.querySelectorAll('.dc-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.id);
+        const codeData = codes.find(c => c.id === id);
+        if (!codeData) return;
+        document.getElementById('discount-code-edit-id').value = id;
+        document.getElementById('dc-code').value = codeData.code;
+        document.getElementById('dc-code').readOnly = true;
+        document.getElementById('dc-type').value = codeData.discount_type;
+        document.getElementById('dc-value').value = codeData.discount_value;
+        document.getElementById('dc-valid-from').value = codeData.valid_from ?? '';
+        document.getElementById('dc-valid-until').value = codeData.valid_until ?? '';
+        document.getElementById('dc-max-uses').value = codeData.max_uses ?? '';
+        document.getElementById('dc-per-phone').value = codeData.per_phone_limit ?? '';
+        document.getElementById('dc-min-amount').value = codeData.min_amount ?? '';
+        document.getElementById('dc-note').value = codeData.note ?? '';
+        document.getElementById('dc-submit-btn').textContent = '儲存修改';
+        document.getElementById('dc-cancel-btn').classList.remove('hidden');
+        document.getElementById('discount-code-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    // delete
+    container.querySelectorAll('.dc-del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.dataset.id);
+        const codeData = codes.find(c => c.id === id);
+        if (!codeData) return;
+        if (!confirm(`確定刪除折扣碼「${codeData.code}」？此操作無法復原。`)) return;
+        try {
+          await api(`/api/admin/discount-codes/${id}`, { method: 'DELETE' });
+          toast('已刪除折扣碼', 'success');
+          loadDiscountCodes();
+        } catch (e) {
+          if (e.data?.error === 'has_redemptions') {
+            toast('此折扣碼已被使用，請改停用', 'error');
+          } else {
+            toast(`刪除失敗：${escapeHtml(e.message)}`, 'error');
+          }
+        }
+      });
+    });
+  } catch (e) {
+    container.innerHTML = `<div class="p-4 text-red-500">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// reset discount code form to create mode
+function resetDiscountCodeForm() {
+  document.getElementById('discount-code-edit-id').value = '';
+  document.getElementById('discount-code-form').reset();
+  document.getElementById('dc-code').readOnly = false;
+  document.getElementById('dc-submit-btn').textContent = '建立折扣碼';
+  document.getElementById('dc-cancel-btn').classList.add('hidden');
+  const errBox = document.getElementById('discount-code-form-error');
+  errBox.classList.add('hidden');
+  errBox.textContent = '';
+}
+
+document.getElementById('dc-cancel-btn')?.addEventListener('click', resetDiscountCodeForm);
+
+document.getElementById('discount-code-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('discount-code-form-error');
+  errBox.classList.add('hidden');
+  errBox.textContent = '';
+
+  const editId = document.getElementById('discount-code-edit-id').value;
+  const nz = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
+
+  const payload = {
+    discount_type: document.getElementById('dc-type').value,
+    discount_value: Number(document.getElementById('dc-value').value),
+    active: 1,
+    valid_from: document.getElementById('dc-valid-from').value || null,
+    valid_until: document.getElementById('dc-valid-until').value || null,
+    max_uses: nz(document.getElementById('dc-max-uses').value),
+    per_phone_limit: nz(document.getElementById('dc-per-phone').value),
+    min_amount: nz(document.getElementById('dc-min-amount').value),
+    note: document.getElementById('dc-note').value || null,
+  };
+
+  const submitBtn = document.getElementById('dc-submit-btn');
+  submitBtn.disabled = true;
+  const origText = submitBtn.textContent;
+  submitBtn.textContent = '處理中…';
+
+  try {
+    if (editId) {
+      await api(`/api/admin/discount-codes/${editId}`, { method: 'PATCH', body: payload });
+      toast('折扣碼已更新', 'success');
+    } else {
+      payload.code = document.getElementById('dc-code').value;
+      await api('/api/admin/discount-codes', { method: 'POST', body: payload });
+      toast('折扣碼已建立', 'success');
+    }
+    resetDiscountCodeForm();
+    loadDiscountCodes();
+  } catch (err) {
+    const errorMsgs = {
+      code_exists: '此折扣碼已存在',
+      invalid_value: '折扣值無效（百分比需 1–100，定額需大於 0）',
+      invalid_type: '折扣型態無效',
+      invalid_limit: '限制數值無效',
+      missing_code: '折扣碼不能為空',
+    };
+    const msg = errorMsgs[err.data?.error] || `失敗：${escapeHtml(err.message)}`;
+    errBox.textContent = msg;
+    errBox.classList.remove('hidden');
+    toast(msg, 'error');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = origText;
+  }
+});
+
 loadCategories();
 loadTemplates();
 loadUsers();
@@ -733,4 +961,6 @@ loadCoachMgmt();
 loadBackupSummary();
 bindBackupHandlers();
 loadPendingOrders();
+loadDiscountCodes();
+loadOneOnOnePrice();
 
