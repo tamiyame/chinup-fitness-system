@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS group_orders (
   paid_at TEXT,
   paid_by INTEGER REFERENCES users(id),
   cancelled_at TEXT,
+  discount_code TEXT,
+  discount_amount INTEGER,
+  original_amount INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_group_orders_status ON group_orders(status, expires_at);
@@ -164,6 +167,9 @@ CREATE TABLE IF NOT EXISTS bookings (
   cancelled_by INTEGER REFERENCES users(id),
   cancel_reason TEXT,
   note TEXT,
+  discount_code TEXT,
+  discount_amount INTEGER,
+  original_amount INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK (start_at < end_at)
 );
@@ -175,6 +181,37 @@ CREATE INDEX IF NOT EXISTS idx_bookings_member ON bookings(member_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_coach_status ON bookings(coach_id, status);
 CREATE INDEX IF NOT EXISTS idx_availability_rules_coach ON coach_availability_rules(coach_id);
 CREATE INDEX IF NOT EXISTS idx_availability_exceptions_coach_date ON coach_availability_exceptions(coach_id, exception_date);
+
+CREATE TABLE IF NOT EXISTS discount_codes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  discount_type TEXT NOT NULL CHECK(discount_type IN ('percent','fixed')),
+  discount_value INTEGER NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  valid_from TEXT,
+  valid_until TEXT,
+  max_uses INTEGER,
+  per_phone_limit INTEGER,
+  min_amount INTEGER,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS discount_redemptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code_id INTEGER NOT NULL REFERENCES discount_codes(id),
+  phone TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('group_order','booking')),
+  ref_id INTEGER NOT NULL,
+  amount INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_redemptions_code ON discount_redemptions(code_id);
+CREATE INDEX IF NOT EXISTS idx_redemptions_code_phone ON discount_redemptions(code_id, phone);
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('one_on_one_price', '1500');
 
 CREATE TABLE IF NOT EXISTS point_transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
