@@ -135,6 +135,14 @@ db.exec('DROP VIEW IF EXISTS member_point_balance');
 // (d) price_per_session
 addColumnIfMissing('course_templates', 'price_per_session', 'INTEGER NOT NULL DEFAULT 0');
 
+// ── 2026-05-30 discount codes migration ──
+addColumnIfMissing('group_orders', 'discount_code', 'TEXT');
+addColumnIfMissing('group_orders', 'discount_amount', 'INTEGER');
+addColumnIfMissing('group_orders', 'original_amount', 'INTEGER');
+addColumnIfMissing('bookings', 'discount_code', 'TEXT');
+addColumnIfMissing('bookings', 'discount_amount', 'INTEGER');
+addColumnIfMissing('bookings', 'original_amount', 'INTEGER');
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.

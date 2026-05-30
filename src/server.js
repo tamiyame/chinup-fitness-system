@@ -61,6 +61,7 @@ import {
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
+import { validateDiscount, getOneOnOnePrice, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting } from './services/discountService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -599,18 +600,41 @@ app.get('/api/public/group-courses', asyncHandler((req, res) => {
   res.json(svcPublicCourses());
 }));
 
+app.get('/api/public/one-on-one-price', asyncHandler((req, res) => {
+  res.json({ price: getOneOnOnePrice() });
+}));
+
+app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
+  const { code, phone, kind, sessionIds } = req.body || {};
+  let subtotal;
+  if (kind === 'one_on_one') {
+    subtotal = getOneOnOnePrice();
+  } else {
+    // group：由 sessionIds 即時加總付款場次單價（server 權威）
+    const ids = (sessionIds || []).map(Number);
+    subtotal = ids.reduce((sum, sid) => {
+      const s = db.prepare('SELECT template_id FROM course_sessions WHERE id=?').get(sid);
+      const tpl = s ? db.prepare('SELECT price_per_session FROM course_templates WHERE id=?').get(s.template_id) : null;
+      return sum + (tpl ? tpl.price_per_session : 0);
+    }, 0);
+  }
+  const v = validateDiscount({ code, phone, subtotal });
+  res.json({ valid: true, discount_type: v.type, discount_value: v.value, discount_amount: v.discountAmount, original: v.subtotal, final_total: v.finalTotal });
+}));
+
 app.post('/api/public/bookings', asyncHandler((req, res) => {
-  const { coachId, startAt, name, phone, note } = req.body || {};
-  const r = svcCreateBookingAnon({ coachId: Number(coachId), startAt, name, phone, note: note || null });
+  const { coachId, startAt, name, phone, note, discountCode } = req.body || {};
+  const r = svcCreateBookingAnon({ coachId: Number(coachId), startAt, name, phone, note: note || null, discountCode: discountCode || null });
   res.status(201).json(r);
 }));
 
 app.post('/api/public/group-orders', asyncHandler((req, res) => {
-  const { name, phone, paySessionIds, waitlistSessionIds } = req.body || {};
+  const { name, phone, paySessionIds, waitlistSessionIds, discountCode } = req.body || {};
   const r = svcCreateGroupOrder({
     name, phone,
     paySessionIds: (paySessionIds || []).map(Number),
     waitlistSessionIds: (waitlistSessionIds || []).map(Number),
+    discountCode: discountCode || null,
   });
   res.status(201).json(r);
 }));
@@ -785,6 +809,23 @@ app.get('/api/admin/backups/:file', requireAdmin, asyncHandler((req, res) => {
   res.setHeader('Content-Type', 'application/octet-stream');
   res.setHeader('Content-Disposition', `attachment; filename="${basename(full)}"`);
   createReadStream(full).pipe(res);
+}));
+
+// --- Admin: Discount Codes CRUD ---
+app.get('/api/admin/discount-codes', requireAdmin, asyncHandler((req, res) => res.json(listDiscountCodes())));
+app.post('/api/admin/discount-codes', requireAdmin, asyncHandler((req, res) => res.status(201).json(createDiscountCode(req.body || {}))));
+app.patch('/api/admin/discount-codes/:id', requireAdmin, asyncHandler((req, res) => res.json(updateDiscountCode(Number(req.params.id), req.body || {}))));
+app.delete('/api/admin/discount-codes/:id', requireAdmin, asyncHandler((req, res) => res.json(deleteDiscountCode(Number(req.params.id)))));
+
+// --- Admin: Settings ---
+app.get('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
+  res.json({ one_on_one_price: Number(getSetting('one_on_one_price') || '1500') });
+}));
+app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
+  const p = Number((req.body || {}).one_on_one_price);
+  if (!Number.isInteger(p) || p < 1) return res.status(400).json({ error: 'invalid_price' });
+  setSetting('one_on_one_price', String(p));
+  res.json({ one_on_one_price: p });
 }));
 
 const PORT = Number(process.env.PORT || 3000);

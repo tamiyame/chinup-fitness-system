@@ -165,7 +165,14 @@ function resolveStatus(item) {
 function paymentLine(item) {
   if (item.kind !== 'registration' || item.status !== 'pending') return '';
   const parts = [];
-  if (item.amount_due != null) {
+  if (item.order_total != null) {
+    // Show discounted order total; append discount amount if applicable
+    let payable = `應付 $${escapeHtml(String(item.order_total))}`;
+    if (item.order_discount != null && item.order_discount > 0) {
+      payable += `（已折 $${escapeHtml(String(item.order_discount))}）`;
+    }
+    parts.push(payable);
+  } else if (item.amount_due != null) {
     parts.push(`金額：${escapeHtml(String(item.amount_due))} 元`);
   }
   if (item.order_expires_at) {

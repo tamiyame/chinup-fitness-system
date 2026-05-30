@@ -150,6 +150,85 @@
     </div>
   </dialog>
 
+  <!-- discount codes -->
+  <section id="discount-codes" class="mb-10">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="section-title">折扣碼管理</h2>
+    </div>
+
+    <!-- 1v1 single-session price -->
+    <div class="card mb-4">
+      <div class="flex items-center gap-3 flex-wrap">
+        <label class="form-label mb-0">1v1 單堂價（NT$）</label>
+        <input id="one-on-one-price" type="number" min="0" step="1" class="form-input" style="width:140px;" placeholder="1500">
+        <button id="save-one-on-one-price" class="btn btn-primary btn-sm">儲存</button>
+      </div>
+    </div>
+
+    <!-- create discount code form -->
+    <div class="card mb-4">
+      <h3 class="font-semibold mb-3">建立折扣碼</h3>
+      <form id="discount-code-form" class="space-y-3">
+        <input type="hidden" id="discount-code-edit-id">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="form-label">折扣碼 <span class="text-red-500">*</span></label>
+            <input id="dc-code" type="text" required class="form-input" placeholder="例：SUMMER20">
+          </div>
+          <div>
+            <label class="form-label">型態 <span class="text-red-500">*</span></label>
+            <select id="dc-type" required class="form-select">
+              <option value="percent">百分比折扣</option>
+              <option value="fixed">定額折扣</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="form-label">折扣值 <span class="text-red-500">*</span><span class="subtle text-xs ml-1">（% 或 $）</span></label>
+            <input id="dc-value" type="number" min="1" required class="form-input" placeholder="10">
+          </div>
+          <div>
+            <label class="form-label">最低訂單金額（選填）</label>
+            <input id="dc-min-amount" type="number" min="0" class="form-input" placeholder="不限">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="form-label">生效日期（選填）</label>
+            <input id="dc-valid-from" type="date" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">截止日期（選填）</label>
+            <input id="dc-valid-until" type="date" class="form-input">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="form-label">總使用上限（選填）</label>
+            <input id="dc-max-uses" type="number" min="1" class="form-input" placeholder="不限">
+          </div>
+          <div>
+            <label class="form-label">每人上限（選填）</label>
+            <input id="dc-per-phone" type="number" min="1" class="form-input" placeholder="不限">
+          </div>
+        </div>
+        <div>
+          <label class="form-label">備註（選填）</label>
+          <input id="dc-note" type="text" class="form-input" placeholder="內部備註">
+        </div>
+        <div id="discount-code-form-error" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2"></div>
+        <div class="flex gap-2 pt-1">
+          <button type="submit" id="dc-submit-btn" class="btn btn-primary">建立折扣碼</button>
+          <button type="button" id="dc-cancel-btn" class="btn btn-ghost hidden">取消編輯</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- discount codes list -->
+    <div id="discount-codes-list" class="grid gap-3"></div>
+  </section>
+
   <!-- coach management -->
   <section id="coach-mgmt" class="mb-10">
     <div class="flex items-center justify-between mb-4">

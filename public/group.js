@@ -23,6 +23,9 @@ function $(id) { return document.getElementById(id); }
 const selected = new Map();
 let allTemplates = [];  // cached API response
 
+// Discount state
+let appliedDiscount = null;  // null or { code, discountAmount, finalTotal }
+
 // ── selection helpers ─────────────────────────────────────────────────────────
 function totalPay() {
   let sum = 0;
@@ -53,7 +56,7 @@ function updatePriceBar() {
 function updateOrderSummary() {
   const pays = [...selected.values()].filter(v => v.type === 'pay');
   const waits = [...selected.values()].filter(v => v.type === 'waitlist');
-  const total = totalPay();
+  const subtotal = totalPay();
 
   const payHtml = pays.length === 0
     ? '<div class="text-slate-400">（尚未選擇付款場次）</div>'
@@ -66,7 +69,26 @@ function updateOrderSummary() {
 
   $('summary-pay-list').innerHTML = payHtml;
   $('summary-wait-list').innerHTML = waitHtml;
-  $('summary-total').textContent = `NT$${total.toLocaleString()}`;
+
+  // Show discount line if applied
+  if (appliedDiscount) {
+    $('discount-line').classList.remove('hidden');
+    $('discount-line-text').textContent = `折扣碼 ${appliedDiscount.code}：−NT$${appliedDiscount.discountAmount.toLocaleString()}`;
+    $('summary-total').textContent = `NT$${appliedDiscount.finalTotal.toLocaleString()}`;
+  } else {
+    $('discount-line').classList.add('hidden');
+    $('summary-total').textContent = `NT$${subtotal.toLocaleString()}`;
+  }
+}
+
+function clearDiscount() {
+  if (appliedDiscount) {
+    appliedDiscount = null;
+    const msgEl = $('discount-msg');
+    msgEl.textContent = '已變更場次，請重新套用折扣碼';
+    msgEl.style.color = '#d97706';
+    msgEl.classList.remove('hidden');
+  }
 }
 
 function toggleSession(sessionId, type, session, templateName, price) {
@@ -77,6 +99,7 @@ function toggleSession(sessionId, type, session, templateName, price) {
   } else {
     selected.set(key, { type, session, templateName, price });
   }
+  clearDiscount();
   // re-render the row visual
   const row = document.querySelector(`.sess-row[data-sid="${sessionId}"]`);
   if (row) {
@@ -128,6 +151,7 @@ function selectAllToggle(tpl, forceOn) {
       if (cb) cb.checked = shouldSelect;
     }
   }
+  clearDiscount();
   updatePriceBar();
   updateOrderSummary();
   syncSelectAll(tpl);
@@ -215,6 +239,95 @@ function renderSessionRow(s, tpl) {
     </div>
   </div>`;
 }
+
+// ── discount code apply handler ───────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const applyBtn = $('apply-discount');
+  if (applyBtn) {
+    applyBtn.addEventListener('click', async () => {
+      const code = $('discount-code').value.trim();
+      const msgEl = $('discount-msg');
+      msgEl.classList.add('hidden');
+      msgEl.textContent = '';
+
+      if (!code) {
+        msgEl.textContent = '請輸入折扣碼';
+        msgEl.style.color = '#b91c1c';
+        msgEl.classList.remove('hidden');
+        return;
+      }
+
+      const rawPhone = $('f-phone').value.replace(/\D/g, '');
+      if (!rawPhone) {
+        msgEl.textContent = '請先填寫電話號碼再套用折扣碼';
+        msgEl.style.color = '#b91c1c';
+        msgEl.classList.remove('hidden');
+        return;
+      }
+
+      const payIds = [...selected.values()].filter(v => v.type === 'pay').map(v => v.session.id);
+      if (payIds.length === 0) {
+        msgEl.textContent = '請先選擇付款場次再套用折扣碼';
+        msgEl.style.color = '#b91c1c';
+        msgEl.classList.remove('hidden');
+        return;
+      }
+
+      applyBtn.disabled = true;
+      applyBtn.textContent = '套用中…';
+      appliedDiscount = null;
+
+      try {
+        const result = await api('/api/public/discounts/validate', {
+          method: 'POST',
+          body: { kind: 'group', code, phone: rawPhone, sessionIds: payIds },
+        });
+        appliedDiscount = {
+          // Display-only label (rendered via textContent in updateOrderSummary, which escapes —
+          // so no escapeHtml here). Use the server-returned discount_value, not a client reverse-calc.
+          code: result.discount_type === 'percent'
+            ? `${code.toUpperCase()}（減${result.discount_value}%）`
+            : code.toUpperCase(),
+          discountAmount: result.discount_amount,
+          finalTotal: result.final_total,
+        };
+        msgEl.textContent = `折扣套用成功：折 NT$${result.discount_amount.toLocaleString()}，應付 NT$${result.final_total.toLocaleString()}`;
+        msgEl.style.color = '#15803d';
+        msgEl.classList.remove('hidden');
+        updateOrderSummary();
+      } catch (err) {
+        appliedDiscount = null;
+        const errCode = err.data?.error;
+        let msg;
+        if (errCode === 'invalid_code') {
+          msg = '折扣碼無效，請確認後重試';
+        } else if (errCode === 'code_inactive') {
+          msg = '此折扣碼目前已停用';
+        } else if (errCode === 'code_expired') {
+          msg = '此折扣碼已過期';
+        } else if (errCode === 'code_not_started') {
+          msg = '此折扣碼尚未開始使用';
+        } else if (errCode === 'below_min_amount') {
+          const min = err.data?.detail?.min_amount;
+          msg = `訂單金額未達折扣碼最低消費 NT$${min != null ? min.toLocaleString() : ''}`;
+        } else if (errCode === 'code_exhausted') {
+          msg = '此折扣碼已達使用上限';
+        } else if (errCode === 'per_phone_exhausted') {
+          msg = '此折扣碼每人使用次數已達上限';
+        } else {
+          msg = `折扣碼套用失敗：${escapeHtml(err.message)}`;
+        }
+        msgEl.textContent = msg;
+        msgEl.style.color = '#b91c1c';
+        msgEl.classList.remove('hidden');
+        updateOrderSummary();
+      } finally {
+        applyBtn.disabled = false;
+        applyBtn.textContent = '套用';
+      }
+    });
+  }
+});
 
 // ── load courses ──────────────────────────────────────────────────────────────
 async function loadCourses() {
@@ -330,9 +443,11 @@ $('booking-form').addEventListener('submit', async (e) => {
   btn.textContent = '送出中…';
 
   try {
+    const body = { name, phone: rawPhone, paySessionIds, waitlistSessionIds };
+    if (appliedDiscount) body.discountCode = $('discount-code').value.trim().toUpperCase();
     const result = await api('/api/public/group-orders', {
       method: 'POST',
-      body: { name, phone: rawPhone, paySessionIds, waitlistSessionIds },
+      body,
     });
     showSuccess(result);
   } catch (err) {
@@ -386,15 +501,27 @@ function showSuccess(result) {
 
   // order info
   const expiresStr = fmtDate(result.expiresAt);
+  let amountHtml;
+  if (result.discountAmount) {
+    amountHtml = `
+      <div class="text-sm" style="color:var(--ink-mute);">原價：NT$${result.originalAmount.toLocaleString()}</div>
+      <div class="text-sm" style="color:#15803d;">折扣：−NT$${result.discountAmount.toLocaleString()}${result.discountCode ? ` (${escapeHtml(result.discountCode)})` : ''}</div>
+      <div><span class="subtle">應匯金額</span><br>
+        <strong style="font-size:22px;color:var(--brand-700);">NT$${result.total.toLocaleString()}</strong>
+      </div>`;
+  } else {
+    amountHtml = `
+      <div>
+        <span class="subtle">應付金額</span><br>
+        <strong style="font-size:22px;color:var(--brand-700);">NT$${result.total.toLocaleString()}</strong>
+      </div>`;
+  }
   $('success-order-info').innerHTML = `
     <div class="mb-2">
       <span class="subtle">訂單編號</span><br>
       <strong style="font-size:18px;">#${escapeHtml(String(result.orderId))}</strong>
     </div>
-    <div>
-      <span class="subtle">應付金額</span><br>
-      <strong style="font-size:22px;color:var(--brand-700);">NT$${result.total.toLocaleString()}</strong>
-    </div>
+    ${amountHtml}
     <div class="mt-3 text-sm" style="color:#b91c1c;">
       請於 <strong>${escapeHtml(expiresStr)}</strong> 前完成匯款，逾期訂單將自動取消。
     </div>
