@@ -1,7 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, basename } from 'node:path';
-import { db, tx } from './db/connection.js';
+import { db, tx, nowLocal, offsetLocal } from './db/connection.js';
 import {
   createTemplate, editTemplate, listTemplates, getTemplate,
   listOpenSessions, listRegistrationsBySession,
@@ -662,7 +662,17 @@ app.delete('/api/public/group-orders/:id', asyncHandler((req, res) => {
 // --- One-on-one: public + member endpoints ---
 
 app.get('/api/coaches', asyncHandler((req, res) => {
-  res.json(svcListActive());
+  // 每位教練加「本週可預約時段數」(今天起 7 天)；小健身房規模可接受逐一計算。
+  const from = nowLocal().slice(0, 10);
+  const to = offsetLocal(6 * 86400_000).slice(0, 10);
+  const coaches = svcListActive().map((c) => {
+    let week_available_count = 0;
+    try {
+      week_available_count = svcComputeSlots({ coachId: c.id, fromDate: from, toDate: to }).length;
+    } catch { /* 無班表 → 0 */ }
+    return { ...c, week_available_count };
+  });
+  res.json(coaches);
 }));
 
 app.get('/api/coaches/:id', asyncHandler((req, res) => {

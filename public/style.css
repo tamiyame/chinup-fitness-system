@@ -665,13 +665,21 @@ details.session-row summary:hover { background: #f8faf9; }
   align-items: center;
   gap: 7px;
 }
-/* 可預約狀態綠點 */
-.ccard-dot-on {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 0 3px rgba(34,197,94,.16);
+/* 本週可預約時段徽章（取代恆亮綠點，顯示真實時段數）*/
+.ccard-avail {
   flex-shrink: 0;
+  font-size: 11px; font-weight: 700;
+  color: #047857;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.ccard-avail.none {
+  color: var(--ink-mute);
+  background: #f1f5f9;
+  border-color: var(--line);
 }
 
 /* 專長標籤列 */
