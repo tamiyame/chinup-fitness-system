@@ -830,21 +830,24 @@ app.get('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
 }));
 app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
   const b = req.body || {};
+  // 先驗證所有提供的欄位，全部通過才寫入，避免部分寫入造成狀態不一致
+  const writes = [];
   if (b.one_on_one_price !== undefined) {
     const p = Number(b.one_on_one_price);
     if (!Number.isInteger(p) || p < 1) return res.status(400).json({ error: 'invalid_price' });
-    setSetting('one_on_one_price', String(p));
+    writes.push(['one_on_one_price', String(p)]);
   }
   if (b.bank_info !== undefined) {
     const bank = String(b.bank_info).trim();
     if (!bank) return res.status(400).json({ error: 'invalid_bank_info' });
-    setSetting('bank_info', bank);
+    writes.push(['bank_info', bank]);
   }
   if (b.line_official_url !== undefined) {
     const url = String(b.line_official_url).trim();
     if (url && !/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'invalid_line_url' });
-    setSetting('line_official_url', url); // 空字串代表清除（不顯示按鈕）
+    writes.push(['line_official_url', url]); // 空字串代表清除（不顯示按鈕）
   }
+  tx(() => { for (const [k, v] of writes) setSetting(k, v); });
   res.json(settingsPayload());
 }));
 

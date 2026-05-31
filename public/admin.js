@@ -743,8 +743,8 @@ async function loadOneOnOnePrice() {
 document.getElementById('save-one-on-one-price')?.addEventListener('click', async () => {
   const input = document.getElementById('one-on-one-price');
   const price = Number(input?.value);
-  if (!Number.isInteger(price) || price < 0) {
-    toast('請輸入有效的金額（非負整數）', 'error');
+  if (!Number.isInteger(price) || price < 1) {
+    toast('請輸入有效的金額（正整數）', 'error');
     return;
   }
   try {
