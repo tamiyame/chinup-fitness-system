@@ -944,9 +944,9 @@ details.session-row summary:hover { background: #f8faf9; }
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: 200px;
+  min-height: 168px;
   border-radius: 20px;
-  padding: 26px;
+  padding: 22px;
   text-decoration: none;
   cursor: pointer;
   transition: transform 200ms ease, box-shadow 200ms ease;
@@ -1008,3 +1008,42 @@ details.session-row summary:hover { background: #f8faf9; }
 }
 .entry-card.group .entry-watermark { color: var(--brand-600); opacity: .12; }
 .entry-card.solo  .entry-watermark { color: #c05a73; opacity: .13; }
+
+/* ============ 入口頁 FAQ accordion ============ */
+.faq { padding-top: 4px; }
+.faq-cat { margin-top: 30px; }
+.faq-cat:first-child { margin-top: 6px; }
+.faq-cat-title {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 20px; font-weight: 800; color: var(--ink); letter-spacing: -.01em;
+}
+.faq-cat-ico { width: 24px; height: 24px; color: var(--brand-600); flex-shrink: 0; }
+.faq-cat-intro { color: var(--ink-soft); font-size: 14px; line-height: 1.65; margin: 9px 0 16px; }
+.faq-item {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.faq-item summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 16px 18px;
+  font-weight: 700; font-size: 15px; color: var(--ink);
+  transition: background 150ms ease;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary:hover { background: var(--brand-50); }
+.faq-tog {
+  flex-shrink: 0; width: 16px; text-align: center;
+  color: var(--brand-600); font-weight: 700; font-size: 18px; line-height: 1.45;
+}
+.faq-tog::before { content: "+"; }
+.faq-item[open] .faq-tog::before { content: "−"; }
+.faq-a {
+  padding: 0 18px 16px 46px;
+  color: var(--ink-soft); font-size: 14px; line-height: 1.75;
+}
