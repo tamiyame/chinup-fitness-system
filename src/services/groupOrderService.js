@@ -49,6 +49,7 @@ function validateSelectable(sessionId) {
   if (!s) throw new ApiError(404, 'session_not_found');
   if (s.status === 'cancelled') throw new ApiError(409, 'session_cancelled');
   if (s.status === 'completed') throw new ApiError(409, 'session_completed');
+  if (s.is_open === 0) throw new ApiError(409, 'session_closed');
   if (nowLocal() > s.registration_deadline) throw new ApiError(409, 'registration_closed');
   return s;
 }
@@ -290,7 +291,7 @@ export function getPublicGroupCourses() {
     const sessions = db.prepare(`
       SELECT id, session_date, start_at, end_at, status, registration_deadline
       FROM course_sessions
-      WHERE template_id = ? AND status = 'open' AND start_at > ?
+      WHERE template_id = ? AND status = 'open' AND is_open = 1 AND start_at > ?
       ORDER BY start_at ASC
     `).all(t.id, now).map((s) => {
       const occupied = sessionOccupied(s.id);

@@ -331,7 +331,9 @@ async function openDrawer(templateId) {
             <div class="font-semibold">${fmtDate(s.start_at)}</div>
             <div class="subtle mt-1">正取 ${s.confirmed_count}/${t.max_capacity} · 候補 ${s.waitlist_count}</div>
           </div>
-          <span class="badge badge-${s.status}">${SESSION_STATUS_LABEL[s.status]}</span>
+          ${s.status === 'open'
+            ? `<button type="button" class="badge ${s.is_open === 0 ? 'badge-closed' : 'badge-open'} session-toggle" data-session-id="${s.id}" data-open="${s.is_open === 0 ? '0' : '1'}" title="點擊切換開放／關閉此場次">${s.is_open === 0 ? '關閉' : '開放'}</button>`
+            : `<span class="badge badge-${s.status}">${SESSION_STATUS_LABEL[s.status]}</span>`}
         </summary>
         <div class="px-5 pb-4" data-session-id="${s.id}">
           <div class="subtle">載入中…</div>
@@ -366,6 +368,30 @@ async function openDrawer(templateId) {
 }
 
 document.getElementById('close-drawer').addEventListener('click', () => document.getElementById('drawer').style.display = 'none');
+
+// 切換單一場次開放/關閉（事件委派，掛一次即可；按鈕在 <summary> 內，需阻止展開）
+document.getElementById('drawer-content').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.session-toggle');
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (btn.disabled) return;
+  const sid = Number(btn.dataset.sessionId);
+  const nextOpen = btn.dataset.open !== '1'; // 目前開放 → 關閉，反之亦然
+  btn.disabled = true;
+  try {
+    const updated = await api(`/api/admin/sessions/${sid}`, { method: 'PATCH', body: { is_open: nextOpen } });
+    const open = updated.is_open === 1;
+    btn.dataset.open = open ? '1' : '0';
+    btn.className = `badge ${open ? 'badge-open' : 'badge-closed'} session-toggle`;
+    btn.textContent = open ? '開放' : '關閉';
+    toast(open ? '已開放此場次' : '已關閉此場次（報名頁將隱藏，不影響現有報名）', 'success');
+  } catch (err) {
+    toast(`切換失敗：${escapeHtml(err.message)}`, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 document.getElementById('run-deadlines').addEventListener('click', async () => {
   try {

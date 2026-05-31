@@ -143,6 +143,10 @@ addColumnIfMissing('bookings', 'discount_code', 'TEXT');
 addColumnIfMissing('bookings', 'discount_amount', 'INTEGER');
 addColumnIfMissing('bookings', 'original_amount', 'INTEGER');
 
+// ── 2026-05-31 單一場次手動開放/關閉 ──
+// is_open=0 → 該場次從報名頁隱藏且不可報名（status 維持 open，可隨時切回）。
+addColumnIfMissing('course_sessions', 'is_open', 'INTEGER NOT NULL DEFAULT 1');
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.

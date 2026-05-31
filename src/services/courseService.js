@@ -116,6 +116,22 @@ export function getTemplate(id) {
   return t;
 }
 
+/**
+ * 手動開放/關閉「單一場次」的報名（is_open）。
+ * 關閉（is_open=0）→ 該場次從報名頁隱藏、不可報名；現有報名不受影響，可隨時切回開放。
+ * 僅適用 status='open' 的場次（已成班/未開課/結束等狀態不可切換）。
+ */
+export function setSessionOpen(sessionId, isOpen) {
+  return tx(() => {
+    const s = db.prepare('SELECT * FROM course_sessions WHERE id = ?').get(sessionId);
+    if (!s) throw new ApiError(404, 'session_not_found');
+    if (s.status !== 'open') throw new ApiError(409, 'session_not_toggleable');
+    const next = isOpen ? 1 : 0;
+    db.prepare('UPDATE course_sessions SET is_open = ? WHERE id = ?').run(next, sessionId);
+    return { ...s, is_open: next };
+  });
+}
+
 export function listOpenSessions() {
   return db.prepare(`
     SELECT s.*, t.name, t.description, t.min_capacity, t.max_capacity, t.duration_minutes
