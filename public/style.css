@@ -952,19 +952,18 @@ details.session-row summary:hover { background: #f8faf9; }
   transition: transform 200ms ease, box-shadow 200ms ease;
 }
 .entry-card:hover { transform: translateY(-3px); }
+/* 冷暖雙柔色（T1）：兩張等重柔色卡，差在冷/暖色相，無藍白強落差 */
 .entry-card.group {
-  background: linear-gradient(145deg, var(--brand-600), var(--brand-700));
-  color: #fff;
-  box-shadow: var(--shadow-brand);
-}
-.entry-card.group:hover { box-shadow: 0 20px 44px -10px rgba(14, 165, 233, .62); }
-.entry-card.solo {
-  background: var(--surface);
+  background: linear-gradient(150deg, #f0f9ff, #e0f2fe);  /* 柔藍 */
   color: var(--ink);
-  border: 1px solid var(--line);
   box-shadow: var(--shadow);
 }
-.entry-card.solo:hover { box-shadow: var(--shadow-lg); border-color: var(--brand-200); }
+.entry-card.solo {
+  background: linear-gradient(150deg, #fffbeb, #fef3c7);  /* 暖琥珀 */
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.entry-card.group:hover, .entry-card.solo:hover { box-shadow: var(--shadow-lg); }
 
 /* 內容疊在浮水印之上 */
 .entry-badge, .entry-title, .entry-desc, .entry-cta { position: relative; z-index: 1; }
@@ -974,14 +973,13 @@ details.session-row summary:hover { background: #f8faf9; }
   border-radius: 13px;
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 18px;
+  color: #fff;
 }
-.entry-card.group .entry-badge { background: rgba(255, 255, 255, .16); color: #fff; }
-.entry-card.solo .entry-badge { background: var(--brand-50); color: var(--brand-700); }
+.entry-card.group .entry-badge { background: var(--brand-600); }
+.entry-card.solo  .entry-badge { background: #f59e0b; }
 
 .entry-title { font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
-.entry-desc { font-size: 13.5px; margin-top: 8px; line-height: 1.6; }
-.entry-card.group .entry-desc { color: rgba(255, 255, 255, .82); }
-.entry-card.solo .entry-desc { color: var(--ink-soft); }
+.entry-desc { font-size: 13.5px; margin-top: 8px; line-height: 1.6; color: var(--ink-soft); }
 
 .entry-cta {
   margin-top: auto;            /* 推到卡片底部，無需絕對定位 */
@@ -989,16 +987,16 @@ details.session-row summary:hover { background: #f8faf9; }
   display: inline-flex; align-items: center; gap: 8px;
   font-weight: 700; font-size: 14px;
 }
-.entry-card.group .entry-cta { color: #fff; }
-.entry-card.solo .entry-cta { color: var(--brand-700); }
+.entry-card.group .entry-cta { color: var(--brand-700); }
+.entry-card.solo  .entry-cta { color: #b45309; }
 .entry-cta .arr {
   width: 26px; height: 26px;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 14px;
 }
-.entry-card.group .entry-cta .arr { background: rgba(255, 255, 255, .18); }
-.entry-card.solo .entry-cta .arr { background: var(--brand-50); }
+.entry-card.group .entry-cta .arr { background: #bae6fd; }
+.entry-card.solo  .entry-cta .arr { background: #fde68a; }
 
 /* 角落圖騰浮水印（裝飾、不可點）*/
 .entry-watermark {
@@ -1008,5 +1006,5 @@ details.session-row summary:hover { background: #f8faf9; }
   z-index: 0;
   pointer-events: none;
 }
-.entry-card.group .entry-watermark { color: #fff; opacity: .16; }
-.entry-card.solo .entry-watermark { color: var(--brand-600); opacity: .10; }
+.entry-card.group .entry-watermark { color: var(--brand-600); opacity: .12; }
+.entry-card.solo  .entry-watermark { color: #f59e0b; opacity: .14; }
