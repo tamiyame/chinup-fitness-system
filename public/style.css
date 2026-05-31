@@ -1011,14 +1011,8 @@ details.session-row summary:hover { background: #f8faf9; }
 
 /* ============ 入口頁 FAQ accordion ============ */
 .faq { padding-top: 4px; }
-.faq-cat { margin-top: 30px; }
-.faq-cat:first-child { margin-top: 6px; }
-.faq-cat-title {
-  display: flex; align-items: center; gap: 10px;
-  font-size: 20px; font-weight: 800; color: var(--ink); letter-spacing: -.01em;
-}
-.faq-cat-ico { width: 24px; height: 24px; color: var(--brand-600); flex-shrink: 0; }
-.faq-cat-intro { color: var(--ink-soft); font-size: 14px; line-height: 1.65; margin: 9px 0 16px; }
+.faq-cat { margin-top: 14px; }
+.faq-cat:first-child { margin-top: 0; }
 .faq-item {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1031,7 +1025,7 @@ details.session-row summary:hover { background: #f8faf9; }
   list-style: none;
   cursor: pointer;
   display: flex; align-items: flex-start; gap: 12px;
-  padding: 16px 18px;
+  padding: 11px 18px;
   font-weight: 700; font-size: 15px; color: var(--ink);
   transition: background 150ms ease;
 }
