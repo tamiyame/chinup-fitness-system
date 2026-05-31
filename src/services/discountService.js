@@ -112,3 +112,7 @@ export function setSetting(key, value) {
   db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, String(value));
 }
 export function getOneOnOnePrice() { return parseInt(getSetting('one_on_one_price') || '1500', 10); }
+
+const DEFAULT_BANK_INFO = '合作金庫 (006) 0640765-607824 戶名：許秉毅';
+export function getBankInfo() { return getSetting('bank_info') || process.env.BANK_INFO || DEFAULT_BANK_INFO; }
+export function getLineOfficialUrl() { return getSetting('line_official_url') || ''; }

@@ -725,14 +725,18 @@ async function loadPendingOrders() {
 
 document.getElementById('btn-reload-orders')?.addEventListener('click', loadPendingOrders);
 
-// --- 1v1 Single-session price ---
+// --- Settings: 1v1 price + 匯款帳號 + 官方 LINE 連結 ---
 async function loadOneOnOnePrice() {
   try {
     const r = await api('/api/admin/settings');
-    const input = document.getElementById('one-on-one-price');
-    if (input) input.value = r.one_on_one_price;
+    const priceInput = document.getElementById('one-on-one-price');
+    if (priceInput) priceInput.value = r.one_on_one_price;
+    const bankInput = document.getElementById('bank-info');
+    if (bankInput) bankInput.value = r.bank_info ?? '';
+    const lineInput = document.getElementById('line-official-url');
+    if (lineInput) lineInput.value = r.line_official_url ?? '';
   } catch (e) {
-    toast(`載入 1v1 單堂價失敗：${escapeHtml(e.message)}`, 'error');
+    toast(`載入營運設定失敗：${escapeHtml(e.message)}`, 'error');
   }
 }
 
@@ -746,6 +750,25 @@ document.getElementById('save-one-on-one-price')?.addEventListener('click', asyn
   try {
     await api('/api/admin/settings', { method: 'PATCH', body: { one_on_one_price: price } });
     toast(`1v1 單堂價已更新為 NT$${price}`, 'success');
+  } catch (e) {
+    toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');
+  }
+});
+
+document.getElementById('save-bank-line')?.addEventListener('click', async () => {
+  const bank_info = (document.getElementById('bank-info')?.value || '').trim();
+  const line_official_url = (document.getElementById('line-official-url')?.value || '').trim();
+  if (!bank_info) {
+    toast('請輸入匯款帳號', 'error');
+    return;
+  }
+  if (line_official_url && !/^https?:\/\//i.test(line_official_url)) {
+    toast('LINE 連結需為 http(s):// 開頭的網址', 'error');
+    return;
+  }
+  try {
+    await api('/api/admin/settings', { method: 'PATCH', body: { bank_info, line_official_url } });
+    toast('收款與 LINE 設定已更新', 'success');
   } catch (e) {
     toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');
   }
