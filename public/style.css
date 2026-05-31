@@ -937,3 +937,106 @@ details.session-row summary:hover { background: #f8faf9; }
   color: var(--ink-mute);
   padding: 16px 0 8px;
 }
+
+/* ============ 入口頁 — 雙色路徑卡 ============ */
+.entry-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 168px;
+  border-radius: 20px;
+  padding: 22px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.entry-card:hover { transform: translateY(-3px); }
+/* 冷暖雙柔色（T1）：兩張等重柔色卡，差在冷/暖色相，無藍白強落差 */
+.entry-card.group {
+  background: linear-gradient(150deg, #f0f9ff, #e0f2fe);  /* 柔藍 */
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.entry-card.solo {
+  background: linear-gradient(150deg, #fdf2f4, #f8e1e7);  /* 低彩度玫瑰紅 */
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.entry-card.group:hover, .entry-card.solo:hover { box-shadow: var(--shadow-lg); }
+
+/* 內容疊在浮水印之上 */
+.entry-badge, .entry-title, .entry-desc, .entry-cta { position: relative; z-index: 1; }
+
+.entry-badge {
+  width: 46px; height: 46px;
+  border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 18px;
+  color: #fff;
+}
+.entry-card.group .entry-badge { background: var(--brand-600); }
+.entry-card.solo  .entry-badge { background: #c05a73; }
+
+.entry-title { font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
+.entry-desc { font-size: 13.5px; margin-top: 8px; line-height: 1.6; color: var(--ink-soft); }
+
+.entry-cta {
+  margin-top: auto;            /* 推到卡片底部，無需絕對定位 */
+  padding-top: 18px;
+  display: inline-flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 14px;
+}
+.entry-card.group .entry-cta { color: var(--brand-700); }
+.entry-card.solo  .entry-cta { color: #a23e57; }
+.entry-cta .arr {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+}
+.entry-card.group .entry-cta .arr { background: #bae6fd; }
+.entry-card.solo  .entry-cta .arr { background: #f3d5dd; }
+
+/* 角落圖騰浮水印（裝飾、不可點）*/
+.entry-watermark {
+  position: absolute;
+  right: -10px; bottom: -14px;
+  width: 120px; height: 120px;
+  z-index: 0;
+  pointer-events: none;
+}
+.entry-card.group .entry-watermark { color: var(--brand-600); opacity: .12; }
+.entry-card.solo  .entry-watermark { color: #c05a73; opacity: .13; }
+
+/* ============ 入口頁 FAQ accordion ============ */
+.entry-col { display: flex; flex-direction: column; }
+.faq { margin-top: 14px; }
+.faq-item {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.faq-item summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 11px 18px;
+  font-weight: 700; font-size: 15px; color: var(--ink);
+  transition: background 150ms ease;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary:hover { background: var(--brand-50); }
+.faq-tog {
+  flex-shrink: 0; width: 16px; text-align: center;
+  color: var(--brand-600); font-weight: 700; font-size: 18px; line-height: 1.45;
+}
+.faq-tog::before { content: "+"; }
+.faq-item[open] .faq-tog::before { content: "−"; }
+.faq-a {
+  padding: 0 18px 16px 46px;
+  color: var(--ink-soft); font-size: 14px; line-height: 1.75;
+}
