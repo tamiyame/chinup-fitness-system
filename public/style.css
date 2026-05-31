@@ -937,3 +937,76 @@ details.session-row summary:hover { background: #f8faf9; }
   color: var(--ink-mute);
   padding: 16px 0 8px;
 }
+
+/* ============ 入口頁 — 雙色路徑卡 ============ */
+.entry-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+  border-radius: 20px;
+  padding: 26px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.entry-card:hover { transform: translateY(-3px); }
+.entry-card.group {
+  background: linear-gradient(145deg, var(--brand-600), var(--brand-700));
+  color: #fff;
+  box-shadow: var(--shadow-brand);
+}
+.entry-card.group:hover { box-shadow: 0 20px 44px -10px rgba(14, 165, 233, .62); }
+.entry-card.solo {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+.entry-card.solo:hover { box-shadow: var(--shadow-lg); border-color: var(--brand-200); }
+
+/* 內容疊在浮水印之上 */
+.entry-badge, .entry-title, .entry-desc, .entry-cta { position: relative; z-index: 1; }
+
+.entry-badge {
+  width: 46px; height: 46px;
+  border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 18px;
+}
+.entry-card.group .entry-badge { background: rgba(255, 255, 255, .16); color: #fff; }
+.entry-card.solo .entry-badge { background: var(--brand-50); color: var(--brand-700); }
+
+.entry-title { font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
+.entry-desc { font-size: 13.5px; margin-top: 8px; line-height: 1.6; }
+.entry-card.group .entry-desc { color: rgba(255, 255, 255, .82); }
+.entry-card.solo .entry-desc { color: var(--ink-soft); }
+
+.entry-cta {
+  margin-top: auto;            /* 推到卡片底部，無需絕對定位 */
+  padding-top: 18px;
+  display: inline-flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 14px;
+}
+.entry-card.group .entry-cta { color: #fff; }
+.entry-card.solo .entry-cta { color: var(--brand-700); }
+.entry-cta .arr {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+}
+.entry-card.group .entry-cta .arr { background: rgba(255, 255, 255, .18); }
+.entry-card.solo .entry-cta .arr { background: var(--brand-50); }
+
+/* 角落圖騰浮水印（裝飾、不可點）*/
+.entry-watermark {
+  position: absolute;
+  right: -10px; bottom: -14px;
+  width: 120px; height: 120px;
+  z-index: 0;
+  pointer-events: none;
+}
+.entry-card.group .entry-watermark { color: #fff; opacity: .16; }
+.entry-card.solo .entry-watermark { color: var(--brand-600); opacity: .10; }
