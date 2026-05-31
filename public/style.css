@@ -959,7 +959,7 @@ details.session-row summary:hover { background: #f8faf9; }
   box-shadow: var(--shadow);
 }
 .entry-card.solo {
-  background: linear-gradient(150deg, #fffbeb, #fef3c7);  /* 暖琥珀 */
+  background: linear-gradient(150deg, #fdf2f4, #f8e1e7);  /* 低彩度玫瑰紅 */
   color: var(--ink);
   box-shadow: var(--shadow);
 }
@@ -976,7 +976,7 @@ details.session-row summary:hover { background: #f8faf9; }
   color: #fff;
 }
 .entry-card.group .entry-badge { background: var(--brand-600); }
-.entry-card.solo  .entry-badge { background: #f59e0b; }
+.entry-card.solo  .entry-badge { background: #c05a73; }
 
 .entry-title { font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
 .entry-desc { font-size: 13.5px; margin-top: 8px; line-height: 1.6; color: var(--ink-soft); }
@@ -988,7 +988,7 @@ details.session-row summary:hover { background: #f8faf9; }
   font-weight: 700; font-size: 14px;
 }
 .entry-card.group .entry-cta { color: var(--brand-700); }
-.entry-card.solo  .entry-cta { color: #b45309; }
+.entry-card.solo  .entry-cta { color: #a23e57; }
 .entry-cta .arr {
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -996,7 +996,7 @@ details.session-row summary:hover { background: #f8faf9; }
   font-size: 14px;
 }
 .entry-card.group .entry-cta .arr { background: #bae6fd; }
-.entry-card.solo  .entry-cta .arr { background: #fde68a; }
+.entry-card.solo  .entry-cta .arr { background: #f3d5dd; }
 
 /* 角落圖騰浮水印（裝飾、不可點）*/
 .entry-watermark {
@@ -1007,4 +1007,4 @@ details.session-row summary:hover { background: #f8faf9; }
   pointer-events: none;
 }
 .entry-card.group .entry-watermark { color: var(--brand-600); opacity: .12; }
-.entry-card.solo  .entry-watermark { color: #f59e0b; opacity: .14; }
+.entry-card.solo  .entry-watermark { color: #c05a73; opacity: .13; }
