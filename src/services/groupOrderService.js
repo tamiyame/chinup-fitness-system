@@ -3,10 +3,8 @@ import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
 import { notify } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
-import { applyDiscountTx, releaseRedemption } from './discountService.js';
+import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl } from './discountService.js';
 
-// 收款資訊（健身房固定，可改用環境變數）
-export const BANK_INFO = process.env.BANK_INFO || '玉山銀行 (808) 1234-567-890123 戶名：CHINUP';
 const PENDING_TTL_MS = 6 * 60 * 60 * 1000;       // 一般 pending 6h
 const PROMOTED_TTL_MS = 24 * 60 * 60 * 1000;     // 遞補後 24h
 
@@ -121,8 +119,9 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
     }
 
     const result = { orderId, total: finalTotal, originalAmount, discountAmount, discountCode: discountCode_,
-      bankInfo: BANK_INFO, expiresAt: order.expires_at, waitlisted, memberId: user.id };
+      bankInfo: getBankInfo(), expiresAt: order.expires_at, waitlisted, memberId: user.id };
     if (!user.line_user_id) result.lineBindCode = generateBindCode(user.id).code;
+    result.lineOfficialUrl = getLineOfficialUrl();
     return result;
   });
 }

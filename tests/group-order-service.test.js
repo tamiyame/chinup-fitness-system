@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
 import { createTemplate } from '../src/services/courseService.js';
-import { createGroupOrder, sessionOccupied, BANK_INFO } from '../src/services/groupOrderService.js';
+import { createGroupOrder, sessionOccupied } from '../src/services/groupOrderService.js';
+import { getBankInfo } from '../src/services/discountService.js';
 import { ApiError } from '../src/services/registration.js';
 
 function reset() {
@@ -38,7 +39,7 @@ const o1 = createGroupOrder({ name: '甲', phone: '0997000001', paySessionIds: [
 expect('order created', () => assert(o1.orderId));
 expect('order returns lineBindCode for unbound user', () => assert(/^\d{6}$/.test(o1.lineBindCode)));
 expect('total = 2*500', () => assert.equal(o1.total, 1000));
-expect('bankInfo present', () => assert(o1.bankInfo && o1.bankInfo === BANK_INFO));
+expect('bankInfo present', () => assert(o1.bankInfo && o1.bankInfo === getBankInfo()));
 expect('expiresAt present', () => assert(typeof o1.expiresAt === 'string'));
 expect('2 pending registrations', () => {
   const c = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE order_id=? AND status='pending'").get(o1.orderId).c;

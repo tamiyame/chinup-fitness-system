@@ -3,7 +3,7 @@ import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
 import { notify, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
-import { applyDiscountTx, releaseRedemption, getOneOnOnePrice } from './discountService.js';
+import { applyDiscountTx, releaseRedemption, getOneOnOnePrice, getLineOfficialUrl } from './discountService.js';
 
 const insertBookingStmt = db.prepare(`
   INSERT INTO bookings (coach_id, member_id, start_at, end_at, note)
@@ -97,6 +97,7 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
     const user = findOrCreateUserByPhone({ phone, name });
     const r = createBookingCore({ coach, memberId: user.id, startAt, note });
     if (!user.line_user_id) r.lineBindCode = generateBindCode(user.id).code;
+    r.lineOfficialUrl = getLineOfficialUrl();
     const subtotal = getOneOnOnePrice();
     let originalAmount = subtotal, discountAmount = null, discountCode_ = null, finalAmount = subtotal;
     const applied = applyDiscountTx({ code: discountCode, phone, subtotal, kind: 'booking', refId: r.id });

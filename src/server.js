@@ -61,7 +61,7 @@ import {
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
-import { validateDiscount, getOneOnOnePrice, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting } from './services/discountService.js';
+import { validateDiscount, getOneOnOnePrice, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl } from './services/discountService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -818,14 +818,37 @@ app.patch('/api/admin/discount-codes/:id', requireAdmin, asyncHandler((req, res)
 app.delete('/api/admin/discount-codes/:id', requireAdmin, asyncHandler((req, res) => res.json(deleteDiscountCode(Number(req.params.id)))));
 
 // --- Admin: Settings ---
+function settingsPayload() {
+  return {
+    one_on_one_price: Number(getSetting('one_on_one_price') || '1500'),
+    bank_info: getBankInfo(),
+    line_official_url: getLineOfficialUrl(),
+  };
+}
 app.get('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
-  res.json({ one_on_one_price: Number(getSetting('one_on_one_price') || '1500') });
+  res.json(settingsPayload());
 }));
 app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
-  const p = Number((req.body || {}).one_on_one_price);
-  if (!Number.isInteger(p) || p < 1) return res.status(400).json({ error: 'invalid_price' });
-  setSetting('one_on_one_price', String(p));
-  res.json({ one_on_one_price: p });
+  const b = req.body || {};
+  // 先驗證所有提供的欄位，全部通過才寫入，避免部分寫入造成狀態不一致
+  const writes = [];
+  if (b.one_on_one_price !== undefined) {
+    const p = Number(b.one_on_one_price);
+    if (!Number.isInteger(p) || p < 1) return res.status(400).json({ error: 'invalid_price' });
+    writes.push(['one_on_one_price', String(p)]);
+  }
+  if (b.bank_info !== undefined) {
+    const bank = String(b.bank_info).trim();
+    if (!bank) return res.status(400).json({ error: 'invalid_bank_info' });
+    writes.push(['bank_info', bank]);
+  }
+  if (b.line_official_url !== undefined) {
+    const url = String(b.line_official_url).trim();
+    if (url && !/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'invalid_line_url' });
+    writes.push(['line_official_url', url]); // 空字串代表清除（不顯示按鈕）
+  }
+  tx(() => { for (const [k, v] of writes) setSetting(k, v); });
+  res.json(settingsPayload());
 }));
 
 const PORT = Number(process.env.PORT || 3000);

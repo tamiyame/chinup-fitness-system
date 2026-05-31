@@ -553,8 +553,12 @@ function showSuccess(result) {
   // LINE bind code
   if (result.lineBindCode) {
     const lineEl = $('success-line-box');
+    const joinBtn = result.lineOfficialUrl
+      ? `<a href="${escapeHtml(result.lineOfficialUrl)}" target="_blank" rel="noopener noreferrer" class="line-join-btn">加入官方 LINE</a>`
+      : '';
     lineEl.innerHTML = `
-      <p class="text-sm" style="color:#166534;">想收 LINE 通知？加官方帳號並貼入這組碼：</p>
+      <p class="text-sm" style="color:#166534;">想收上課提醒與通知？加入官方 LINE 並貼入這組綁定碼：</p>
+      ${joinBtn}
       <div class="line-code">${escapeHtml(result.lineBindCode)}</div>
       <p class="text-xs" style="color:#16a34a;">（15 分鐘內有效）</p>
     `;

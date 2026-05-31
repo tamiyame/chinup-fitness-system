@@ -1040,3 +1040,32 @@ details.session-row summary:hover { background: #f8faf9; }
   padding: 0 18px 16px 46px;
   color: var(--ink-soft); font-size: 14px; line-height: 1.75;
 }
+
+/* 報名成功頁：LINE 通知區（置中）+ 加入官方 LINE 按鈕 + 綁定碼 */
+.line-box {
+  text-align: center;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 14px;
+  padding: 18px 16px;
+}
+.line-join-btn {
+  display: inline-block;
+  margin: 4px 0 10px;
+  background: #06c755; color: #fff;
+  font-weight: 700; font-size: 14px;
+  padding: 9px 22px; border-radius: 9999px;
+  text-decoration: none;
+  box-shadow: 0 4px 12px -4px rgba(6,199,85,.5);
+  transition: background 150ms ease;
+}
+.line-join-btn:hover { background: #05b34c; }
+.line-code {
+  display: inline-block;
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 20px; font-weight: 700; letter-spacing: .15em;
+  color: #166534; background: #dcfce7;
+  border: 1px dashed #86efac; border-radius: 10px;
+  padding: 6px 16px;
+}

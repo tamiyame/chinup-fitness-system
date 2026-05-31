@@ -671,9 +671,13 @@ function showSuccessView(bookingResult) {
 
   let lineHtml = '';
   if (bookingResult.lineBindCode) {
+    const joinBtn = bookingResult.lineOfficialUrl
+      ? `<a href="${escapeHtml(bookingResult.lineOfficialUrl)}" target="_blank" rel="noopener noreferrer" class="line-join-btn">加入官方 LINE</a>`
+      : '';
     lineHtml = `
-      <div class="card bg-green-50 border border-green-200 mt-4 p-4 text-sm">
-        <p class="text-green-800">想收 LINE 通知？加官方帳號並貼這組碼：</p>
+      <div class="card bg-green-50 border border-green-200 mt-4 p-4 text-sm text-center">
+        <p class="text-green-800">想收上課提醒與通知？加入官方 LINE 並貼入這組綁定碼：</p>
+        ${joinBtn}
         <p class="text-xl font-bold text-green-700 my-2 tracking-widest">${escapeHtml(bookingResult.lineBindCode)}</p>
         <p class="text-green-600">（15 分鐘內有效）</p>
       </div>
