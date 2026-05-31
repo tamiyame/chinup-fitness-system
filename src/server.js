@@ -4,7 +4,7 @@ import { dirname, resolve, basename } from 'node:path';
 import { db, tx } from './db/connection.js';
 import {
   createTemplate, editTemplate, listTemplates, getTemplate,
-  listOpenSessions, listRegistrationsBySession,
+  listOpenSessions, listRegistrationsBySession, setSessionOpen,
   processDeadlines, processReminders,
 } from './services/courseService.js';
 import { ApiError } from './services/registration.js';
@@ -331,6 +331,13 @@ app.delete('/api/admin/templates/:id', requireAdmin, asyncHandler((req, res) => 
 
 app.get('/api/admin/sessions/:id/registrations', requireAdmin, asyncHandler((req, res) => {
   res.json(listRegistrationsBySession(Number(req.params.id)));
+}));
+
+// 手動開放/關閉單一場次（is_open）。關閉 → 報名頁隱藏且不可報名，現有報名不動。
+app.patch('/api/admin/sessions/:id', requireAdmin, asyncHandler((req, res) => {
+  const { is_open } = req.body || {};
+  if (typeof is_open !== 'boolean') return res.status(400).json({ error: 'invalid_is_open' });
+  res.json(setSessionOpen(Number(req.params.id), is_open));
 }));
 
 // --- Course categories ---

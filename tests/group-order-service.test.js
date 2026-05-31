@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
-import { createTemplate } from '../src/services/courseService.js';
+import { createTemplate, setSessionOpen } from '../src/services/courseService.js';
 import { createGroupOrder, sessionOccupied } from '../src/services/groupOrderService.js';
 import { getBankInfo } from '../src/services/discountService.js';
 import { ApiError } from '../src/services/registration.js';
@@ -190,3 +190,44 @@ expect('getPublicSchedule wrong name → 403', () => {
 });
 
 console.log('[group-order-service part3] done');
+
+// ── part4：單一場次手動開放/關閉 (is_open) ──
+console.log('[group-order-service part4] session is_open toggle');
+reset();
+const tplX = createTemplate({
+  name: 'OPEN班', min_capacity: 1, max_capacity: 5,
+  day_of_week: ((new Date()).getDay()+2)%7, start_time: '20:00',
+  recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(60),
+  registration_deadline_hours: 1, price_per_session: 500,
+});
+const xs = db.prepare("SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC").all(tplX.templateId);
+const pubCount = () => getPublicGroupCourses().find(t => t.id === tplX.templateId)?.sessions.length || 0;
+const before = pubCount();
+expect('public lists open sessions initially (>=2)', () => assert(before >= 2));
+
+const toggled = setSessionOpen(xs[0].id, false);
+expect('setSessionOpen(false) → is_open=0', () => assert.equal(toggled.is_open, 0));
+expect('public excludes closed session (count -1)', () => assert.equal(pubCount(), before - 1));
+expect('closed session id absent from public list', () => {
+  const t = getPublicGroupCourses().find(t => t.id === tplX.templateId);
+  assert(!t.sessions.some(s => s.id === xs[0].id));
+});
+expect('booking a closed session → 409 session_closed', () => {
+  try { createGroupOrder({ name: '關客', phone: '0997000099', paySessionIds: [xs[0].id], waitlistSessionIds: [] }); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 409); assert.equal(e.code, 'session_closed'); }
+});
+
+const reopened = setSessionOpen(xs[0].id, true);
+expect('setSessionOpen(true) → is_open=1', () => assert.equal(reopened.is_open, 1));
+expect('public re-includes reopened session', () => assert.equal(pubCount(), before));
+
+expect('setSessionOpen on non-open session → 409 session_not_toggleable', () => {
+  db.prepare("UPDATE course_sessions SET status='cancelled' WHERE id=?").run(xs[1].id);
+  try { setSessionOpen(xs[1].id, false); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 409); assert.equal(e.code, 'session_not_toggleable'); }
+});
+expect('setSessionOpen on missing session → 404', () => {
+  try { setSessionOpen(99999999, false); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 404); }
+});
+console.log('[group-order-service part4] done');

@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS course_sessions (
   end_at TEXT NOT NULL,
   registration_deadline TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','confirmed','cancelled','completed')),
+  is_open INTEGER NOT NULL DEFAULT 1,
   confirmed_count INTEGER NOT NULL DEFAULT 0,
   waitlist_count INTEGER NOT NULL DEFAULT 0,
   UNIQUE(template_id, session_date)
