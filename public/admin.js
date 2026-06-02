@@ -757,6 +757,8 @@ async function loadOneOnOnePrice() {
     const r = await api('/api/admin/settings');
     const priceInput = document.getElementById('one-on-one-price');
     if (priceInput) priceInput.value = r.one_on_one_price;
+    const price2Input = document.getElementById('one-on-two-price');
+    if (price2Input) price2Input.value = r.one_on_two_price;
     const bankInput = document.getElementById('bank-info');
     if (bankInput) bankInput.value = r.bank_info ?? '';
     const lineInput = document.getElementById('line-official-url');
@@ -775,7 +777,22 @@ document.getElementById('save-one-on-one-price')?.addEventListener('click', asyn
   }
   try {
     await api('/api/admin/settings', { method: 'PATCH', body: { one_on_one_price: price } });
-    toast(`1v1 單堂價已更新為 NT$${price}`, 'success');
+    toast(`1對1 單堂價已更新為 NT$${price}`, 'success');
+  } catch (e) {
+    toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');
+  }
+});
+
+document.getElementById('save-one-on-two-price')?.addEventListener('click', async () => {
+  const input = document.getElementById('one-on-two-price');
+  const price = Number(input?.value);
+  if (!Number.isInteger(price) || price < 1) {
+    toast('請輸入有效的金額（正整數）', 'error');
+    return;
+  }
+  try {
+    await api('/api/admin/settings', { method: 'PATCH', body: { one_on_two_price: price } });
+    toast(`1對2 單堂價已更新為 NT$${price}`, 'success');
   } catch (e) {
     toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');
   }

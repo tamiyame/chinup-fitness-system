@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   start_at TEXT NOT NULL,
   end_at TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled')),
+  session_type TEXT NOT NULL DEFAULT '1on1' CHECK (session_type IN ('1on1', '1on2')),
   cancelled_at TEXT,
   cancelled_by INTEGER REFERENCES users(id),
   cancel_reason TEXT,
@@ -213,6 +214,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT NOT NULL
 );
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('one_on_one_price', '1500');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('one_on_two_price', '2000');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('bank_info', '合作金庫 (006) 0640765-607824 戶名：許秉毅');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('line_official_url', '');
 

@@ -42,7 +42,7 @@ async function renderBookings() {
     card.innerHTML = `
       <div class="flex items-start justify-between gap-3">
         <div>
-          <div class="font-semibold">${escapeHtml(b.member_name)}</div>
+          <div class="font-semibold">${escapeHtml(b.member_name)}${b.session_type === '1on2' ? ' <span class="text-xs font-medium text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 align-middle">1對2</span>' : ''}</div>
           <div class="text-sm text-slate-600">${fmtDate(b.start_at)}</div>
           ${b.note ? `<div class="text-sm text-slate-500 mt-1">備註：${escapeHtml(b.note)}</div>` : ''}
           ${cancelled ? `<div class="text-sm text-red-500 mt-1">已取消${b.cancel_reason ? `（${escapeHtml(b.cancel_reason)}）` : ''}</div>` : ''}

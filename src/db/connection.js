@@ -147,6 +147,14 @@ addColumnIfMissing('bookings', 'original_amount', 'INTEGER');
 // is_open=0 → 該場次從報名頁隱藏且不可報名（status 維持 open，可隨時切回）。
 addColumnIfMissing('course_sessions', 'is_open', 'INTEGER NOT NULL DEFAULT 1');
 
+// ── 2026-06-02 1對1 / 1對2 課程型態 ──
+// session_type 記錄該預約是 1對1 還是 1對2，供後台對帳與教練辨識。
+// 舊資料一律視為 '1on1'（ALTER ADD COLUMN 的 DEFAULT 會填入既有列）。
+// 注意：SQLite 無法用 ALTER ADD COLUMN 附加 CHECK，故既有 DB 此欄無 DB 層 CHECK
+// （全新 DB 由 schema.js 帶 CHECK in ('1on1','1on2')）。值的正確性由 app 層把關：
+// createBookingAnon 寫入前驗證、createBooking 一律走 '1on1' 預設，無其他寫入路徑。
+addColumnIfMissing('bookings', 'session_type', "TEXT NOT NULL DEFAULT '1on1'");
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.

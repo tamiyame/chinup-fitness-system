@@ -3,11 +3,11 @@ import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
 import { notify, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
-import { applyDiscountTx, releaseRedemption, getOneOnOnePrice, getLineOfficialUrl } from './discountService.js';
+import { applyDiscountTx, releaseRedemption, getOneOnOnePriceByType, getLineOfficialUrl } from './discountService.js';
 
 const insertBookingStmt = db.prepare(`
-  INSERT INTO bookings (coach_id, member_id, start_at, end_at, note)
-  VALUES (?, ?, ?, ?, ?)
+  INSERT INTO bookings (coach_id, member_id, start_at, end_at, note, session_type)
+  VALUES (?, ?, ?, ?, ?, ?)
 `);
 
 const getBookingStmt = db.prepare('SELECT * FROM bookings WHERE id = ?');
@@ -59,11 +59,11 @@ const getMostRecentBookingWithCoachStmt = db.prepare(`
 `);
 
 // 核心建單：寫 bookings + 通知教練/會員。不碰點數。
-function createBookingCore({ coach, memberId, startAt, note }) {
+function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1' }) {
   const endAt = addMinutes(startAt, 60);
   let bookingId;
   try {
-    const info = insertBookingStmt.run(coach.id, memberId, startAt, endAt, note);
+    const info = insertBookingStmt.run(coach.id, memberId, startAt, endAt, note, sessionType);
     bookingId = info.lastInsertRowid;
   } catch (e) {
     if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
@@ -88,22 +88,24 @@ export function createBooking({ coachId, memberId, startAt, note = null }) {
   return tx(() => createBookingCore({ coach, memberId, startAt, note }));
 }
 
-export function createBookingAnon({ coachId, startAt, name, phone, note = null, discountCode = null }) {
+export function createBookingAnon({ coachId, startAt, name, phone, note = null, discountCode = null, sessionType = '1on1' }) {
   if (!coachId || !startAt) throw new ApiError(400, 'missing_fields');
+  if (sessionType !== '1on1' && sessionType !== '1on2') throw new ApiError(400, 'invalid_session_type');
   const coach = getCoachStmt.get(coachId);
   if (!coach) throw new ApiError(404, 'coach_not_found');
   if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
   return tx(() => {
     const user = findOrCreateUserByPhone({ phone, name });
-    const r = createBookingCore({ coach, memberId: user.id, startAt, note });
+    const r = createBookingCore({ coach, memberId: user.id, startAt, note, sessionType });
     if (!user.line_user_id) r.lineBindCode = generateBindCode(user.id).code;
     r.lineOfficialUrl = getLineOfficialUrl();
-    const subtotal = getOneOnOnePrice();
+    const subtotal = getOneOnOnePriceByType(sessionType);
     let originalAmount = subtotal, discountAmount = null, discountCode_ = null, finalAmount = subtotal;
     const applied = applyDiscountTx({ code: discountCode, phone, subtotal, kind: 'booking', refId: r.id });
     if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalAmount = applied.finalTotal; }
     db.prepare('UPDATE bookings SET original_amount=?, discount_amount=?, discount_code=? WHERE id=?')
       .run(originalAmount, discountAmount, discountCode_, r.id);
+    r.sessionType = sessionType;
     r.originalAmount = originalAmount; r.discountAmount = discountAmount; r.discountCode = discountCode_; r.finalAmount = finalAmount;
     return r;
   });

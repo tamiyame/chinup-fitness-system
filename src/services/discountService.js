@@ -112,6 +112,11 @@ export function setSetting(key, value) {
   db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, String(value));
 }
 export function getOneOnOnePrice() { return parseInt(getSetting('one_on_one_price') || '1500', 10); }
+export function getOneOnTwoPrice() { return parseInt(getSetting('one_on_two_price') || '2000', 10); }
+// 依課程型態取單堂價：'1on2' → 1對2 價，其餘（含 '1on1'/undefined）→ 1對1 價。
+export function getOneOnOnePriceByType(sessionType) {
+  return sessionType === '1on2' ? getOneOnTwoPrice() : getOneOnOnePrice();
+}
 
 const DEFAULT_BANK_INFO = '合作金庫 (006) 0640765-607824 戶名：許秉毅';
 export function getBankInfo() { return getSetting('bank_info') || process.env.BANK_INFO || DEFAULT_BANK_INFO; }
