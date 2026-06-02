@@ -312,12 +312,12 @@ export function getPublicSchedule({ phone, name }) {
   const now = nowLocal();
 
   const bookings = db.prepare(`
-    SELECT b.id, b.start_at, b.end_at, b.status, c.display_name AS coach_display_name
+    SELECT b.id, b.start_at, b.end_at, b.status, b.session_type, c.display_name AS coach_display_name
     FROM bookings b JOIN coaches c ON c.id = b.coach_id
     WHERE b.member_id = ? AND b.status != 'cancelled' ORDER BY b.start_at DESC
   `).all(user.id).map((b) => ({
     kind: 'booking', id: b.id, start_at: b.start_at, end_at: b.end_at,
-    status: b.status, coach_display_name: b.coach_display_name,
+    status: b.status, session_type: b.session_type, coach_display_name: b.coach_display_name,
     is_past: b.start_at < now,
     can_cancel: b.status === 'confirmed' && b.start_at > now,
   }));

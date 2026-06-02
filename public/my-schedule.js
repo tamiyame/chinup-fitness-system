@@ -208,7 +208,7 @@ function cancelButton(item) {
 
 function cardHtml(item) {
   const kindPill = item.kind === 'booking'
-    ? '<span class="pill-kind pill-1on1">🏋️ 一對一</span>'
+    ? `<span class="pill-kind pill-1on1">🏋️ ${item.session_type === '1on2' ? '一對二' : '一對一'}</span>`
     : '<span class="pill-kind pill-group">👥 團課</span>';
 
   const title = item.kind === 'booking'

@@ -61,7 +61,7 @@ import {
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
-import { validateDiscount, getOneOnOnePrice, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl } from './services/discountService.js';
+import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl } from './services/discountService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -608,14 +608,19 @@ app.get('/api/public/group-courses', asyncHandler((req, res) => {
 }));
 
 app.get('/api/public/one-on-one-price', asyncHandler((req, res) => {
-  res.json({ price: getOneOnOnePrice() });
+  // price 維持向後相容（= 1對1 單堂價）；另回傳 1對1/1對2 兩種單堂價供前端切換。
+  res.json({ price: getOneOnOnePrice(), oneOnOnePrice: getOneOnOnePrice(), oneOnTwoPrice: getOneOnTwoPrice() });
 }));
 
 app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
-  const { code, phone, kind, sessionIds } = req.body || {};
+  const { code, phone, kind, sessionIds, sessionType } = req.body || {};
   let subtotal;
   if (kind === 'one_on_one') {
-    subtotal = getOneOnOnePrice();
+    // 與 /api/public/bookings 一致：非法 sessionType 直接擋下，避免報出 1對1 價、送出時才失敗
+    if (sessionType != null && sessionType !== '1on1' && sessionType !== '1on2') {
+      return res.status(400).json({ error: 'invalid_session_type' });
+    }
+    subtotal = getOneOnOnePriceByType(sessionType);
   } else {
     // group：由 sessionIds 即時加總付款場次單價（server 權威）
     const ids = (sessionIds || []).map(Number);
@@ -630,8 +635,8 @@ app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
 }));
 
 app.post('/api/public/bookings', asyncHandler((req, res) => {
-  const { coachId, startAt, name, phone, note, discountCode } = req.body || {};
-  const r = svcCreateBookingAnon({ coachId: Number(coachId), startAt, name, phone, note: note || null, discountCode: discountCode || null });
+  const { coachId, startAt, name, phone, note, discountCode, sessionType } = req.body || {};
+  const r = svcCreateBookingAnon({ coachId: Number(coachId), startAt, name, phone, note: note || null, discountCode: discountCode || null, sessionType: sessionType || '1on1' });
   res.status(201).json(r);
 }));
 
@@ -828,6 +833,7 @@ app.delete('/api/admin/discount-codes/:id', requireAdmin, asyncHandler((req, res
 function settingsPayload() {
   return {
     one_on_one_price: Number(getSetting('one_on_one_price') || '1500'),
+    one_on_two_price: Number(getSetting('one_on_two_price') || '2000'),
     bank_info: getBankInfo(),
     line_official_url: getLineOfficialUrl(),
   };
@@ -843,6 +849,11 @@ app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
     const p = Number(b.one_on_one_price);
     if (!Number.isInteger(p) || p < 1) return res.status(400).json({ error: 'invalid_price' });
     writes.push(['one_on_one_price', String(p)]);
+  }
+  if (b.one_on_two_price !== undefined) {
+    const p = Number(b.one_on_two_price);
+    if (!Number.isInteger(p) || p < 1) return res.status(400).json({ error: 'invalid_price' });
+    writes.push(['one_on_two_price', String(p)]);
   }
   if (b.bank_info !== undefined) {
     const bank = String(b.bank_info).trim();

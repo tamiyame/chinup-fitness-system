@@ -12,16 +12,21 @@ function show(name) {
 let currentCoach = null;
 let weekOffset = 0;
 
-// ── 1v1 price ────────────────────────────────────────────────────────────────
-let oneOnOnePrice = null;
+// ── 1v1 price（1對1 / 1對2 兩種單堂價）─────────────────────────────────────────
+let priceByType = { '1on1': null, '1on2': null };
 (async () => {
   try {
     const res = await api('/api/public/one-on-one-price');
-    oneOnOnePrice = res.price;
+    priceByType = {
+      '1on1': res.oneOnOnePrice ?? res.price ?? null,
+      '1on2': res.oneOnTwoPrice ?? null,
+    };
   } catch (e) {
     // price display will be suppressed if load fails
   }
 })();
+
+const SESSION_TYPE_LABELS = { '1on1': '1對1', '1on2': '1對2' };
 
 // --- Coach-list accordion + slot cache -------------------------------------
 
@@ -456,11 +461,56 @@ let modalCoach = null;
 let modalSlot = null;
 // Discount state: null or { code, discountAmount, finalTotal }
 let modalAppliedDiscount = null;
+// '1on1' | '1on2'，預設 1對1
+let modalSessionType = '1on1';
+
+const SESSION_TYPE_ACTIVE = ['bg-sky-500', 'text-white', 'border-sky-500'];
+const SESSION_TYPE_INACTIVE = ['bg-white', 'text-slate-700', 'border-slate-300', 'hover:border-sky-400'];
+
+// 更新單堂價顯示（依目前選的課程型態）。價格載入失敗則隱藏整列。
+function refreshModalPrice() {
+  const priceRow = $('modal-price-row');
+  const priceLabel = $('modal-price-label');
+  const price = priceByType[modalSessionType];
+  if (price != null) {
+    priceLabel.textContent = `${SESSION_TYPE_LABELS[modalSessionType]} 單堂 $${price.toLocaleString()}`;
+    priceRow.classList.remove('hidden');
+  } else {
+    priceRow.classList.add('hidden');
+  }
+}
+
+// 套用選取按鈕樣式（active / inactive）。
+function refreshSessionTypeButtons() {
+  for (const btn of document.querySelectorAll('#modal-session-type .session-type-btn')) {
+    const active = btn.dataset.type === modalSessionType;
+    btn.classList.remove(...SESSION_TYPE_ACTIVE, ...SESSION_TYPE_INACTIVE);
+    btn.classList.add(...(active ? SESSION_TYPE_ACTIVE : SESSION_TYPE_INACTIVE));
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+}
+
+// 切換課程型態：更新價格、按鈕樣式，並清掉已套用的折扣（小計改變 → 折後金額失效）。
+function setSessionType(type) {
+  if (type !== '1on1' && type !== '1on2') return;
+  modalSessionType = type;
+  refreshSessionTypeButtons();
+  refreshModalPrice();
+  // 型態改變 → 之前算出的折扣金額不再正確，需重新套用
+  if (modalAppliedDiscount) {
+    modalAppliedDiscount = null;
+    const msgEl = $('modal-discount-msg');
+    msgEl.textContent = '課程型態已變更，請重新套用折扣碼';
+    msgEl.style.color = '#b45309';
+    msgEl.classList.remove('hidden');
+  }
+}
 
 function openBookingModal(coach, slotIso) {
   modalCoach = coach;
   modalSlot = slotIso;
   modalAppliedDiscount = null;
+  modalSessionType = '1on1';
 
   $('modal-coach-name').textContent = coach.display_name;
   $('modal-slot-time').textContent = fmtDate(slotIso) + '（60 分鐘）';
@@ -477,15 +527,9 @@ function openBookingModal(coach, slotIso) {
   $('modal-discount-msg').textContent = '';
   $('modal-discount-msg').classList.add('hidden');
 
-  // Show single-session price
-  const priceRow = $('modal-price-row');
-  const priceLabel = $('modal-price-label');
-  if (oneOnOnePrice != null) {
-    priceLabel.textContent = `單堂 $${oneOnOnePrice.toLocaleString()}`;
-    priceRow.classList.remove('hidden');
-  } else {
-    priceRow.classList.add('hidden');
-  }
+  // 課程型態（預設 1對1）+ 單堂價
+  refreshSessionTypeButtons();
+  refreshModalPrice();
 
   $('booking-modal').classList.remove('hidden');
   $('modal-name').focus();
@@ -504,6 +548,12 @@ $('booking-modal').addEventListener('click', (ev) => {
 });
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') closeBookingModal();
+});
+
+// ── 課程型態切換（1對1 / 1對2）──────────────────────────────────────────────────
+$('modal-session-type').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('.session-type-btn');
+  if (btn) setSessionType(btn.dataset.type);
 });
 
 // ── Discount apply handler ────────────────────────────────────────────────────
@@ -536,7 +586,7 @@ $('modal-apply-discount').addEventListener('click', async () => {
   try {
     const result = await api('/api/public/discounts/validate', {
       method: 'POST',
-      body: { kind: 'one_on_one', code, phone: rawPhone },
+      body: { kind: 'one_on_one', code, phone: rawPhone, sessionType: modalSessionType },
     });
     modalAppliedDiscount = { code: code.toUpperCase(), discountAmount: result.discount_amount, finalTotal: result.final_total };
     msgEl.textContent = `折扣套用成功：折後現場應付 $${result.final_total.toLocaleString()}`;
@@ -600,20 +650,22 @@ $('modal-submit-btn').addEventListener('click', async () => {
   btn.textContent = '送出中…';
 
   try {
-    const bookingBody = { coachId: modalCoach.id, startAt: modalSlot, name: nameVal, phone: phoneNormalized };
+    const bookingBody = { coachId: modalCoach.id, startAt: modalSlot, name: nameVal, phone: phoneNormalized, sessionType: modalSessionType };
     if (modalAppliedDiscount) bookingBody.discountCode = modalAppliedDiscount.code;
     const result = await api('/api/public/bookings', {
       method: 'POST',
       body: bookingBody,
     });
-    // Success
+    // Success — 先存下 modal 狀態，closeBookingModal() 會把 modalCoach/modalSlot 清成 null
+    const bookedCoach = modalCoach;
+    const bookedSlot = modalSlot;
     closeBookingModal();
-    showSuccessView(result);
+    showSuccessView(result, bookedCoach, bookedSlot);
 
     // Remove the booked slot from the detail grid if visible
-    removeSlotFromGrid(modalSlot);
+    removeSlotFromGrid(bookedSlot);
     // Invalidate accordion cache for this coach
-    slotCacheByCoach.delete(modalCoach.id);
+    slotCacheByCoach.delete(bookedCoach.id);
   } catch (e) {
     btn.disabled = false;
     btn.textContent = '確認預約';
@@ -664,10 +716,10 @@ function removeSlotFromGrid(slotIso) {
 
 // --- Success view ----------------------------------------------------------
 
-function showSuccessView(bookingResult) {
+function showSuccessView(bookingResult, coach = modalCoach, slot = modalSlot) {
   const successEl = $('view-success');
-  const coachName = escapeHtml(modalCoach?.display_name ?? '');
-  const slotTime = escapeHtml(fmtDate(modalSlot ?? bookingResult.startAt));
+  const coachName = escapeHtml(coach?.display_name ?? '');
+  const slotTime = escapeHtml(fmtDate(slot ?? bookingResult.startAt));
 
   let lineHtml = '';
   if (bookingResult.lineBindCode) {
@@ -709,7 +761,8 @@ function showSuccessView(bookingResult) {
       <h1 class="page-title">預約成功！</h1>
       <div class="card mt-4 mb-2 text-left">
         <div class="mb-2"><span class="text-slate-500">教練</span><br><strong>${coachName}</strong></div>
-        <div><span class="text-slate-500">時間</span><br><strong>${slotTime}</strong></div>
+        <div class="mb-2"><span class="text-slate-500">時間</span><br><strong>${slotTime}</strong></div>
+        <div><span class="text-slate-500">課程型態</span><br><strong>${escapeHtml(SESSION_TYPE_LABELS[bookingResult.sessionType] ?? '1對1')}</strong></div>
         ${paymentHtml}
       </div>
       ${lineHtml}

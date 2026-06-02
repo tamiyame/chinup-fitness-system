@@ -156,12 +156,18 @@
       <h2 class="section-title">折扣碼管理</h2>
     </div>
 
-    <!-- 1v1 single-session price -->
+    <!-- 1對1 / 1對2 single-session price -->
     <div class="card mb-4">
-      <div class="flex items-center gap-3 flex-wrap">
-        <label class="form-label mb-0">1v1 單堂價（NT$）</label>
-        <input id="one-on-one-price" type="number" min="0" step="1" class="form-input" style="width:140px;" placeholder="1500">
+      <div class="font-semibold mb-3">1對1 / 1對2 單堂價</div>
+      <div class="flex items-center gap-3 flex-wrap mb-3">
+        <label class="form-label mb-0" style="width:120px;">1對1（NT$）</label>
+        <input id="one-on-one-price" type="number" min="1" step="1" class="form-input" style="width:140px;" placeholder="1500">
         <button id="save-one-on-one-price" class="btn btn-primary btn-sm">儲存</button>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <label class="form-label mb-0" style="width:120px;">1對2（NT$）</label>
+        <input id="one-on-two-price" type="number" min="1" step="1" class="form-input" style="width:140px;" placeholder="2000">
+        <button id="save-one-on-two-price" class="btn btn-primary btn-sm">儲存</button>
       </div>
     </div>
 
