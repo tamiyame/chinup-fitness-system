@@ -475,6 +475,9 @@ $('booking-form').addEventListener('submit', async (e) => {
     } else if (err.status === 400 && err.data?.error === 'no_sessions_selected') {
       errEl.textContent = '請至少勾選一個場次';
       errEl.classList.remove('hidden');
+    } else if (err.data?.error === 'phone_unavailable') {
+      errEl.textContent = '此電話號碼目前無法用於線上報名，請改用其他號碼或現場洽詢櫃台。';
+      errEl.classList.remove('hidden');
     } else if (err.status === 409 && err.data?.error === 'already_registered') {
       const sid = err.data?.detail?.sessionId;
       let label = `場次 #${sid}`;

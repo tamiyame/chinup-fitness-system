@@ -433,7 +433,17 @@ app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => 
     if (ownerCount <= 1) return res.status(400).json({ error: 'last_owner' });
   }
 
-  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
+  // 角色轉換時清理身分殘留：
+  // - 員工降級為一般會員：清電話 + LINE 綁定 + 綁定碼，使該帳號不再能被匿名預約以電話重用
+  //   （否則它會重新落入 role='user' 分支被陌生人接管通知）。
+  // - 一般會員升級為員工：清掉尚未消費的綁定碼（保留既有 LINE 綁定，教練仍需收通知）。
+  if (target.role !== 'user' && role === 'user') {
+    db.prepare("UPDATE users SET role = 'user', phone = NULL, line_user_id = NULL, line_bind_code = NULL, line_bind_expires_at = NULL WHERE id = ?").run(targetId);
+  } else if (target.role === 'user' && role !== 'user') {
+    db.prepare('UPDATE users SET role = ?, line_bind_code = NULL, line_bind_expires_at = NULL WHERE id = ?').run(role, targetId);
+  } else {
+    db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
+  }
   res.json({ ok: true, id: targetId, role });
 }));
 
@@ -462,7 +472,8 @@ app.post('/api/admin/coaches', requireAdmin, asyncHandler((req, res) => {
   if (svcGetCoachByUser(user.id)) return res.status(409).json({ error: 'coach_exists' });
 
   tx(() => {
-    db.prepare("UPDATE users SET role = 'coach' WHERE id = ?").run(user.id);
+    // 升級為教練：清掉尚未消費的綁定碼（保留既有 LINE 綁定，教練仍需收通知）。
+    db.prepare("UPDATE users SET role = 'coach', line_bind_code = NULL, line_bind_expires_at = NULL WHERE id = ?").run(user.id);
     svcCreateCoach({
       userId: user.id,
       displayName: display_name || user.name,
@@ -494,7 +505,9 @@ app.delete('/api/admin/coaches/:id', requireAdmin, asyncHandler((req, res) => {
 
   tx(() => {
     svcSetCoachActive(id, false);
-    db.prepare("UPDATE users SET role = 'user' WHERE id = ?").run(coach.user_id);
+    // 移除教練＝降級為一般會員：一併清掉身分殘留（電話/LINE/綁定碼），
+    // 否則此帳號會重新落入「role='user' 可被匿名預約以電話重用」分支而被接管。
+    db.prepare("UPDATE users SET role = 'user', phone = NULL, line_user_id = NULL, line_bind_code = NULL, line_bind_expires_at = NULL WHERE id = ?").run(coach.user_id);
   });
   res.json({ ok: true, demoted_user_id: coach.user_id });
 }));

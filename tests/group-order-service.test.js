@@ -231,3 +231,23 @@ expect('setSessionOpen on missing session → 404', () => {
   catch (e) { assert.equal(e.status, 404); }
 });
 console.log('[group-order-service part4] done');
+
+// part5 安全：員工帳號的電話不可被匿名報名重用（與 1對1 同一越權綁定修補）
+console.log('[group-order-service part5] staff-phone guard');
+db.prepare("INSERT INTO users (name, phone, role) VALUES ('Staff X', '0997099999', 'coach')").run();
+expect('group order with a staff phone → 409 phone_unavailable', () => {
+  try {
+    createGroupOrder({ name: '冒用者', phone: '0997099999', paySessionIds: [s2], waitlistSessionIds: [] });
+    assert.fail('no throw');
+  } catch (e) { assert.equal(e.status, 409); assert.equal(e.code, 'phone_unavailable'); }
+});
+expect('no order/registration written for staff phone (tx rolled back)', () => {
+  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM group_orders WHERE customer_phone='0997099999'").get().c, 0);
+  const sid = db.prepare("SELECT id FROM users WHERE phone='0997099999'").get().id;
+  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE user_id=?").get(sid).c, 0);
+});
+expect('staff account got no bind code', () => {
+  const u = db.prepare("SELECT line_bind_code FROM users WHERE phone='0997099999'").get();
+  assert.equal(u.line_bind_code, null);
+});
+console.log('[group-order-service part5] done');

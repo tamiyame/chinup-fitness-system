@@ -97,7 +97,8 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
   return tx(() => {
     const user = findOrCreateUserByPhone({ phone, name });
     const r = createBookingCore({ coach, memberId: user.id, startAt, note, sessionType });
-    if (!user.line_user_id) r.lineBindCode = generateBindCode(user.id).code;
+    // 只對一般會員發 LINE 綁定碼（縱深防禦：絕不把員工帳號的綁定碼交給匿名預約者）
+    if (user.role === 'user' && !user.line_user_id) r.lineBindCode = generateBindCode(user.id).code;
     r.lineOfficialUrl = getLineOfficialUrl();
     const subtotal = getOneOnOnePriceByType(sessionType);
     let originalAmount = subtotal, discountAmount = null, discountCode_ = null, finalAmount = subtotal;

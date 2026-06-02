@@ -121,7 +121,8 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
 
     const result = { orderId, total: finalTotal, originalAmount, discountAmount, discountCode: discountCode_,
       bankInfo: getBankInfo(), expiresAt: order.expires_at, waitlisted, memberId: user.id };
-    if (!user.line_user_id) result.lineBindCode = generateBindCode(user.id).code;
+    // 只對一般會員發 LINE 綁定碼（縱深防禦：絕不把員工帳號的綁定碼交給匿名預約者）
+    if (user.role === 'user' && !user.line_user_id) result.lineBindCode = generateBindCode(user.id).code;
     result.lineOfficialUrl = getLineOfficialUrl();
     return result;
   });

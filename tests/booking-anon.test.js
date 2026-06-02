@@ -100,4 +100,22 @@ expect('invalid sessionType creates no user', () => {
   assert.equal(u, undefined);
 });
 
+// ── 安全：匿名預約撞到「員工帳號的電話」→ 擋下、不外洩綁定碼（越權綁定修補）──
+// 模擬「有電話的會員被升級成教練」：一個帶 phone 的 coach-role 帳號。
+db.prepare("INSERT INTO users (name,email,phone,password_hash,role) VALUES ('Staff Coach','anon-bk-staff@x.com','0998777888',?, 'coach')").run(hashPassword('x'));
+expect('book with a staff phone → 409 phone_unavailable', () => {
+  try {
+    createBookingAnon({ coachId: coach.id, startAt: futureLocal(9), name: '冒用者', phone: '0998777888' });
+    assert.fail('no throw');
+  } catch (e) { assert.equal(e.status, 409); assert.equal(e.code, 'phone_unavailable'); }
+});
+expect('staff account is NOT turned into a booking member', () => {
+  const c = db.prepare("SELECT COUNT(*) AS c FROM bookings b JOIN users u ON u.id=b.member_id WHERE u.phone='0998777888'").get().c;
+  assert.equal(c, 0);
+});
+expect('staff account did NOT get a bind code issued', () => {
+  const u = db.prepare("SELECT line_bind_code FROM users WHERE phone='0998777888'").get();
+  assert.equal(u.line_bind_code, null);
+});
+
 console.log('[booking-anon test] done');

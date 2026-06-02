@@ -677,6 +677,8 @@ $('modal-submit-btn').addEventListener('click', async () => {
       slotCacheByCoach.delete(modalCoach?.id);
     } else if (errCode === 'invalid_phone') {
       $('modal-phone-err').textContent = e.data?.detail || '電話格式不正確';
+    } else if (errCode === 'phone_unavailable') {
+      $('modal-phone-err').textContent = '此電話號碼目前無法用於線上預約，請改用其他號碼或現場洽詢櫃台。';
     } else if (errCode === 'missing_name') {
       $('modal-name-err').textContent = '請輸入姓名';
     } else if (errCode === 'missing_phone') {

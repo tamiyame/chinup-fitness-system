@@ -21,7 +21,14 @@ export function findOrCreateUserByPhone({ phone, name }) {
   if (!name || !name.trim()) throw new ApiError(400, 'missing_name');
   return tx(() => {
     const existing = getByPhone.get(phone);
-    if (existing) return existing;
+    if (existing) {
+      // 安全：此電話若已屬於員工帳號（教練/管理者/owner），不可被匿名預約重用。
+      // 否則預約會掛到員工帳號，且成功頁會把「該員工帳號的 LINE 綁定碼」外洩給
+      // 預約者，造成越權綁定（預約者把自己的 LINE 綁到教練帳號 → 劫持教練通知）。
+      // 一般會員（role='user'）照常以電話重用既有帳號。
+      if (existing.role !== 'user') throw new ApiError(409, 'phone_unavailable');
+      return existing;
+    }
     try {
       const info = insertUser.run(name.trim(), phone);
       return getById.get(info.lastInsertRowid);
