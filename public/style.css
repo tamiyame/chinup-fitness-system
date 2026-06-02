@@ -168,6 +168,9 @@ body {
 .btn-primary {
   background: var(--brand-600); color: white;
   box-shadow: var(--shadow-brand);
+  /* 與 .btn-secondary 對稱：未搭配基底 .btn 使用時（如預約 modal 的「確認預約」、
+     成功頁按鈕）也要有圓角，避免直角。搭配 .btn 時為相同值、無視覺變化。 */
+  border-radius: var(--radius-sm);
 }
 .btn-primary:hover { background: var(--brand-700); transform: translateY(-1px); }
 .btn-primary:disabled { background: #cbd5e1; color: #64748b; box-shadow: none; cursor: not-allowed; transform: none; }
