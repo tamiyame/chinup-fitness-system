@@ -432,7 +432,7 @@ async function loadUsers() {
         <thead><tr>
           <th style="width:60px;">ID</th>
           <th>姓名</th>
-          <th>Email</th>
+          <th>Email / 手機</th>
           <th>登入方式</th>
           <th>角色</th>
           <th>加入時間</th>
@@ -487,7 +487,10 @@ function renderUserRow(r, canEdit) {
     <tr>
       <td class="subtle">#${r.id}</td>
       <td><span class="font-medium">${escapeHtml(r.name)}</span></td>
-      <td class="subtle">${escapeHtml(r.email)}</td>
+      <td class="subtle">
+        <div>${escapeHtml(r.email)}</div>
+        <div style="font-size:12px;opacity:0.7;margin-top:2px;">${escapeHtml(r.phone)}</div>
+      </td>
       <td>${loginBadge}</td>
       <td>${roleCell}</td>
       <td class="subtle">${fmtDate(r.created_at)}</td>
