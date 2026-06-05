@@ -19,6 +19,7 @@ const occupiedStmt = db.prepare(`
   FROM registrations r
   LEFT JOIN group_orders o ON o.id = r.order_id
   WHERE r.session_id = ?
+    AND r.on_leave = 0
     AND ( r.status = 'confirmed'
           OR (r.status = 'pending' AND o.id IS NOT NULL AND o.expires_at >= ?) )
 `);
@@ -249,6 +250,34 @@ export function cancelRegistrationPublic({ registrationId, phone, name }) {
   });
 }
 
+/**
+ * 團課「今日請假」：已付款(confirmed)會員針對某場次請假。
+ * 標記 on_leave=1（status 維持 confirmed、不退款、不取消訂單），釋出名額並遞補候補，通知該堂課教練。
+ * 不可逆（v1）。僅開課前可請假。
+ */
+export function takeLeavePublic({ registrationId, phone, name }) {
+  return tx(() => {
+    const reg = getReg.get(registrationId);
+    if (!reg) throw new ApiError(404, 'registration_not_found');
+    const user = getUserByPhone.get(phone);
+    if (!ownerMatches(user, phone, name) || user.id !== reg.user_id) throw new ApiError(403, 'forbidden');
+    if (reg.status !== 'confirmed') throw new ApiError(409, 'not_confirmed');   // pending 走放棄、waitlisted 走取消
+    if (reg.on_leave) throw new ApiError(409, 'already_on_leave');
+    const session = getSession.get(reg.session_id);
+    if (!session || session.status === 'cancelled') throw new ApiError(409, 'session_unavailable');
+    if (nowLocal() >= session.start_at) throw new ApiError(409, 'session_started');  // 僅開課前可請假
+    const tpl = getTemplate.get(session.template_id);
+    // 標記請假：保留 confirmed、不退款、不取消訂單；on_leave=1 後不再佔名額。
+    db.prepare('UPDATE registrations SET on_leave = 1 WHERE id = ?').run(registrationId);
+    // 釋名額 → 遞補候補（沿用既有流程，會發候補遞補通知 + 教練遞補通知）
+    promoteWaitlist(reg.session_id);
+    // 通知該堂課教練
+    notifyCourseCoach({ coachId: session.coach_id, sessionId: session.id, type: 'course_member_leave_coach',
+      vars: { member_name: user.name, course_name: tpl.name, start_at: session.start_at } });
+    return { ok: true };
+  });
+}
+
 const getWaitQueue = db.prepare(
   "SELECT * FROM registrations WHERE session_id=? AND status='waitlisted' ORDER BY registered_at ASC, id ASC"
 );
@@ -352,7 +381,7 @@ export function getPublicSchedule({ phone, name }) {
   }));
 
   const regs = db.prepare(`
-    SELECT r.id, r.status, r.amount_due, r.order_id,
+    SELECT r.id, r.status, r.amount_due, r.order_id, r.on_leave,
            s.id AS session_id, s.start_at, s.end_at, s.status AS session_status,
            t.name AS course_name, o.status AS order_status, o.expires_at AS order_expires_at,
            o.total_amount, o.id AS oid,
@@ -369,13 +398,15 @@ export function getPublicSchedule({ phone, name }) {
     course_name: r.course_name, session_status: r.session_status,
     order_id: r.order_id, order_status: r.order_status, order_expires_at: r.order_expires_at,
     amount_due: r.amount_due, is_past: r.start_at < now,
-    can_cancel: ['confirmed', 'waitlisted'].includes(r.status) && r.session_status === 'open' && r.start_at > now,
+    on_leave: !!r.on_leave,
+    can_cancel: ['confirmed', 'waitlisted'].includes(r.status) && !r.on_leave && r.session_status === 'open' && r.start_at > now,
+    can_leave: r.status === 'confirmed' && !r.on_leave && r.session_status === 'open' && r.start_at > now,
     order_total: r.order_total, order_discount: r.order_discount,
   }));
 
-  // 剩堂數 = 已付款(confirmed) 且未上(start_at>now)
+  // 剩堂數 = 已付款(confirmed) 且未上(start_at>now)；請假(on_leave)不計入
   const one_on_one_remaining = bookings.filter((b) => b.status === 'confirmed' && !b.is_past).length;
-  const group_remaining = regs.filter((r) => r.status === 'confirmed' && !r.is_past).length;
+  const group_remaining = regs.filter((r) => r.status === 'confirmed' && !r.is_past && !r.on_leave).length;
 
   const items = [...bookings, ...regs].sort((a, b) => b.start_at.localeCompare(a.start_at));
   return {

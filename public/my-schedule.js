@@ -144,6 +144,9 @@ function resolveStatus(item) {
     }
     return { label: '待付款', cls: 'badge-waitlisted' };
   }
+  if (item.on_leave) {
+    return { label: '請假', cls: 'badge-completed' };
+  }
   const labels = {
     confirmed:  '已確認',
     waitlisted: '候補中',
@@ -191,6 +194,13 @@ function cancelButton(item) {
       class="cancel-btn btn btn-danger btn-sm"
       data-kind="group-order"
       data-order-id="${item.order_id}">放棄此訂單</button>`;
+  }
+  // 已付款團課 → 今日請假（標記請假、釋名額、不退款、不取消訂單）
+  if (item.kind === 'registration' && item.can_leave) {
+    return `<button
+      class="cancel-btn btn btn-danger btn-sm"
+      data-kind="leave"
+      data-id="${item.id}">今日請假</button>`;
   }
   if (!item.can_cancel) return '';
   if (item.kind === 'booking') {
@@ -308,33 +318,48 @@ function render() {
 // ── Cancel ───────────────────────────────────────────────────────────────────
 
 async function handleCancel(btn) {
-  if (!confirm('確定要取消嗎？')) return;
   const kind    = btn.dataset.kind;
   const id      = btn.dataset.id;
   const orderId = btn.dataset.orderId;
+  const isLeave = kind === 'leave';
 
-  let url;
+  const confirmMsg = isLeave
+    ? '確定要請假嗎？此堂將標為「請假」、不退費，名額會釋出給候補。'
+    : '確定要取消嗎？';
+  if (!confirm(confirmMsg)) return;
+
+  let url, method = 'DELETE';
   if (kind === 'booking') {
     url = `/api/public/bookings/${id}`;
   } else if (kind === 'registration') {
     url = `/api/public/registrations/${id}`;
   } else if (kind === 'group-order') {
     url = `/api/public/group-orders/${orderId}`;
+  } else if (kind === 'leave') {
+    url = `/api/public/registrations/${id}/leave`;
+    method = 'POST';
   } else {
-    toast('未知取消類型', 'error');
+    toast('未知操作類型', 'error');
     return;
   }
 
   try {
-    await api(url, {
-      method: 'DELETE',
-      body: state.creds,
-    });
-    toast('已取消', 'success');
+    await api(url, { method, body: state.creds });
+    toast(isLeave ? '已請假' : '已取消', 'success');
     // Re-run lookup to refresh
     await doLookup(state.creds.phone, state.creds.name);
   } catch (e) {
-    toast(`取消失敗：${e.message}`, 'error');
+    if (isLeave) {
+      const m = {
+        session_started: '課程已開始，無法請假',
+        not_confirmed: '此項目目前無法請假',
+        already_on_leave: '此堂已請假',
+        forbidden: '驗證失敗，請重新查詢',
+      };
+      toast(m[e.data?.error] || `請假失敗：${e.message}`, 'error');
+    } else {
+      toast(`取消失敗：${e.message}`, 'error');
+    }
   }
 }
 

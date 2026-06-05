@@ -170,6 +170,12 @@ if (!csCols.includes('coach_id')) {
   console.log('[migrate] course_sessions.coach_id added + backfilled from templates');
 }
 
+// ── 2026-06-05 團課「今日請假」──
+// registrations.on_leave：已付款(confirmed)會員針對某場次請假的標記。
+// on_leave=1 的報名不佔名額（occupiedStmt / processDeadlines 皆排除），等同釋出座位。
+// 不退款、不取消訂單；status 維持 'confirmed'（避免動到 status 的 CHECK 約束）。
+addColumnIfMissing('registrations', 'on_leave', 'INTEGER NOT NULL DEFAULT 0');
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.

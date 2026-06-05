@@ -89,6 +89,10 @@ const TEMPLATES = {
     subject: '會員取消報名 - {{course_name}}',
     body: '🚫 {{member_name}} 取消了你帶的「{{course_name}}」（{{start_at}}）報名。',
   },
+  course_member_leave_coach: {
+    subject: '會員請假 - {{course_name}}',
+    body: '🏖️ {{member_name}} 請假，不會出席你帶的「{{course_name}}」（{{start_at}}）。',
+  },
   course_confirmed_coach: {
     subject: '課程成班 - {{course_name}}',
     body: '✅ 你帶的「{{course_name}}」（{{start_at}}）已成班，共 {{count}} 人。',
