@@ -21,13 +21,23 @@ export function findOrCreateUserByPhone({ phone, name }) {
   if (!name || !name.trim()) throw new ApiError(400, 'missing_name');
   return tx(() => {
     const existing = getByPhone.get(phone);
-    if (existing) return existing;
+    if (existing) {
+      // 安全：此電話若已屬於員工帳號（coach/admin/owner），不可被公開預約重用——
+      // 否則預約會掛到員工帳號、且成功頁外洩其 LINE 綁定碼（帳號接管 / IDOR）。
+      // 身份在「建立預約」時只比電話、姓名被忽略，故必須在此擋下。
+      if (existing.role !== 'user') throw new ApiError(409, 'phone_unavailable');
+      return existing;
+    }
     try {
       const info = insertUser.run(name.trim(), phone);
       return getById.get(info.lastInsertRowid);
     } catch (e) {
-      // 並發下另一請求先插了同電話 → 重查
-      if (String(e.message).includes('UNIQUE')) return getByPhone.get(phone);
+      // 並發下另一請求先插了同電話 → 重查（同樣套用員工守門）
+      if (String(e.message).includes('UNIQUE')) {
+        const u = getByPhone.get(phone);
+        if (u && u.role !== 'user') throw new ApiError(409, 'phone_unavailable');
+        return u;
+      }
       throw e;
     }
   });
