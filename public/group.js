@@ -484,6 +484,9 @@ $('booking-form').addEventListener('submit', async (e) => {
       }
       errEl.textContent = `您已報名過此場次：${label}`;
       errEl.classList.remove('hidden');
+    } else if (err.status === 409 && err.data?.error === 'phone_unavailable') {
+      errEl.textContent = '此電話號碼無法用於線上報名，請確認號碼是否正確。';
+      errEl.classList.remove('hidden');
     } else {
       errEl.textContent = `送出失敗：${escapeHtml(err.message)}`;
       errEl.classList.remove('hidden');

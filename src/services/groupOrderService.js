@@ -126,7 +126,8 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
 
     const result = { orderId, total: finalTotal, originalAmount, discountAmount, discountCode: discountCode_,
       bankInfo: getBankInfo(), expiresAt: order.expires_at, waitlisted, memberId: user.id };
-    if (!user.line_user_id) result.lineBindCode = generateBindCode(user.id).code;
+    // 綁定碼只發給一般會員（縱深防禦：Fix A 已擋員工電話，這裡再保險一次）。
+    if (user.role === 'user' && !user.line_user_id) result.lineBindCode = generateBindCode(user.id).code;
     result.lineOfficialUrl = getLineOfficialUrl();
     return result;
   });

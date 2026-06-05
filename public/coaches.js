@@ -681,6 +681,8 @@ $('modal-submit-btn').addEventListener('click', async () => {
       $('modal-name-err').textContent = '請輸入姓名';
     } else if (errCode === 'missing_phone') {
       $('modal-phone-err').textContent = '請輸入電話';
+    } else if (errCode === 'phone_unavailable') {
+      $('modal-phone-err').textContent = '此電話號碼無法用於線上預約，請確認號碼是否正確。';
     } else if (errCode === 'coach_not_found' || errCode === 'coach_inactive') {
       $('modal-general-err').textContent = '教練目前無法預約，請重新整理頁面。';
     } else {
