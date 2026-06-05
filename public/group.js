@@ -188,7 +188,7 @@ function renderTemplate(tpl) {
           <span class="badge badge-open" style="font-size:11px;margin-left:6px;">${escapeHtml(priceLabel)}</span>
         </h3>
         <p>${escapeHtml(tpl.description || '')}</p>
-        <p class="course-meta">⏱ ${tpl.duration_minutes} 分鐘・👥 ${tpl.min_capacity}–${tpl.max_capacity} 人</p>
+        <p class="course-meta">⏱ ${tpl.duration_minutes} 分鐘・👥 ${tpl.min_capacity}–${tpl.max_capacity} 人${tpl.coach_name ? `・🧑‍🏫 教練 ${escapeHtml(tpl.coach_name)}` : ''}</p>
       </div>
       ${chevron}
     </summary>
