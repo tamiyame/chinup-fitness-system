@@ -155,6 +155,12 @@ addColumnIfMissing('course_sessions', 'is_open', 'INTEGER NOT NULL DEFAULT 1');
 // createBookingAnon 寫入前驗證、createBooking 一律走 '1on1' 預設，無其他寫入路徑。
 addColumnIfMissing('bookings', 'session_type', "TEXT NOT NULL DEFAULT '1on1'");
 
+// ── 2026-06-05 團體課程：授課教練 ──
+// course_templates.coach_id：該課程範本的授課教練（references coaches.id）。
+// 教練被刪除時自動轉為 NULL（ON DELETE SET NULL），不阻擋刪除。
+// 欄位可空：舊範本為 NULL，前台不顯示教練；管理者下次編輯時於前台必選補上。
+addColumnIfMissing('course_templates', 'coach_id', 'INTEGER REFERENCES coaches(id) ON DELETE SET NULL');
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.
