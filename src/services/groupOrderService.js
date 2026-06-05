@@ -1,7 +1,7 @@
 import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
-import { notify } from './notifications.js';
+import { notify, notifyCourseCoach } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl } from './discountService.js';
 
@@ -117,6 +117,11 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
       if (dup) reactivateReg.run('waitlisted', null, null, dup.id);
       else insertReg.run(sid, user.id, 'waitlisted', null, null);
       waitlisted.push(sid);
+      // 加掛：通知該場次教練有人候補
+      const ws = getSession.get(sid);
+      const wtpl = getTemplate.get(ws.template_id);
+      notifyCourseCoach({ coachId: ws.coach_id, sessionId: sid, type: 'course_waitlisted_coach',
+        vars: { member_name: name.trim(), course_name: wtpl.name, start_at: ws.start_at } });
     }
 
     const result = { orderId, total: finalTotal, originalAmount, discountAmount, discountCode: discountCode_,
@@ -174,6 +179,17 @@ export function confirmGroupOrder({ orderId, actorId }) {
       notify({ userId: order.member_id, sessionId: first.session_id, type: 'payment_received',
         vars: { course_name: tpl.name, start_at: s.start_at } });
     }
+    // 加掛：逐場通知該場次教練「新報名」（一筆訂單可能跨多場、多位教練）
+    const confirmedSessions = db.prepare(`
+      SELECT s.id AS session_id, s.coach_id, s.start_at, t.name AS course_name
+      FROM registrations r JOIN course_sessions s ON s.id = r.session_id
+      JOIN course_templates t ON t.id = s.template_id
+      WHERE r.order_id = ? AND r.status = 'confirmed'
+    `).all(orderId);
+    for (const cs of confirmedSessions) {
+      notifyCourseCoach({ coachId: cs.coach_id, sessionId: cs.session_id, type: 'course_registered_coach',
+        vars: { member_name: order.customer_name, course_name: cs.course_name, start_at: cs.start_at } });
+    }
     return { ok: true };
   });
 }
@@ -220,7 +236,14 @@ export function cancelRegistrationPublic({ registrationId, phone, name }) {
     const wasOccupying = reg.status === 'confirmed';
     db.prepare("UPDATE registrations SET status='cancelled' WHERE id=?").run(registrationId);
     releaseOrderRedemptionIfInactive(reg.order_id);
-    if (wasOccupying) promoteWaitlist(reg.session_id);
+    if (wasOccupying) {
+      // 加掛：通知該場次教練有會員取消（confirmed 才通知；候補取消不打擾教練）
+      const cs = getSession.get(reg.session_id);
+      const ctpl = getTemplate.get(cs.template_id);
+      notifyCourseCoach({ coachId: cs.coach_id, sessionId: reg.session_id, type: 'course_member_cancelled_coach',
+        vars: { member_name: user.name, course_name: ctpl.name, start_at: cs.start_at } });
+      promoteWaitlist(reg.session_id);
+    }
     return { ok: true };
   });
 }
@@ -251,6 +274,9 @@ export function promoteWaitlist(sessionId) {
       .run(orderId, tpl.price_per_session, next.id);
     notify({ userId: next.user_id, sessionId, type: 'group_promoted',
       vars: { course_name: tpl.name, start_at: s.start_at } });
+    // 加掛：通知該場次教練有人遞補
+    notifyCourseCoach({ coachId: s.coach_id, sessionId, type: 'course_promoted_coach',
+      vars: { member_name: u.name, course_name: tpl.name, start_at: s.start_at } });
   });
 }
 
