@@ -71,6 +71,32 @@ const TEMPLATES = {
     subject: '候補遞補成功 - {{course_name}}',
     body: '🎉 您候補的 {{course_name}}（{{start_at}}）有名額了！請於 24 小時內完成匯款以保留名額，並至「我的課表」查看。',
   },
+
+  // === new 6 (團體課程事件 — 寄給該堂課教練) ===
+  course_registered_coach: {
+    subject: '新報名 - {{course_name}}',
+    body: '🏋️ {{member_name}} 報名了你帶的「{{course_name}}」（{{start_at}}）。',
+  },
+  course_waitlisted_coach: {
+    subject: '新候補 - {{course_name}}',
+    body: '📋 {{member_name}} 候補了你帶的「{{course_name}}」（{{start_at}}）。',
+  },
+  course_promoted_coach: {
+    subject: '候補遞補 - {{course_name}}',
+    body: '⬆️ {{member_name}} 從候補遞補進你帶的「{{course_name}}」（{{start_at}}）。',
+  },
+  course_member_cancelled_coach: {
+    subject: '會員取消報名 - {{course_name}}',
+    body: '🚫 {{member_name}} 取消了你帶的「{{course_name}}」（{{start_at}}）報名。',
+  },
+  course_confirmed_coach: {
+    subject: '課程成班 - {{course_name}}',
+    body: '✅ 你帶的「{{course_name}}」（{{start_at}}）已成班，共 {{count}} 人。',
+  },
+  course_cancelled_coach: {
+    subject: '課程未開成 - {{course_name}}',
+    body: '⚠️ 你帶的「{{course_name}}」（{{start_at}}）未達最低人數，未開成。',
+  },
 };
 
 function render(template, vars) {
@@ -104,6 +130,7 @@ export function fmtDateForLine(localStr) {
 // ─────────────────────────────────────────────────────────────────────
 
 const getUserById = db.prepare('SELECT id, line_user_id FROM users WHERE id = ?');
+const getCoachUserId = db.prepare('SELECT user_id FROM coaches WHERE id = ?');
 
 const insertNotif = db.prepare(`
   INSERT INTO notifications
@@ -188,6 +215,19 @@ export function notify({ userId, sessionId, type, vars = {} }) {
   } else {
     deliverConsole({ userId, sessionId, type, subject, body });
   }
+}
+
+/**
+ * notifyCourseCoach — 通知某團體課程場次的「帶課教練」。
+ * coachId 為 course_sessions.coach_id（= coaches.id）；解析出教練的 user 帳號後
+ * 沿用 notify()（有綁 LINE 推 LINE，否則 console）。會員端通知不受影響。
+ * 場次未指定教練（coachId 為空）或教練不存在時，靜默略過。
+ */
+export function notifyCourseCoach({ coachId, sessionId, type, vars = {} }) {
+  if (!coachId) return;
+  const row = getCoachUserId.get(coachId);
+  if (!row) return;
+  notify({ userId: row.user_id, sessionId, type, vars });
 }
 
 async function deliverLine({ userId, sessionId, type, subject, body, lineUserId }) {

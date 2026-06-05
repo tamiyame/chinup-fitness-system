@@ -1,5 +1,5 @@
 import { db, tx, nowLocal } from '../db/connection.js';
-import { notify } from './notifications.js';
+import { notify, notifyCourseCoach } from './notifications.js';
 
 export class ApiError extends Error {
   constructor(status, code, detail = null) {
@@ -32,6 +32,7 @@ const getWaitlistQueue = db.prepare(
   "SELECT * FROM registrations WHERE session_id = ? AND status = 'waitlisted' ORDER BY registered_at ASC, id ASC"
 );
 const updateRegStatus = db.prepare('UPDATE registrations SET status = ?, position = ? WHERE id = ?');
+const getUserName = db.prepare('SELECT name FROM users WHERE id = ?');
 
 function recalcAndSave(sessionId) {
   const confirmed = db
@@ -100,6 +101,13 @@ export function register({ sessionId, userId }) {
       type: status === 'confirmed' ? 'registered_confirmed' : 'registered_waitlisted',
       vars,
     });
+    // 加掛：通知該場次教練（場次未指定教練則靜默略過）
+    notifyCourseCoach({
+      coachId: session.coach_id,
+      sessionId,
+      type: status === 'confirmed' ? 'course_registered_coach' : 'course_waitlisted_coach',
+      vars: { member_name: getUserName.get(userId)?.name ?? '會員', course_name: tpl.name, start_at: session.start_at },
+    });
 
     return { registrationId, status, position };
   });
@@ -124,6 +132,12 @@ export function cancelRegistration({ registrationId, userId }) {
       type: 'registration_cancelled',
       vars: { course_name: tpl.name, start_at: session.start_at },
     });
+    notifyCourseCoach({
+      coachId: session.coach_id,
+      sessionId: session.id,
+      type: 'course_member_cancelled_coach',
+      vars: { member_name: getUserName.get(userId)?.name ?? '會員', course_name: tpl.name, start_at: session.start_at },
+    });
 
     // 若原為正取且場次未取消，候補第一位遞補
     if (wasConfirmed && session.status !== 'cancelled') {
@@ -136,6 +150,12 @@ export function cancelRegistration({ registrationId, userId }) {
           sessionId: session.id,
           type: 'promoted',
           vars: { course_name: tpl.name, start_at: session.start_at },
+        });
+        notifyCourseCoach({
+          coachId: session.coach_id,
+          sessionId: session.id,
+          type: 'course_promoted_coach',
+          vars: { member_name: getUserName.get(next.user_id)?.name ?? '會員', course_name: tpl.name, start_at: session.start_at },
         });
       }
     }
