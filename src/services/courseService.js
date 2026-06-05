@@ -8,10 +8,10 @@ const insertTemplate = db.prepare(`
   INSERT INTO course_templates
     (name, description, min_capacity, max_capacity, day_of_week, start_time,
      duration_minutes, recurrence, cycle_start_date, cycle_end_date,
-     registration_deadline_hours, status, price_per_session)
+     registration_deadline_hours, status, price_per_session, coach_id)
   VALUES (@name, @description, @min_capacity, @max_capacity, @day_of_week, @start_time,
           @duration_minutes, @recurrence, @cycle_start_date, @cycle_end_date,
-          @registration_deadline_hours, @status, @price_per_session)
+          @registration_deadline_hours, @status, @price_per_session, @coach_id)
 `);
 
 const insertSession = db.prepare(`
@@ -28,7 +28,7 @@ const updateTemplate = db.prepare(`
     duration_minutes=@duration_minutes, recurrence=@recurrence,
     cycle_start_date=@cycle_start_date, cycle_end_date=@cycle_end_date,
     registration_deadline_hours=@registration_deadline_hours, status=@status,
-    price_per_session=@price_per_session
+    price_per_session=@price_per_session, coach_id=@coach_id
   WHERE id=@id
 `);
 
@@ -59,6 +59,8 @@ function normalize(t) {
     registration_deadline_hours: Number(t.registration_deadline_hours ?? 24),
     status: t.status ?? 'published',
     price_per_session: Number(t.price_per_session ?? 0),
+    // 寬鬆：缺值存 NULL；非法非空值（如 Number('x')→NaN）亦落為 NULL。前台下拉保證只送有效 id，真整數壞值由 DB 外鍵擋下。
+    coach_id: (t.coach_id === undefined || t.coach_id === null || t.coach_id === '') ? null : Number(t.coach_id),
   };
 }
 
@@ -102,7 +104,12 @@ export function editTemplate(id, payload) {
   });
 }
 
-const listTemplatesStmt = db.prepare('SELECT * FROM course_templates ORDER BY created_at DESC');
+const listTemplatesStmt = db.prepare(`
+  SELECT t.*, c.display_name AS coach_name
+  FROM course_templates t
+  LEFT JOIN coaches c ON c.id = t.coach_id
+  ORDER BY t.created_at DESC
+`);
 const listSessionsForTemplate = db.prepare('SELECT * FROM course_sessions WHERE template_id = ? ORDER BY start_at ASC');
 
 export function listTemplates() {
