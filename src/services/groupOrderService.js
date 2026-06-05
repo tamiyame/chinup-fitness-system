@@ -281,11 +281,13 @@ export function expirePendingOrders() {
 export function getPublicGroupCourses() {
   const now = nowLocal();
   const templates = db.prepare(`
-    SELECT id, name, description, min_capacity, max_capacity, duration_minutes,
-           price_per_session, recurrence, cycle_start_date, cycle_end_date
-    FROM course_templates
-    WHERE status = 'published'
-    ORDER BY created_at DESC
+    SELECT t.id, t.name, t.description, t.min_capacity, t.max_capacity, t.duration_minutes,
+           t.price_per_session, t.recurrence, t.cycle_start_date, t.cycle_end_date,
+           c.display_name AS coach_name
+    FROM course_templates t
+    LEFT JOIN coaches c ON c.id = t.coach_id
+    WHERE t.status = 'published'
+    ORDER BY t.created_at DESC
   `).all();
   return templates.map((t) => {
     const sessions = db.prepare(`

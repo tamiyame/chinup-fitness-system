@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS course_templates (
   registration_deadline_hours INTEGER NOT NULL DEFAULT 24,
   status TEXT NOT NULL DEFAULT 'published' CHECK(status IN ('draft','published','archived')),
   price_per_session INTEGER NOT NULL DEFAULT 0,
+  coach_id INTEGER REFERENCES coaches(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -52,6 +52,7 @@ async function loadTemplates() {
               <span class="meta-item">📅 ${dow(t.day_of_week)} ${t.start_time}</span>
               <span class="meta-item">⏱ ${t.duration_minutes} 分</span>
               <span class="meta-item">👥 ${t.min_capacity}–${t.max_capacity} 人</span>
+              <span class="meta-item">🧑‍🏫 ${escapeHtml(t.coach_name || '未指定')}</span>
               <span class="meta-item">🔁 ${RECURRENCE_LABEL[t.recurrence]}</span>
               <span class="meta-item">🗓 ${t.cycle_start_date} ~ ${t.cycle_end_date}</span>
             </div>
@@ -244,7 +245,7 @@ async function openEdit(id) {
     sel.appendChild(opt);
   }
 
-  for (const k of ['name','description','min_capacity','max_capacity','day_of_week','start_time','duration_minutes','registration_deadline_hours','recurrence','cycle_start_date','cycle_end_date','price_per_session']) {
+  for (const k of ['name','description','min_capacity','max_capacity','day_of_week','start_time','duration_minutes','registration_deadline_hours','recurrence','cycle_start_date','cycle_end_date','price_per_session','coach_id']) {
     if (f[k]) f[k].value = t[k] ?? '';
   }
   f.id.value = t.id;
@@ -263,6 +264,9 @@ document.getElementById('tpl-form').addEventListener('submit', async (e) => {
   const id = payload.id; delete payload.id;
   if (payload.price_per_session !== undefined) {
     payload.price_per_session = Number(payload.price_per_session);
+  }
+  if (payload.coach_id !== undefined && payload.coach_id !== '') {
+    payload.coach_id = Number(payload.coach_id);
   }
   try {
     if (id) {
@@ -492,6 +496,24 @@ function renderUserRow(r, canEdit) {
 
 // --- Categories ---
 let categoriesCache = [];
+
+// --- Coaches (for template form select) ---
+let coachesCache = [];
+async function loadCoachesForForm() {
+  const sel = document.getElementById('tpl-coach-select');
+  try {
+    coachesCache = await api('/api/admin/coaches');
+    if (sel) {
+      const current = sel.value;
+      sel.innerHTML = '<option value="">— 請選擇授課教練 —</option>' +
+        coachesCache.map(c => `<option value="${c.id}">${escapeHtml(c.display_name)}</option>`).join('');
+      if (current) sel.value = current;
+    }
+  } catch (e) {
+    // 教練清單載入失敗不阻斷後台其他功能
+    console.error('load coaches for form failed', e);
+  }
+}
 
 async function loadCategories() {
   const el = document.getElementById('categories-table');
@@ -1020,6 +1042,7 @@ document.getElementById('discount-code-form')?.addEventListener('submit', async 
 });
 
 loadCategories();
+loadCoachesForForm();
 loadTemplates();
 loadUsers();
 loadNotifs();
