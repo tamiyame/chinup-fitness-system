@@ -1,6 +1,6 @@
 import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { expandTemplate, RECURRENCES } from './schedule.js';
-import { notify } from './notifications.js';
+import { notify, notifyCourseCoach } from './notifications.js';
 import { ApiError } from './registration.js';
 import { releaseOrderRedemptionIfInactive } from './groupOrderService.js';
 
@@ -16,8 +16,8 @@ const insertTemplate = db.prepare(`
 
 const insertSession = db.prepare(`
   INSERT OR IGNORE INTO course_sessions
-    (template_id, session_date, start_at, end_at, registration_deadline, status)
-  VALUES (?, ?, ?, ?, ?, 'open')
+    (template_id, session_date, start_at, end_at, registration_deadline, status, coach_id)
+  VALUES (?, ?, ?, ?, ?, 'open', ?)
 `);
 
 const updateTemplate = db.prepare(`
@@ -72,7 +72,7 @@ export function createTemplate(payload) {
     const templateId = info.lastInsertRowid;
     const sessions = expandTemplate(t);
     for (const s of sessions) {
-      insertSession.run(templateId, s.session_date, s.start_at, s.end_at, s.registration_deadline);
+      insertSession.run(templateId, s.session_date, s.start_at, s.end_at, s.registration_deadline, t.coach_id);
     }
     return {
       templateId,
@@ -97,9 +97,11 @@ export function editTemplate(id, payload) {
     const sessions = expandTemplate(t);
     let added = 0;
     for (const s of sessions) {
-      const info = insertSession.run(id, s.session_date, s.start_at, s.end_at, s.registration_deadline);
+      const info = insertSession.run(id, s.session_date, s.start_at, s.end_at, s.registration_deadline, t.coach_id);
       if (info.changes > 0) added++;
     }
+    // 範本教練若變更，同步所有「未來場次」的冗餘 coach_id（含已有報名、未被重新展開者）。
+    db.prepare('UPDATE course_sessions SET coach_id = ? WHERE template_id = ? AND start_at > ?').run(t.coach_id, id, nowLocal());
     return { templateId: id, sessionsAdded: added };
   });
 }
@@ -194,6 +196,7 @@ export function processDeadlines() {
         for (const r of regs) {
           notify({ userId: r.user_id, sessionId: s.id, type: 'course_confirmed', vars: { course_name: s.course_name, start_at: s.start_at } });
         }
+        notifyCourseCoach({ coachId: s.coach_id, sessionId: s.id, type: 'course_confirmed_coach', vars: { course_name: s.course_name, start_at: s.start_at, count: regs.length } });
         results.push({ sessionId: s.id, action: 'confirmed', count: regs.length });
       } else {
         db.prepare("UPDATE course_sessions SET status = 'cancelled' WHERE id = ?").run(s.id);
@@ -203,6 +206,7 @@ export function processDeadlines() {
           upd.run(r.id);
           notify({ userId: r.user_id, sessionId: s.id, type: 'course_cancelled', vars: { course_name: s.course_name, start_at: s.start_at } });
         }
+        notifyCourseCoach({ coachId: s.coach_id, sessionId: s.id, type: 'course_cancelled_coach', vars: { course_name: s.course_name, start_at: s.start_at } });
         // Release discount redemptions for any orders left with no remaining active regs.
         const affectedOrderIds = [...new Set(regs.map((r) => r.order_id).filter((oid) => oid != null))];
         for (const oid of affectedOrderIds) releaseOrderRedemptionIfInactive(oid);

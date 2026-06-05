@@ -161,6 +161,15 @@ addColumnIfMissing('bookings', 'session_type', "TEXT NOT NULL DEFAULT '1on1'");
 // 欄位可空：舊範本為 NULL，前台不顯示教練；管理者下次編輯時於前台必選補上。
 addColumnIfMissing('course_templates', 'coach_id', 'INTEGER REFERENCES coaches(id) ON DELETE SET NULL');
 
+// course_sessions.coach_id：場次層冗餘快取（展開時從範本複製），推播該堂課教練時免 join 回範本。
+// 首次加欄位時一次性回填：既有場次從所屬範本複製 coach_id（範本無教練則維持 NULL）。
+const csCols = db.prepare('PRAGMA table_info(course_sessions)').all().map((c) => c.name);
+if (!csCols.includes('coach_id')) {
+  db.exec('ALTER TABLE course_sessions ADD COLUMN coach_id INTEGER REFERENCES coaches(id) ON DELETE SET NULL');
+  db.exec('UPDATE course_sessions SET coach_id = (SELECT coach_id FROM course_templates WHERE id = course_sessions.template_id) WHERE coach_id IS NULL');
+  console.log('[migrate] course_sessions.coach_id added + backfilled from templates');
+}
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.

@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS course_sessions (
   is_open INTEGER NOT NULL DEFAULT 1,
   confirmed_count INTEGER NOT NULL DEFAULT 0,
   waitlist_count INTEGER NOT NULL DEFAULT 0,
+  coach_id INTEGER REFERENCES coaches(id) ON DELETE SET NULL,
   UNIQUE(template_id, session_date)
 );
 
