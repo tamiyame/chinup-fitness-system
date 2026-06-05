@@ -24,7 +24,7 @@ export function redirectToLogin() {
   location.href = `/login.html?redirect=${encodeURIComponent(location.pathname)}`;
 }
 
-export async function api(path, { method = 'GET', body } = {}) {
+export async function api(path, { method = 'GET', body, redirectOn401 = true } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   const token = getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -33,7 +33,9 @@ export async function api(path, { method = 'GET', body } = {}) {
   const data = text ? JSON.parse(text) : null;
   if (res.status === 401) {
     clearAuth();
-    redirectToLogin();
+    // 公開頁（bootPublic）以 redirectOn401:false 探測登入狀態：殘留過期 token 只清掉、
+    // 不把匿名訪客導去登入頁。其餘呼叫維持原本「401 → 導登入」行為。
+    if (redirectOn401) redirectToLogin();
     throw new Error('unauthenticated');
   }
   if (!res.ok) {
@@ -136,10 +138,10 @@ export async function bootPublic() {
   }
   let user;
   try {
-    user = await api('/api/auth/me');
+    user = await api('/api/auth/me', { redirectOn401: false });
     localStorage.setItem(USER_KEY, JSON.stringify(user));
   } catch {
-    // Token invalid/expired — treat as anonymous, no redirect.
+    // Token invalid/expired — treat as anonymous, no redirect (api 已清掉殘留 token).
     document.body.style.visibility = 'visible';
     return null;
   }
