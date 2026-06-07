@@ -101,6 +101,12 @@ const TEMPLATES = {
     subject: '課程未開成 - {{course_name}}',
     body: '⚠️ 你帶的「{{course_name}}」（{{start_at}}）未達最低人數，未開成。',
   },
+
+  // === new (團體課程 — 寄給店家管理者；中性第三人稱，不含「你帶的」) ===
+  course_registered_admin: {
+    subject: '新報名 - {{course_name}}',
+    body: '🏋️ {{member_name}} 報名了「{{course_name}}」（{{start_at}}）。',
+  },
 };
 
 function render(template, vars) {
@@ -135,6 +141,7 @@ export function fmtDateForLine(localStr) {
 
 const getUserById = db.prepare('SELECT id, line_user_id FROM users WHERE id = ?');
 const getCoachUserId = db.prepare('SELECT user_id FROM coaches WHERE id = ?');
+const getAdminUserIds = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner')");
 
 const insertNotif = db.prepare(`
   INSERT INTO notifications
@@ -232,6 +239,19 @@ export function notifyCourseCoach({ coachId, sessionId, type, vars = {} }) {
   const row = getCoachUserId.get(coachId);
   if (!row) return;
   notify({ userId: row.user_id, sessionId, type, vars });
+}
+
+/**
+ * notifyAdmins — 把同一則（第三人稱）通知廣播給所有店家管理者（admin / owner），
+ * 讓店家掌握所有預約。沿用 notify()（各管理者有綁 LINE 推 LINE，否則 console）。
+ * 無管理者時靜默略過。請傳「中性第三人稱」模板（勿用教練專屬「你帶的」文案）。
+ */
+export function notifyAdmins({ sessionId = null, type, vars = {}, excludeUserId = null }) {
+  for (const row of getAdminUserIds.all()) {
+    // 不把第三人稱訊息發給報名本人（即使本人剛好是管理者）。
+    if (excludeUserId != null && row.id === excludeUserId) continue;
+    notify({ userId: row.id, sessionId, type, vars });
+  }
 }
 
 async function deliverLine({ userId, sessionId, type, subject, body, lineUserId }) {

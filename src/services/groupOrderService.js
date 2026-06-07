@@ -1,7 +1,7 @@
 import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
-import { notify, notifyCourseCoach } from './notifications.js';
+import { notify, notifyCourseCoach, notifyAdmins } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl } from './discountService.js';
 
@@ -189,8 +189,10 @@ export function confirmGroupOrder({ orderId, actorId }) {
       WHERE r.order_id = ? AND r.status = 'confirmed'
     `).all(orderId);
     for (const cs of confirmedSessions) {
-      notifyCourseCoach({ coachId: cs.coach_id, sessionId: cs.session_id, type: 'course_registered_coach',
-        vars: { member_name: order.customer_name, course_name: cs.course_name, start_at: cs.start_at } });
+      const vars = { member_name: order.customer_name, course_name: cs.course_name, start_at: cs.start_at };
+      notifyCourseCoach({ coachId: cs.coach_id, sessionId: cs.session_id, type: 'course_registered_coach', vars });
+      // 加掛：店家管理者廣播（中性第三人稱，不含「你帶的」）
+      notifyAdmins({ sessionId: cs.session_id, type: 'course_registered_admin', excludeUserId: order.member_id, vars });
     }
     return { ok: true };
   });
