@@ -145,7 +145,7 @@ function resolveStatus(item) {
     return { label: '待付款', cls: 'badge-waitlisted' };
   }
   if (item.on_leave) {
-    return { label: '請假', cls: 'badge-completed' };
+    return { label: '已請假', cls: 'badge-leave' };
   }
   const labels = {
     confirmed:  '已確認',
