@@ -58,6 +58,7 @@ import { verifySignature, reply as lineReply } from './services/lineClient.js';
 import {
   consumeCode,
   unbindByLineUserId,
+  resetAllLineBindings,
 } from './services/lineBindingService.js';
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
@@ -413,6 +414,11 @@ app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
     ORDER BY u.id ASC
   `).all();
   res.json(rows);
+}));
+
+// 管理用：清空所有使用者的 LINE 綁定（含教練/管理者），讓全體重新綁定。
+app.post('/api/admin/line/reset-all', requireAdmin, asyncHandler((req, res) => {
+  res.json(resetAllLineBindings());
 }));
 
 app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => {
