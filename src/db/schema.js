@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS registrations (
   position INTEGER,
   order_id INTEGER REFERENCES group_orders(id),
   amount_due INTEGER,
+  on_leave INTEGER NOT NULL DEFAULT 0,
   registered_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(session_id, user_id)
 );

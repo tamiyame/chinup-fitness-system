@@ -187,12 +187,12 @@ export function processDeadlines() {
   for (const s of dueSessions) {
     tx(() => {
       const confirmed = db
-        .prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id = ? AND status = 'confirmed'")
+        .prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id = ? AND status = 'confirmed' AND on_leave = 0")
         .get(s.id).c;
 
       if (confirmed >= s.min_capacity) {
         db.prepare("UPDATE course_sessions SET status = 'confirmed' WHERE id = ?").run(s.id);
-        const regs = db.prepare("SELECT user_id FROM registrations WHERE session_id = ? AND status = 'confirmed'").all(s.id);
+        const regs = db.prepare("SELECT user_id FROM registrations WHERE session_id = ? AND status = 'confirmed' AND on_leave = 0").all(s.id);
         for (const r of regs) {
           notify({ userId: r.user_id, sessionId: s.id, type: 'course_confirmed', vars: { course_name: s.course_name, start_at: s.start_at } });
         }
@@ -200,7 +200,7 @@ export function processDeadlines() {
         results.push({ sessionId: s.id, action: 'confirmed', count: regs.length });
       } else {
         db.prepare("UPDATE course_sessions SET status = 'cancelled' WHERE id = ?").run(s.id);
-        const regs = db.prepare("SELECT user_id, id, order_id FROM registrations WHERE session_id = ? AND status IN ('confirmed','waitlisted','pending')").all(s.id);
+        const regs = db.prepare("SELECT user_id, id, order_id FROM registrations WHERE session_id = ? AND status IN ('confirmed','waitlisted','pending') AND on_leave = 0").all(s.id);
         const upd = db.prepare("UPDATE registrations SET status = 'rejected' WHERE id = ?");
         for (const r of regs) {
           upd.run(r.id);

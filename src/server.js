@@ -36,6 +36,7 @@ import {
   confirmGroupOrder as svcConfirmGroupOrder,
   cancelGroupOrder as svcCancelGroupOrder,
   cancelRegistrationPublic as svcCancelRegPublic,
+  takeLeavePublic as svcTakeLeavePublic,
   expirePendingOrders as svcExpireOrders,
   getPublicGroupCourses as svcPublicCourses,
   getPublicSchedule as svcPublicSchedule,
@@ -664,6 +665,12 @@ app.delete('/api/public/bookings/:id', asyncHandler((req, res) => {
 app.delete('/api/public/registrations/:id', asyncHandler((req, res) => {
   const { phone, name } = req.body || {};
   res.json(svcCancelRegPublic({ registrationId: Number(req.params.id), phone, name }));
+}));
+
+// 團課「今日請假」：已付款場次標為請假（釋名額遞補、不退款、不取消訂單）
+app.post('/api/public/registrations/:id/leave', asyncHandler((req, res) => {
+  const { phone, name } = req.body || {};
+  res.json(svcTakeLeavePublic({ registrationId: Number(req.params.id), phone, name }));
 }));
 
 app.delete('/api/public/group-orders/:id', asyncHandler((req, res) => {
