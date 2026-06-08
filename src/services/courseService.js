@@ -113,6 +113,10 @@ const listTemplatesStmt = db.prepare(`
   ORDER BY t.created_at DESC
 `);
 const listSessionsForTemplate = db.prepare('SELECT * FROM course_sessions WHERE template_id = ? ORDER BY start_at ASC');
+// 即時計算用：confirmed_count/waitlist_count 快取欄位未被團課訂單流程維護（只剩舊 register() 流程在更新），
+// 後台顯示一律改用即時計數。正取排除請假(on_leave)。
+const liveConfirmedCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id = ? AND status = 'confirmed' AND on_leave = 0");
+const liveWaitlistCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id = ? AND status = 'waitlisted'");
 
 export function listTemplates() {
   return listTemplatesStmt.all();
@@ -121,7 +125,12 @@ export function listTemplates() {
 export function getTemplate(id) {
   const t = db.prepare('SELECT * FROM course_templates WHERE id = ?').get(id);
   if (!t) throw new ApiError(404, 'template_not_found');
-  t.sessions = listSessionsForTemplate.all(id);
+  // 即時計算正取/候補人數（覆蓋可能過時的快取欄位）。
+  t.sessions = listSessionsForTemplate.all(id).map((s) => ({
+    ...s,
+    confirmed_count: liveConfirmedCount.get(s.id).c,
+    waitlist_count: liveWaitlistCount.get(s.id).c,
+  }));
   return t;
 }
 
