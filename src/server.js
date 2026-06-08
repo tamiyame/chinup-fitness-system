@@ -180,6 +180,12 @@ app.get('/api/my/line', requireUser, (req, res) => {
   res.json({ bound: !!(row && row.line_user_id), line_official_url: getLineOfficialUrl() });
 });
 app.post('/api/my/line/bind-code', requireUser, asyncHandler((req, res) => {
+  // 已綁定者不再發碼（前端本就會隱藏發碼按鈕，這裡是直接呼叫 API 的防線）。
+  // 想換綁需先 DELETE 解除，與 consumeCode 的 1 帳號↔1 LINE 守門一致。
+  const existing = getMyLineStmt.get(req.user.id);
+  if (existing && existing.line_user_id) {
+    return res.status(409).json({ error: 'already_bound' });
+  }
   const { code, expires_at } = generateBindCode(req.user.id);
   res.json({ code, expires_at, line_official_url: getLineOfficialUrl() });
 }));

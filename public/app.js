@@ -150,7 +150,7 @@ export async function bootPublic() {
   return user;
 }
 
-async function renderAuthBar(user) {
+export async function renderAuthBar(user) {
   // Show admin nav link only for admin/owner — toggle via .admin-only class
   const showAdmin = ['admin', 'owner'].includes(user.role);
   document.querySelectorAll('.admin-only').forEach((el) => {
