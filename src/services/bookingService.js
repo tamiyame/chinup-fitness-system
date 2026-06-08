@@ -1,7 +1,7 @@
 import { db, tx, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
-import { notify, fmtDateForLine } from './notifications.js';
+import { notify, notifyAdmins, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getOneOnOnePriceByType, getLineOfficialUrl } from './discountService.js';
 
@@ -76,6 +76,8 @@ function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1
       vars: { member_name: memberRow.name, start_at: startFmt } });
     notify({ userId: memberId, sessionId: null, type: 'booking_confirmed',
       vars: { coach_display_name: coach.display_name, start_at: startFmt } });
+    // 加掛：店家管理者廣播（第三人稱、中性，沿用 booking_created 文案）
+    notifyAdmins({ type: 'booking_created', excludeUserId: memberId, vars: { member_name: memberRow.name, start_at: startFmt } });
   }
   return { id: bookingId, startAt, endAt };
 }
