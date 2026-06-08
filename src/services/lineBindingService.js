@@ -98,3 +98,15 @@ export function unbindByLineUserId(lineUserId) {
 export function unbindByUserId(userId) {
   clearLineByUserId.run(userId);
 }
+
+/**
+ * 管理用：清空『所有』使用者的 LINE 綁定（line_user_id + 進行中的綁定碼），
+ * 讓全體（含教練/管理者）重新綁定。回 { cleared } = 清空前已綁定(line_user_id 非空)的人數。
+ */
+export function resetAllLineBindings() {
+  return tx(() => {
+    const cleared = db.prepare('SELECT COUNT(*) AS c FROM users WHERE line_user_id IS NOT NULL').get().c;
+    db.exec('UPDATE users SET line_user_id = NULL, line_bind_code = NULL, line_bind_expires_at = NULL');
+    return { cleared };
+  });
+}
