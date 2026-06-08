@@ -59,6 +59,8 @@ import {
   consumeCode,
   unbindByLineUserId,
   resetAllLineBindings,
+  generateBindCode,
+  unbindByUserId,
 } from './services/lineBindingService.js';
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
@@ -169,6 +171,27 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/me', requireUser, (req, res) => {
   res.json(req.user);
+});
+
+// --- 員工自助綁定 LINE（登入即可用：教練/管理者/owner）---
+const getMyLineStmt = db.prepare('SELECT line_user_id FROM users WHERE id = ?');
+app.get('/api/my/line', requireUser, (req, res) => {
+  const row = getMyLineStmt.get(req.user.id);
+  res.json({ bound: !!(row && row.line_user_id), line_official_url: getLineOfficialUrl() });
+});
+app.post('/api/my/line/bind-code', requireUser, asyncHandler((req, res) => {
+  // 已綁定者不再發碼（前端本就會隱藏發碼按鈕，這裡是直接呼叫 API 的防線）。
+  // 想換綁需先 DELETE 解除，與 consumeCode 的 1 帳號↔1 LINE 守門一致。
+  const existing = getMyLineStmt.get(req.user.id);
+  if (existing && existing.line_user_id) {
+    return res.status(409).json({ error: 'already_bound' });
+  }
+  const { code, expires_at } = generateBindCode(req.user.id);
+  res.json({ code, expires_at, line_official_url: getLineOfficialUrl() });
+}));
+app.delete('/api/my/line', requireUser, (req, res) => {
+  unbindByUserId(req.user.id);
+  res.json({ ok: true });
 });
 
 // --- Google OAuth ---

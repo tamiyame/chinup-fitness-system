@@ -1,4 +1,4 @@
-import { api, fmtDate, dow, toast, getUser, escapeHtml } from './app.js';
+import { api, fmtDate, dow, toast, getUser, escapeHtml, renderAuthBar } from './app.js';
 
 const $ = (id) => document.getElementById(id);
 const DOW_LABELS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
@@ -12,6 +12,10 @@ async function init() {
     throw e;
   }
   if (!me.is_active) $('pending-banner').classList.remove('hidden');
+
+  // 渲染右上角身份列（含「綁定 LINE」按鈕）。coach.html 走 /api/coach/me 驗證，
+  // 不經 bootAuth，故在此手動渲染；能到這代表是教練，role 固定為 'coach'。
+  await renderAuthBar({ ...me, role: 'coach' });
 
   // Tab switching
   document.querySelectorAll('.tab').forEach(t => {
