@@ -181,13 +181,87 @@ async function renderAuthBar(user) {
     <div class="flex items-center gap-2">
       ${badge}
     </div>
+    <button id="line-bind-btn" class="btn btn-ghost btn-sm">綁定 LINE</button>
     <button id="logout-btn" class="btn btn-ghost btn-sm">登出</button>
   `;
+  document.getElementById('line-bind-btn').addEventListener('click', openLineBindModal);
   document.getElementById('logout-btn').addEventListener('click', async () => {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch {}
     clearAuth();
     location.href = '/login.html';
   });
+}
+
+// ── 員工自助綁定 LINE（auth bar 按鈕 → 彈窗）──────────────────────────────
+function ensureLineBindOverlay() {
+  let overlay = document.getElementById('line-bind-overlay');
+  if (overlay) return overlay;
+  overlay = document.createElement('div');
+  overlay.id = 'line-bind-overlay';
+  overlay.className = 'overlay';
+  overlay.style.display = 'none';
+  overlay.innerHTML = `
+    <div class="modal-panel" style="max-width:420px;">
+      <div class="flex items-start justify-between mb-4">
+        <h3 class="section-title">綁定 LINE 通知</h3>
+        <button id="line-bind-close" class="text-slate-400 hover:text-slate-700 text-xl leading-none">✕</button>
+      </div>
+      <div id="line-bind-body"><p class="subtle">載入中…</p></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.style.display = 'none'; });
+  overlay.querySelector('#line-bind-close').addEventListener('click', () => { overlay.style.display = 'none'; });
+  return overlay;
+}
+
+async function openLineBindModal() {
+  ensureLineBindOverlay().style.display = 'grid';
+  await renderLineBindBody();
+}
+
+async function renderLineBindBody() {
+  const body = document.getElementById('line-bind-body');
+  body.innerHTML = '<p class="subtle">載入中…</p>';
+  let s;
+  try { s = await api('/api/my/line'); }
+  catch (e) { body.innerHTML = `<p style="color:#dc2626;">載入失敗：${escapeHtml(e.message)}</p>`; return; }
+  if (s.bound) {
+    body.innerHTML = `
+      <p class="mb-4">✅ 此帳號<strong>已綁定 LINE</strong>，會收到通知。</p>
+      <button id="line-unbind-btn" class="btn btn-danger btn-sm">解除綁定</button>`;
+    document.getElementById('line-unbind-btn').addEventListener('click', async () => {
+      if (!confirm('確定要解除 LINE 綁定嗎？解除後將不再收到 LINE 通知。')) return;
+      try { await api('/api/my/line', { method: 'DELETE' }); toast('已解除綁定', 'success'); await renderLineBindBody(); }
+      catch (e) { toast(`解除失敗：${e.message}`, 'error'); }
+    });
+  } else {
+    body.innerHTML = `
+      <p class="subtle mb-3">尚未綁定。點下方產生綁定碼，加入官方 LINE 後把碼傳給它即可完成。</p>
+      <button id="line-gen-btn" class="btn btn-primary btn-sm">產生綁定碼</button>`;
+    document.getElementById('line-gen-btn').addEventListener('click', genBindCode);
+  }
+}
+
+async function genBindCode() {
+  const body = document.getElementById('line-bind-body');
+  body.innerHTML = '<p class="subtle">產生中…</p>';
+  let r;
+  try { r = await api('/api/my/line/bind-code', { method: 'POST' }); }
+  catch (e) { body.innerHTML = `<p style="color:#dc2626;">產生失敗：${escapeHtml(e.message)}</p>`; return; }
+  const lineBtn = r.line_official_url
+    ? `<a href="${escapeHtml(r.line_official_url)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="margin-top:8px;">加入官方 LINE</a>`
+    : '<p class="subtle" style="margin-top:8px;">（尚未設定官方 LINE 連結，請先搜尋官方帳號加好友）</p>';
+  body.innerHTML = `
+    <p class="subtle mb-2">綁定碼（15 分鐘內有效）：</p>
+    <div style="font-size:32px;font-weight:800;letter-spacing:6px;text-align:center;background:var(--brand-50);border-radius:10px;padding:14px;">${escapeHtml(r.code)}</div>
+    <ol class="subtle" style="margin-top:12px;padding-left:18px;line-height:1.8;">
+      <li>加入官方 LINE 帳號為好友</li>
+      <li>把上面 6 碼傳給官方帳號</li>
+      <li>完成後回此處按「我綁好了」</li>
+    </ol>
+    ${lineBtn}
+    <div style="margin-top:14px;"><button id="line-done-btn" class="btn btn-dark btn-sm">我綁好了，重新整理</button></div>`;
+  document.getElementById('line-done-btn').addEventListener('click', renderLineBindBody);
 }
 
 export async function refreshAuthBar() {
