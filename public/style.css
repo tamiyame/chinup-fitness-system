@@ -68,6 +68,7 @@ body {
 .brand-mark {
   display: inline-flex; align-items: center; gap: 8px;
   font-weight: 700; font-size: 17px;
+  line-height: 1.1; /* 手機窄螢幕換行成兩行時，上下行更靠近 */
   color: #000;
   text-decoration: none;
 }
@@ -138,6 +139,8 @@ body {
   padding: 3px 10px; border-radius: var(--radius-pill);
   font-size: 12px; font-weight: 600; letter-spacing: 0.01em;
   border: 1px solid transparent;
+  white-space: nowrap; /* 避免窄螢幕擠壓時標籤文字直排（如「教練」變兩行）*/
+  flex-shrink: 0;
 }
 .badge-open { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
 .badge-confirmed { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
