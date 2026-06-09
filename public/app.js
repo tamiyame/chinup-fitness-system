@@ -105,6 +105,16 @@ function bindMobileNav() {
 }
 bindMobileNav();
 
+// nav 上的「綁定 LINE」（.line-bind-link，登入後才顯示）→ 開彈窗。
+// 用事件委派：連結存在於各頁靜態 HTML、且 desktop/mobile 各一份，委派可一次涵蓋且不重複綁定。
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.line-bind-link');
+  if (!link) return;
+  e.preventDefault();
+  document.getElementById('nav-mobile')?.classList.add('hidden'); // 若是手機選單內點的，順手收合
+  openLineBindModal();
+});
+
 export async function bootAuth({ requireAdmin = false } = {}) {
   const token = getToken();
   if (!token) { redirectToLogin(); return null; }
@@ -165,6 +175,17 @@ export async function renderAuthBar(user) {
     else el.classList.add('hidden');
   });
 
+  // 將「綁定 LINE」放進 nav 連結群（教練後台/管理後台之後）。renderAuthBar 只在登入時呼叫，
+  // 故僅登入者看得到；desktop 與 mobile 兩份 nav 的「教練後台」連結後各插一顆，重複呼叫以守門避免重插。
+  document.querySelectorAll('a[href="/coach.html"]').forEach((coachLink) => {
+    if (coachLink.nextElementSibling?.classList?.contains('line-bind-link')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost btn-sm line-bind-link';
+    btn.textContent = '綁定 LINE';
+    coachLink.after(btn);
+  });
+
   const el = document.getElementById('auth-bar');
   if (!el) return;
   const badgeMap = {
@@ -181,10 +202,8 @@ export async function renderAuthBar(user) {
     <div class="flex items-center gap-2">
       ${badge}
     </div>
-    <button id="line-bind-btn" class="btn btn-ghost btn-sm">綁定 LINE</button>
     <button id="logout-btn" class="btn btn-ghost btn-sm">登出</button>
   `;
-  document.getElementById('line-bind-btn').addEventListener('click', openLineBindModal);
   document.getElementById('logout-btn').addEventListener('click', async () => {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch {}
     clearAuth();
