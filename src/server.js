@@ -552,9 +552,12 @@ app.post('/api/admin/coaches/account', requireAdmin, asyncHandler(async (req, re
 }));
 
 app.get('/api/admin/coaches', requireAdmin, asyncHandler((req, res) => {
+  // 只列出仍是「教練」角色者；被降為一般用戶(role=user)的舊教練檔案雖保留（供歷史預約），
+  // 但不再出現在教練管理清單。
   const rows = db.prepare(`
     SELECT c.*, u.name AS user_name, u.email AS user_email
     FROM coaches c JOIN users u ON u.id = c.user_id
+    WHERE u.role = 'coach'
     ORDER BY c.sort_order ASC, c.id ASC
   `).all();
   res.json(rows);
@@ -593,14 +596,17 @@ app.patch('/api/admin/coaches/:id', requireAdmin, asyncHandler((req, res) => {
   res.json(svcGetCoach(id));
 }));
 
+// 降為一般用戶：role→user（連帶清除管理者標籤）+ 停用教練檔案(保留供歷史預約)。
+// 該人 role 變 user 後即從教練管理清單(WHERE u.role='coach')消失。
 app.delete('/api/admin/coaches/:id', requireAdmin, asyncHandler((req, res) => {
   const id = Number(req.params.id);
   const coach = svcGetCoach(id);
   if (!coach) return res.status(404).json({ error: 'coach_not_found' });
+  if (coach.user_id === req.user.id) return res.status(400).json({ error: 'cannot_change_self' });
 
   tx(() => {
     svcSetCoachActive(id, false);
-    db.prepare("UPDATE users SET role = 'user' WHERE id = ?").run(coach.user_id);
+    db.prepare("UPDATE users SET role = 'user', is_admin = 0 WHERE id = ?").run(coach.user_id);
   });
   res.json({ ok: true, demoted_user_id: coach.user_id });
 }));

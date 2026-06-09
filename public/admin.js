@@ -783,9 +783,13 @@ async function loadCoachMgmt() {
     loadCoachMgmt();
   }));
   wrap.querySelectorAll('.demote-btn').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('確定降為一般用戶？歷史預約會保留，但未來不會出現在會員端')) return;
-    await api(`/api/admin/coaches/${b.dataset.id}`, { method: 'DELETE' });
-    loadCoachMgmt();
+    if (!confirm('確定降為一般用戶？此教練會從教練管理清單移除；歷史預約保留，但不再出現在客人端。')) return;
+    try {
+      await api(`/api/admin/coaches/${b.dataset.id}`, { method: 'DELETE' });
+      loadCoachMgmt();
+    } catch (e) {
+      toast(e.data?.error === 'cannot_change_self' ? '不能把自己降為一般用戶' : `失敗：${e.message}`, 'error');
+    }
   }));
 
   const sel = document.getElementById('user-to-promote');

@@ -138,5 +138,26 @@ await req('PATCH', `/api/admin/users/${pcLogin.data.user?.id || db.prepare("SELE
 const pcGet2 = await req('GET', '/api/admin/users', { token: pcLogin.data.token });
 expect('教練(加標籤後)用管理端點 → 200', () => assert.equal(pcGet2.status, 200));
 
+// 13) 降為一般用戶 → 從教練管理清單移除 + role=user + is_admin=0 + 教練檔案停用
+const dId = Number(db.prepare("INSERT INTO users (name,email,role,is_admin) VALUES ('M Demote','mtest-demote@x.com','coach',1)").run().lastInsertRowid);
+db.prepare("INSERT INTO coaches (user_id, display_name, is_active) VALUES (?, 'M Demote', 1)").run(dId);
+const dCoachId = db.prepare('SELECT id FROM coaches WHERE user_id=?').get(dId).id;
+const listBefore = await req('GET', '/api/admin/coaches', { token });
+expect('降前：教練在教練管理清單', () => assert.ok(listBefore.data.some(c => c.user_id === dId)));
+const del = await req('DELETE', `/api/admin/coaches/${dCoachId}`, { token });
+expect('降為一般用戶 → 200', () => assert.equal(del.status, 200));
+const listAfter = await req('GET', '/api/admin/coaches', { token });
+expect('降後：已從教練管理清單移除', () => assert.ok(!listAfter.data.some(c => c.user_id === dId)));
+expect('降後：role=user, is_admin=0, 教練檔案停用', () => {
+  const u = db.prepare('SELECT role,is_admin FROM users WHERE id=?').get(dId);
+  assert.equal(u.role, 'user'); assert.equal(u.is_admin, 0);
+  assert.equal(db.prepare('SELECT is_active FROM coaches WHERE user_id=?').get(dId).is_active, 0);
+});
+const selfCoach = db.prepare('SELECT id FROM coaches WHERE user_id=?').get(adminId);
+if (selfCoach) {
+  const selfDel = await req('DELETE', `/api/admin/coaches/${selfCoach.id}`, { token });
+  expect('不能把自己降為一般用戶 → 400 cannot_change_self', () => { assert.equal(selfDel.status, 400); assert.equal(selfDel.data.error, 'cannot_change_self'); });
+}
+
 clean();
 console.log('[member-admin-api] done');
