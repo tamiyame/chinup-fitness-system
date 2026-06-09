@@ -6,18 +6,16 @@
 
 ---
 
-## 權限（待你於 review 確認）
+## 權限（已確認）
 
-- **編輯**（姓名/手機/email/生日/地址）：**管理者 + 擁有者**
-- **封存 / 還原**：**僅擁有者**
+- **編輯 / 封存 / 還原**：**管理者 + 擁有者**（皆 `requireAdmin`）。
+- 封存仍有守門：**不可封存自己**、**不可封存最後一位擁有者**。
 
-> 我把你的「管理者：全部；擁有者：封存/還原」理解為「管理者能編輯全部欄位、但封存/還原收斂給擁有者」。若你其實要「管理者也能封存/還原」，看 spec 時告訴我，我把 archive/restore 端點從 `requireOwner` 改成 `requireAdmin` 即可。
-
-## 軟刪除（封存）語意
+## 軟刪除（封存）語意（已確認）
 
 - 封存 = `users.archived_at` 設時間戳；還原 = 清回 NULL。資料完全保留。
-- 封存後：從後台會員列表預設隱藏（「顯示已封存」可顯示）、前台依電話查詢視同不存在。
-- **自動還原**：被封存會員的電話之後再來預約時，`findOrCreateUserByPhone` 會自動清掉 `archived_at`、沿用舊帳號（歷史接回）。
+- **封存只影響後台會員列表**（預設隱藏；「顯示已封存」可顯示）。**不影響會員前台查詢**——會員自己用電話查 my-schedule 照常看得到自己的預約。
+- **自動還原**：被封存會員的電話之後再來預約時，`findOrCreateUserByPhone` 會自動清掉 `archived_at`、沿用舊帳號（歷史接回）；如此被封存者再次活躍即會回到後台列表。
 
 ---
 
@@ -43,12 +41,12 @@ addColumnIfMissing('users', 'archived_at', 'TEXT');
    - **email 唯一衝突**（與其他 user 重複）→ `409 email_taken`。
    - 不在此改 role（角色仍走既有 owner-only 端點）。
    - 可編輯任何列（含員工）；回更新後資料列。
-3. `POST /api/admin/users/:id/archive`（requireOwner）：設 `archived_at`。守門（沿用改角色那套）：
+3. `POST /api/admin/users/:id/archive`（requireAdmin）：設 `archived_at`。守門（沿用改角色那套）：
    - 不可封存自己 → `400 cannot_archive_self`
    - 不可封存最後一位擁有者 → `400 last_owner`
-4. `POST /api/admin/users/:id/restore`（requireOwner）：清 `archived_at`。
+4. `POST /api/admin/users/:id/restore`（requireAdmin）：清 `archived_at`。
 5. `findOrCreateUserByPhone`（userService）：比對到既有 `role==='user'` 且 `archived_at` 非空 → 清掉（自動還原）後回傳。
-6. `getUserByPhoneAndName`（userService，前台 my-schedule 查詢）：命中者若已封存 → 回 `null`（前台視同不存在）。
+6. `getUserByPhoneAndName`（userService，前台 my-schedule 查詢）：**不變**（封存不影響前台查詢）。
 
 ## C. 前端（public/admin.js + admin.html）
 
@@ -63,7 +61,7 @@ addColumnIfMissing('users', 'archived_at', 'TEXT');
 
 ## D. 測試（tests/，api 級）
 
-涵蓋：編輯成功 / email 衝突 409 / 封存(owner) / 封存守門(self、last-owner) / 還原 / 封存後同電話預約自動還原 / 封存後 my-schedule 查詢回空 / 管理者呼叫 archive 被擋(403)。
+涵蓋：編輯成功 / email 衝突 409 / 封存(admin 可) / 封存守門(self、last-owner) / 還原 / 封存後同電話預約自動還原 / 封存不影響前台查詢（my-schedule 仍查得到）。
 
 ## 不做（YAGNI）
 
