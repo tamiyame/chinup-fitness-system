@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS users (
   line_user_id TEXT,
   line_bind_code TEXT,
   line_bind_expires_at TEXT,
+  birthday TEXT,
+  address TEXT,
+  archived_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

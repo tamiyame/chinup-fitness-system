@@ -11,6 +11,7 @@ const insertUser = db.prepare(
   "INSERT INTO users (name, phone, email, password_hash, role, notification_preference) VALUES (?, ?, NULL, NULL, 'user', 'email')"
 );
 const getById = db.prepare('SELECT * FROM users WHERE id = ?');
+const clearArchived = db.prepare('UPDATE users SET archived_at = NULL WHERE id = ?');
 
 /**
  * 用電話找帳號；找到就回（姓名不覆蓋，首次為準），找不到就建。
@@ -26,6 +27,8 @@ export function findOrCreateUserByPhone({ phone, name }) {
       // 否則預約會掛到員工帳號、且成功頁外洩其 LINE 綁定碼（帳號接管 / IDOR）。
       // 身份在「建立預約」時只比電話、姓名被忽略，故必須在此擋下。
       if (existing.role !== 'user') throw new ApiError(409, 'phone_unavailable');
+      // 軟刪除自動還原：被封存會員的電話再次預約 → 解除封存、沿用舊帳號（歷史接回）。
+      if (existing.archived_at) { clearArchived.run(existing.id); existing.archived_at = null; }
       return existing;
     }
     try {
@@ -36,6 +39,7 @@ export function findOrCreateUserByPhone({ phone, name }) {
       if (String(e.message).includes('UNIQUE')) {
         const u = getByPhone.get(phone);
         if (u && u.role !== 'user') throw new ApiError(409, 'phone_unavailable');
+        if (u && u.archived_at) { clearArchived.run(u.id); u.archived_at = null; }
         return u;
       }
       throw e;

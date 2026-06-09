@@ -432,7 +432,8 @@ app.delete('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) =>
 app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
   const rows = db.prepare(`
     SELECT u.id, u.name, u.email, u.phone, u.role, u.notification_preference,
-           (u.google_id IS NOT NULL) AS has_google, u.line_user_id, u.created_at
+           (u.google_id IS NOT NULL) AS has_google, u.line_user_id,
+           u.birthday, u.address, u.archived_at, u.created_at
     FROM users u
     ORDER BY u.id ASC
   `).all();
@@ -465,6 +466,78 @@ app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => 
 
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
   res.json({ ok: true, id: targetId, role });
+}));
+
+// 編輯會員基本資料（姓名/手機/email/生日/地址）。管理者+擁有者皆可（requireAdmin）。
+// 角色等其他欄位不在此改。採「合併語意」：只更新 body 實際帶到的欄位，未帶的維持原值
+// （避免漏帶某欄被清空）。email/phone 皆有唯一限制 → 衝突回 409。
+app.patch('/api/admin/users/:id', requireAdmin, asyncHandler((req, res) => {
+  const targetId = Number(req.params.id);
+  const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'user_not_found' });
+
+  const b = req.body || {};
+  const has = (k) => Object.prototype.hasOwnProperty.call(b, k);
+  const norm = (v) => { const s = (v == null ? '' : String(v)).trim(); return s === '' ? null : s; };
+  const sets = [];
+  const vals = [];
+
+  if (has('name')) {
+    const name = norm(b.name);
+    if (!name) return res.status(400).json({ error: 'missing_name' });
+    sets.push('name = ?'); vals.push(name);
+  }
+  if (has('phone')) {
+    const phone = norm(b.phone);
+    if (phone && !/^\d{8,15}$/.test(phone)) return res.status(400).json({ error: 'invalid_phone' });
+    if (phone && db.prepare('SELECT id FROM users WHERE phone = ? AND id != ?').get(phone, targetId)) {
+      return res.status(409).json({ error: 'phone_taken' });
+    }
+    sets.push('phone = ?'); vals.push(phone);
+  }
+  if (has('email')) {
+    const email = norm(b.email);
+    // 員工(coach/admin/owner)以 email 登入，禁止透過此編輯清空 email 把自己/同事鎖在外面。
+    if (!email && target.role !== 'user') return res.status(400).json({ error: 'email_required' });
+    if (email && db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email, targetId)) {
+      return res.status(409).json({ error: 'email_taken' });
+    }
+    sets.push('email = ?'); vals.push(email);
+  }
+  if (has('birthday')) { sets.push('birthday = ?'); vals.push(norm(b.birthday)); }
+  if (has('address')) { sets.push('address = ?'); vals.push(norm(b.address)); }
+
+  if (sets.length) {
+    vals.push(targetId);
+    db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+  }
+  const row = db.prepare(`
+    SELECT id, name, email, phone, role, notification_preference,
+           (google_id IS NOT NULL) AS has_google, line_user_id, birthday, address, archived_at, created_at
+    FROM users WHERE id = ?`).get(targetId);
+  res.json(row);
+}));
+
+// 軟刪除（封存）會員：只影響後台列表，不動角色/登入。管理者+擁有者皆可。
+app.post('/api/admin/users/:id/archive', requireAdmin, asyncHandler((req, res) => {
+  const targetId = Number(req.params.id);
+  if (targetId === req.user.id) return res.status(400).json({ error: 'cannot_archive_self' });
+  const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'user_not_found' });
+  if (target.role === 'owner') {
+    const ownerCount = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'owner'").get().c;
+    if (ownerCount <= 1) return res.status(400).json({ error: 'last_owner' });
+  }
+  db.prepare("UPDATE users SET archived_at = datetime('now') WHERE id = ?").run(targetId);
+  res.json({ ok: true, id: targetId });
+}));
+
+app.post('/api/admin/users/:id/restore', requireAdmin, asyncHandler((req, res) => {
+  const targetId = Number(req.params.id);
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'user_not_found' });
+  db.prepare('UPDATE users SET archived_at = NULL WHERE id = ?').run(targetId);
+  res.json({ ok: true, id: targetId });
 }));
 
 // --- One-on-one: admin coach management ---

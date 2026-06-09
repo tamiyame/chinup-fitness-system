@@ -38,6 +38,10 @@ db.exec(
 addColumnIfMissing('users', 'line_user_id', 'TEXT');
 addColumnIfMissing('users', 'line_bind_code', 'TEXT');
 addColumnIfMissing('users', 'line_bind_expires_at', 'TEXT');
+// 2026-06 會員管理：生日/地址 + 軟刪除(封存)
+addColumnIfMissing('users', 'birthday', 'TEXT');
+addColumnIfMissing('users', 'address', 'TEXT');
+addColumnIfMissing('users', 'archived_at', 'TEXT');
 addColumnIfMissing('notifications', 'retry_count', 'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('notifications', 'next_retry_at', 'TEXT');
 addColumnIfMissing('notifications', 'last_error', 'TEXT');
