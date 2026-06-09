@@ -37,6 +37,16 @@ expect('編輯成功 200 + 欄位寫入', () => {
   assert.equal(e1.data.address, '台北市信義區');
 });
 
+// 1b) 偷渡 role/archived_at 等欄位應被忽略（端點只改 5 個欄位）
+const sm = await req('PATCH', `/api/admin/users/${aId}`, { token, body: { name: '改名A', email: 'mtest-a2@x.com', role: 'owner', archived_at: '2099-01-01T00:00:00', notification_preference: 'sms' } });
+expect('偷渡 role/archived_at 被忽略', () => {
+  assert.equal(sm.status, 200);
+  const row = db.prepare('SELECT role, archived_at, notification_preference FROM users WHERE id=?').get(aId);
+  assert.equal(row.role, 'user');
+  assert.equal(row.archived_at, null);
+  assert.notEqual(row.notification_preference, 'sms');
+});
+
 // 2) email 衝突
 const e2 = await req('PATCH', `/api/admin/users/${aId}`, { token, body: { name: '改名A', email: 'mtest-b@x.com' } });
 expect('email 衝突 → 409 email_taken', () => { assert.equal(e2.status, 409); assert.equal(e2.data.error, 'email_taken'); });
@@ -52,6 +62,13 @@ expect('phone 格式錯 → 400 invalid_phone', () => { assert.equal(e4.status, 
 // 5) 姓名必填
 const e5 = await req('PATCH', `/api/admin/users/${aId}`, { token, body: { name: '   ' } });
 expect('姓名空白 → 400 missing_name', () => { assert.equal(e5.status, 400); assert.equal(e5.data.error, 'missing_name'); });
+
+// 5b) 員工(coach/admin/owner)不可被清空 email（避免以 email 登入者被鎖在外）
+const coachUid = Number(db.prepare("INSERT INTO users (name,email,role,password_hash) VALUES ('M Test Coach','mtest-coach@x.com','coach','x')").run().lastInsertRowid);
+const ec1 = await req('PATCH', `/api/admin/users/${coachUid}`, { token, body: { name: 'M Test Coach', email: '' } });
+expect('員工清空 email → 400 email_required', () => { assert.equal(ec1.status, 400); assert.equal(ec1.data.error, 'email_required'); });
+const ec2 = await req('PATCH', `/api/admin/users/${coachUid}`, { token, body: { name: 'M Test Coach', email: 'mtest-coach2@x.com' } });
+expect('員工改 email（非清空）→ 200', () => assert.equal(ec2.status, 200));
 
 // 6) 封存（管理者可）
 const ar = await req('POST', `/api/admin/users/${aId}/archive`, { token });

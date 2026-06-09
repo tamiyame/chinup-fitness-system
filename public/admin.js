@@ -609,6 +609,7 @@ function openUserEditModal(id) {
         phone_taken: '手機已被其他會員使用',
         invalid_phone: '手機格式錯誤（8–15 碼數字）',
         missing_name: '姓名必填',
+        email_required: '員工帳號以 Email 登入，不可清空 Email',
       };
       toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
     }
