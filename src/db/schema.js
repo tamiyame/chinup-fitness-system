@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT,
   google_id TEXT,
   role TEXT NOT NULL DEFAULT 'user',
+  is_admin INTEGER NOT NULL DEFAULT 0,
   notification_preference TEXT NOT NULL DEFAULT 'email',
   line_user_id TEXT,
   line_bind_code TEXT,

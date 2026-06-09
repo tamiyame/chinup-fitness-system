@@ -108,25 +108,17 @@ function requireUser(req, res, next) {
   next();
 }
 
+// 管理者 = 有管理者標籤的教練（is_admin=1）。標籤的不變式由寫入端保證只落在 coach 上。
 function requireAdmin(req, res, next) {
   requireUser(req, res, () => {
-    if (!['admin', 'owner'].includes(req.user.role)) return res.status(403).json({ error: 'admin_only' });
+    if (!req.user.is_admin) return res.status(403).json({ error: 'admin_only' });
     next();
   });
 }
 
 function requireCoach(req, res, next) {
   requireUser(req, res, () => {
-    if (!['coach', 'admin', 'owner'].includes(req.user.role)) {
-      return res.status(403).json({ error: 'coach_only' });
-    }
-    next();
-  });
-}
-
-function requireOwner(req, res, next) {
-  requireUser(req, res, () => {
-    if (req.user.role !== 'owner') return res.status(403).json({ error: 'owner_only' });
+    if (req.user.role !== 'coach') return res.status(403).json({ error: 'coach_only' });
     next();
   });
 }
@@ -280,7 +272,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
     const session = loginAsGoogleUser(user);
 
     // Pass token back via URL fragment (not query) so it doesn't hit logs
-    const landing = ['admin', 'owner'].includes(user.role) ? '/admin.html' : '/coach.html';
+    const landing = user.is_admin ? '/admin.html' : '/coach.html';
     res.redirect(`${landing}#token=${session.token}`);
   } catch (e) {
     console.error('[google] callback error:', e);
@@ -431,7 +423,7 @@ app.delete('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) =>
 // Admin + owner can see the roster. Only owner can change roles.
 app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
   const rows = db.prepare(`
-    SELECT u.id, u.name, u.email, u.phone, u.role, u.notification_preference,
+    SELECT u.id, u.name, u.email, u.phone, u.role, u.is_admin, u.notification_preference,
            (u.google_id IS NOT NULL) AS has_google, u.line_user_id,
            u.birthday, u.address, u.archived_at, u.created_at
     FROM users u
@@ -445,39 +437,42 @@ app.post('/api/admin/line/reset-all', requireAdmin, asyncHandler((req, res) => {
   res.json(resetAllLineBindings());
 }));
 
-// 變更角色：管理者+擁有者皆可（requireAdmin）。UI 只指派 會員/教練/管理者（不再經 UI 指派 owner）。
-// 守門：不可指派 owner、不可更動 owner 帳號、不可改自己。
-// 設為「教練」時自動建立教練檔案(預設未啟用)；由教練改成其他角色 → 停用教練檔案(保留資料/歷史)。
+// 變更角色與管理者標籤（requireAdmin = 有管理者標籤的教練）。
+// role ∈ {user, coach}；is_admin 標籤只在 coach 有效（設為 user 一律清為 0）。
+// 守門：不可改自己（避免自我降權鎖死）；變更後系統至少保留 1 位管理者（last_admin）。
+// 教練檔案連動：改為教練 → 既有檔案重新啟用 / 全新建未啟用；改為會員 → 停用教練檔案(保留資料)。
 app.patch('/api/admin/users/:id/role', requireAdmin, asyncHandler((req, res) => {
   const targetId = Number(req.params.id);
   const { role } = req.body || {};
-  if (!['user', 'coach', 'admin'].includes(role)) {
-    return res.status(400).json({ error: 'invalid_role' });
-  }
-  if (targetId === req.user.id) {
-    return res.status(400).json({ error: 'cannot_change_own_role' });
-  }
+  if (!['user', 'coach'].includes(role)) return res.status(400).json({ error: 'invalid_role' });
+  if (targetId === req.user.id) return res.status(400).json({ error: 'cannot_change_self' });
 
-  const target = db.prepare('SELECT id, name, role FROM users WHERE id = ?').get(targetId);
+  const target = db.prepare('SELECT id, name, role, is_admin FROM users WHERE id = ?').get(targetId);
   if (!target) return res.status(404).json({ error: 'user_not_found' });
-  if (target.role === 'owner') return res.status(403).json({ error: 'cannot_modify_owner' });
 
-  if (role !== target.role) {
-    tx(() => {
-      db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
-      if (role === 'coach') {
-        // 自動建立教練檔案（若尚無），預設未啟用；已存在則保持原狀（由教練管理啟用）。
-        if (!svcGetCoachByUser(targetId)) {
-          svcCreateCoach({ userId: targetId, displayName: target.name?.trim() || '教練' });
-        }
-      } else if (target.role === 'coach') {
-        // 從教練改成其他角色 → 停用教練檔案（保留資料與歷史預約）。
-        const c = svcGetCoachByUser(targetId);
-        if (c) svcSetCoachActive(c.id, false);
-      }
-    });
+  // 不變式：管理者標籤只能在教練身上；設為會員自動清除標籤。整數 0/1（避免綁定布林）。
+  const isAdmin = (role === 'coach' && req.body?.is_admin) ? 1 : 0;
+
+  // last_admin 守門：若這次變更會把此人從「管理者」拿掉，需確保系統仍有其他管理者。
+  if (target.is_admin && !isAdmin) {
+    const adminCount = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role='coach' AND is_admin=1").get().c;
+    if (adminCount <= 1) return res.status(400).json({ error: 'last_admin' });
   }
-  res.json({ ok: true, id: targetId, role });
+
+  tx(() => {
+    db.prepare('UPDATE users SET role = ?, is_admin = ? WHERE id = ?').run(role, isAdmin, targetId);
+    if (role === 'coach') {
+      // 既有教練檔案 → 重新啟用；全新 → 建未啟用（待設可預約時段）。
+      const c = svcGetCoachByUser(targetId);
+      if (c) { if (!c.is_active) svcSetCoachActive(c.id, true); }
+      else svcCreateCoach({ userId: targetId, displayName: target.name?.trim() || '教練' });
+    } else if (target.role === 'coach') {
+      // 教練 → 會員：停用教練檔案（保留資料與歷史預約）。
+      const c = svcGetCoachByUser(targetId);
+      if (c) svcSetCoachActive(c.id, false);
+    }
+  });
+  res.json({ ok: true, id: targetId, role, is_admin: isAdmin });
 }));
 
 // 編輯會員基本資料（姓名/手機/email/生日/地址）。管理者+擁有者皆可（requireAdmin）。
@@ -524,22 +519,18 @@ app.patch('/api/admin/users/:id', requireAdmin, asyncHandler((req, res) => {
     db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
   }
   const row = db.prepare(`
-    SELECT id, name, email, phone, role, notification_preference,
+    SELECT id, name, email, phone, role, is_admin, notification_preference,
            (google_id IS NOT NULL) AS has_google, line_user_id, birthday, address, archived_at, created_at
     FROM users WHERE id = ?`).get(targetId);
   res.json(row);
 }));
 
-// 軟刪除（封存）會員：只影響後台列表，不動角色/登入。管理者+擁有者皆可。
+// 軟刪除（封存）會員：只影響後台列表，不動角色/標籤/登入。管理者操作（requireAdmin）。
 app.post('/api/admin/users/:id/archive', requireAdmin, asyncHandler((req, res) => {
   const targetId = Number(req.params.id);
   if (targetId === req.user.id) return res.status(400).json({ error: 'cannot_archive_self' });
-  const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(targetId);
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
   if (!target) return res.status(404).json({ error: 'user_not_found' });
-  if (target.role === 'owner') {
-    const ownerCount = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'owner'").get().c;
-    if (ownerCount <= 1) return res.status(400).json({ error: 'last_owner' });
-  }
   db.prepare("UPDATE users SET archived_at = datetime('now') WHERE id = ?").run(targetId);
   res.json({ ok: true, id: targetId });
 }));

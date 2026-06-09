@@ -180,6 +180,28 @@ if (!csCols.includes('coach_id')) {
 // 不退款、不取消訂單；status 維持 'confirmed'（避免動到 status 的 CHECK 約束）。
 addColumnIfMissing('registrations', 'on_leave', 'INTEGER NOT NULL DEFAULT 0');
 
+// ── 2026-06-09 角色/權限重構：移除 owner、管理者改為「教練的權限標籤」 ──
+// role 收斂為 user/coach；is_admin 標籤取代 admin/owner。
+// 既有 admin/owner → role='coach' + is_admin=1；無教練檔案者補一筆未啟用(is_active=0)，
+// 故不會出現在 coaches.html 公開清單，但能登入後台管理。
+// 冪等：偵測訊號為「存在 role IN (admin,owner) 的列」，遷移後已無 → 重跑 no-op。
+addColumnIfMissing('users', 'is_admin', 'INTEGER NOT NULL DEFAULT 0');
+const legacyStaff = db.prepare("SELECT id, name FROM users WHERE role IN ('admin','owner')").all();
+if (legacyStaff.length) {
+  const promote = db.prepare("UPDATE users SET role='coach', is_admin=1 WHERE id=?");
+  const hasCoach = db.prepare('SELECT id FROM coaches WHERE user_id=?');
+  const insCoach = db.prepare('INSERT INTO coaches (user_id, display_name) VALUES (?, ?)');
+  db.exec('BEGIN');
+  try {
+    for (const u of legacyStaff) {
+      promote.run(u.id);
+      if (!hasCoach.get(u.id)) insCoach.run(u.id, (u.name && u.name.trim()) || '管理者');
+    }
+    db.exec('COMMIT');
+  } catch (e) { try { db.exec('ROLLBACK'); } catch {} throw e; }
+  console.log(`[migrate] roles redesign: ${legacyStaff.length} admin/owner → coach+is_admin`);
+}
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.

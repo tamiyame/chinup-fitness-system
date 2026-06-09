@@ -13,9 +13,10 @@ async function init() {
   }
   if (!me.is_active) $('pending-banner').classList.remove('hidden');
 
-  // 渲染右上角身份列（含「綁定 LINE」按鈕）。coach.html 走 /api/coach/me 驗證，
-  // 不經 bootAuth，故在此手動渲染；能到這代表是教練，role 固定為 'coach'。
-  await renderAuthBar({ ...me, role: 'coach' });
+  // 渲染右上角身份列（含「綁定 LINE」按鈕）。coach.html 走 /api/coach/me 驗證、不經 bootAuth；
+  // 取真正的使用者(含 is_admin)來渲染，讓「教練兼管理者」也能看到管理者徽章與管理後台連結。
+  const authUser = await api('/api/auth/me').catch(() => ({ role: 'coach' }));
+  await renderAuthBar(authUser);
 
   // Tab switching
   document.querySelectorAll('.tab').forEach(t => {

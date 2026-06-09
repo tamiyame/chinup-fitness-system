@@ -141,7 +141,7 @@ export function fmtDateForLine(localStr) {
 
 const getUserById = db.prepare('SELECT id, line_user_id FROM users WHERE id = ?');
 const getCoachUserId = db.prepare('SELECT user_id FROM coaches WHERE id = ?');
-const getAdminUserIds = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner')");
+const getAdminUserIds = db.prepare('SELECT id FROM users WHERE is_admin = 1');
 
 const insertNotif = db.prepare(`
   INSERT INTO notifications
