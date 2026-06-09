@@ -55,6 +55,17 @@ export function login({ email, password }) {
   return { token: session.token, user: safeUser(user), expiresAt: session.expiresAt };
 }
 
+// 修改密碼：需提供 email + 目前密碼（驗證身份）+ 新密碼。僅可登入帳號(教練/管理者)可改。
+// 不建立 session、不洩漏帳號是否存在（錯誤一律 invalid_credentials，與 login 一致）。
+export function changePassword({ email, currentPassword, newPassword }) {
+  if (typeof newPassword !== 'string' || newPassword.length < 6) throw new ApiError(400, 'weak_password');
+  const user = getUserByEmail.get(email);
+  if (!user || !verifyPassword(currentPassword, user.password_hash)) throw new ApiError(401, 'invalid_credentials');
+  if (user.role === 'user') throw new ApiError(403, 'user_login_disabled');
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword), user.id);
+  return { ok: true };
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function registerWithPassword({ email, password, name, phone, notification_preference, as_coach = false }) {

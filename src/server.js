@@ -46,6 +46,7 @@ import { listActiveCoaches as svcListActive, saveAvatar as svcSaveAvatar } from 
 import {
   login as authLogin,
   logout as authLogout,
+  changePassword as authChangePassword,
   userFromToken,
   ensureInitialAdmin,
   findOrCreateGoogleUser,
@@ -78,6 +79,7 @@ app.set('trust proxy', 1);
 //   (b) test suite 連跑時容易誤觸
 //   選 30 仍然把暴力破解速率壓到 120/小時，配合 scrypt 雜湊已足夠
 const loginLimiter = createRateLimiter({ name: 'login', windowMs: 15 * 60_000, max: 30 });
+const changePwLimiter = createRateLimiter({ name: 'change-password', windowMs: 15 * 60_000, max: 20 });
 app.use(express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; },
@@ -160,6 +162,14 @@ app.post('/api/auth/logout', (req, res) => {
   if (token) authLogout(token);
   res.json({ ok: true });
 });
+
+// 修改密碼（登入頁）：需 email + 目前密碼 + 新密碼；限流；僅可登入帳號可改。
+app.post('/api/auth/change-password', changePwLimiter, asyncHandler((req, res) => {
+  const { email, currentPassword, newPassword } = req.body || {};
+  if (!email || !currentPassword || !newPassword) return res.status(400).json({ error: 'missing_fields' });
+  authChangePassword({ email, currentPassword, newPassword });
+  res.json({ ok: true });
+}));
 
 app.get('/api/auth/me', requireUser, (req, res) => {
   res.json(req.user);
