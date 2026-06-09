@@ -4,8 +4,8 @@ const user = await bootAuth({ requireAdmin: true });
 // If bootAuth redirected, halt module execution so no admin content renders.
 if (!user) throw new Error('__redirected_by_auth__');
 
-const ROLE_LABEL = { owner: '擁有者', admin: '管理者', user: '會員' };
-const ROLE_BADGE = { owner: 'waitlisted', admin: 'confirmed', user: 'open' };
+const ROLE_LABEL = { owner: '擁有者', admin: '管理者', coach: '教練', user: '會員' };
+const ROLE_BADGE = { owner: 'waitlisted', admin: 'confirmed', coach: 'coach', user: 'open' };
 
 const RECURRENCE_LABEL = { weekly: '每週', monthly: '每月', bimonthly: '每兩個月', quarterly: '每季', semiannual: '每半年' };
 const SESSION_STATUS_LABEL = { open: '開放', confirmed: '已成班', cancelled: '未開課', completed: '結束' };
@@ -420,10 +420,7 @@ let usersWired = false;
 
 async function loadUsers() {
   const note = document.getElementById('users-note');
-  const canEdit = user.role === 'owner';
-  note.textContent = canEdit
-    ? '你是擁有者 — 可指派其他帳號為管理者'
-    : '僅擁有者可變更角色';
+  note.textContent = '長按會員可編輯資料 / 變更角色 / 封存';
 
   // 一次性綁定搜尋欄 + 顯示已封存切換（靜態元素，跨重繪持續存在）
   if (!usersWired) {
@@ -443,7 +440,6 @@ async function loadUsers() {
 function renderUsersTable() {
   const el = document.getElementById('users-table');
   if (!el) return;
-  const canEdit = user.role === 'owner'; // 角色下拉仍限擁有者
   const q = (document.getElementById('user-search')?.value || '').trim().toLowerCase();
   const showArchived = !!document.getElementById('show-archived')?.checked;
 
@@ -468,49 +464,22 @@ function renderUsersTable() {
         <th>加入時間</th>
       </tr></thead>
       <tbody>
-        ${rows.map(r => renderUserRow(r, canEdit)).join('')}
+        ${rows.map(r => renderUserRow(r)).join('')}
       </tbody>
     </table>`;
 
-  if (canEdit) {
-    el.querySelectorAll('select.role-select').forEach(sel => {
-      sel.addEventListener('change', async () => {
-        const id = Number(sel.dataset.id);
-        const newRole = sel.value;
-        try {
-          await api(`/api/admin/users/${id}/role`, { method: 'PATCH', body: { role: newRole } });
-          toast(`已更新：${escapeHtml(sel.dataset.name)} → ${ROLE_LABEL[newRole]}`, 'success');
-          loadUsers();
-        } catch (err) {
-          const msgs = {
-            cannot_change_own_role: '不能變更自己的角色',
-            last_owner: '不能降級最後一位擁有者',
-            invalid_role: '無效的角色',
-          };
-          toast(msgs[err.data?.error] || `失敗：${err.message}`, 'error');
-          sel.value = sel.dataset.original;
-        }
-      });
-    });
-  }
   bindUserRowLongPress(el);
 }
 
-function renderUserRow(r, canEdit) {
+function renderUserRow(r) {
   const isSelf = r.id === user.id;
   const archived = !!r.archived_at;
   const loginBadge = r.has_google
     ? '<span class="badge badge-confirmed" style="font-size:11px;">Google</span>'
     : '<span class="badge badge-completed" style="font-size:11px;">Email</span>';
 
-  // Edit controls: owner can change others' roles, but not own
-  const roleCell = canEdit && !isSelf
-    ? `<select class="role-select form-select" style="padding:4px 8px;font-size:13px;" data-id="${r.id}" data-name="${escapeHtml(r.name)}" data-original="${r.role}">
-         <option value="user" ${r.role==='user'?'selected':''}>會員</option>
-         <option value="admin" ${r.role==='admin'?'selected':''}>管理者</option>
-         <option value="owner" ${r.role==='owner'?'selected':''}>擁有者</option>
-       </select>`
-    : `<span class="badge badge-${ROLE_BADGE[r.role] || 'open'}">${ROLE_LABEL[r.role] || escapeHtml(r.role)}</span>${isSelf ? ' <span class="subtle text-xs">(你)</span>' : ''}`;
+  // 角色改在長按彈窗變更（不再用表格內下拉）；此處只顯示角色徽章
+  const roleCell = `<span class="badge badge-${ROLE_BADGE[r.role] || 'open'}">${ROLE_LABEL[r.role] || escapeHtml(r.role)}</span>${isSelf ? ' <span class="subtle text-xs">(你)</span>' : ''}`;
 
   const archBadge = archived ? ' <span class="badge badge-cancelled" style="font-size:10px;">已封存</span>' : '';
 
@@ -575,12 +544,19 @@ function openUserEditModal(id) {
   const archived = !!u.archived_at;
   const v = (x) => escapeHtml(x ?? '');
   const fld = (label, inner) => `<div class="mb-2"><label class="subtle" style="font-size:13px;display:block;margin-bottom:2px;">${label}</label>${inner}</div>`;
+  // 角色變更：擁有者不可在此變更；不可改自己；其餘可選 會員/教練/管理者（不經 UI 指派擁有者）
+  const roleField = (() => {
+    if (u.role === 'owner') return fld('角色', `<input class="form-input" value="擁有者（不可在此變更）" disabled style="margin-bottom:0;" />`);
+    if (u.id === user.id) return fld('角色', `<input class="form-input" value="${ROLE_LABEL[u.role] || u.role}（不可變更自己）" disabled style="margin-bottom:0;" />`);
+    const opts = ['user', 'coach', 'admin'].map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${ROLE_LABEL[r]}</option>`).join('');
+    return fld('角色', `<select id="ue-role" class="form-select" style="margin-bottom:0;">${opts}</select>`);
+  })();
   body.innerHTML = `
     ${fld('姓名', `<input id="ue-name" class="form-input" value="${v(u.name)}" style="margin-bottom:0;" />`)}
     ${fld('手機', `<input id="ue-phone" class="form-input" value="${v(u.phone)}" inputmode="numeric" style="margin-bottom:0;" />`)}
     ${fld('Email', `<input id="ue-email" type="email" class="form-input" value="${v(u.email)}" style="margin-bottom:0;" />`)}
     ${fld('生日', `<input id="ue-birthday" type="date" class="form-input" value="${v(u.birthday)}" style="margin-bottom:0;" />`)}
-    ${fld('地址', `<input id="ue-address" class="form-input" value="${v(u.address)}" style="margin-bottom:0;" />`)}
+    ${roleField}
     <div class="flex items-center justify-between gap-2" style="margin-top:14px;">
       <button id="ue-save" class="btn btn-primary btn-sm">儲存</button>
       ${archived
@@ -596,21 +572,28 @@ function openUserEditModal(id) {
       phone: body.querySelector('#ue-phone').value,
       email: body.querySelector('#ue-email').value,
       birthday: body.querySelector('#ue-birthday').value,
-      address: body.querySelector('#ue-address').value,
+    };
+    const roleSel = body.querySelector('#ue-role');
+    const newRole = roleSel ? roleSel.value : null;
+    const msgs = {
+      email_taken: 'Email 已被其他會員使用',
+      phone_taken: '手機已被其他會員使用',
+      invalid_phone: '手機格式錯誤（8–15 碼數字）',
+      missing_name: '姓名必填',
+      email_required: '員工帳號以 Email 登入，不可清空 Email',
+      cannot_change_own_role: '不能變更自己的角色',
+      cannot_modify_owner: '不能變更擁有者的角色',
+      invalid_role: '無效的角色',
     };
     try {
       await api(`/api/admin/users/${id}`, { method: 'PATCH', body: payload });
+      if (newRole && newRole !== u.role) {
+        await api(`/api/admin/users/${id}/role`, { method: 'PATCH', body: { role: newRole } });
+      }
       toast('已更新會員資料', 'success');
       ov.style.display = 'none';
       await loadUsers();
     } catch (e) {
-      const msgs = {
-        email_taken: 'Email 已被其他會員使用',
-        phone_taken: '手機已被其他會員使用',
-        invalid_phone: '手機格式錯誤（8–15 碼數字）',
-        missing_name: '姓名必填',
-        email_required: '員工帳號以 Email 登入，不可清空 Email',
-      };
       toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
     }
   });
