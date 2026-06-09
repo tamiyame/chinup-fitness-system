@@ -445,26 +445,38 @@ app.post('/api/admin/line/reset-all', requireAdmin, asyncHandler((req, res) => {
   res.json(resetAllLineBindings());
 }));
 
-app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => {
+// 變更角色：管理者+擁有者皆可（requireAdmin）。UI 只指派 會員/教練/管理者（不再經 UI 指派 owner）。
+// 守門：不可指派 owner、不可更動 owner 帳號、不可改自己。
+// 設為「教練」時自動建立教練檔案(預設未啟用)；由教練改成其他角色 → 停用教練檔案(保留資料/歷史)。
+app.patch('/api/admin/users/:id/role', requireAdmin, asyncHandler((req, res) => {
   const targetId = Number(req.params.id);
   const { role } = req.body || {};
-  if (!['user', 'coach', 'admin', 'owner'].includes(role)) {
+  if (!['user', 'coach', 'admin'].includes(role)) {
     return res.status(400).json({ error: 'invalid_role' });
   }
   if (targetId === req.user.id) {
     return res.status(400).json({ error: 'cannot_change_own_role' });
   }
 
-  const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(targetId);
+  const target = db.prepare('SELECT id, name, role FROM users WHERE id = ?').get(targetId);
   if (!target) return res.status(404).json({ error: 'user_not_found' });
+  if (target.role === 'owner') return res.status(403).json({ error: 'cannot_modify_owner' });
 
-  // Prevent demoting the last owner (keeps the app always recoverable).
-  if (target.role === 'owner' && role !== 'owner') {
-    const ownerCount = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'owner'").get().c;
-    if (ownerCount <= 1) return res.status(400).json({ error: 'last_owner' });
+  if (role !== target.role) {
+    tx(() => {
+      db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
+      if (role === 'coach') {
+        // 自動建立教練檔案（若尚無），預設未啟用；已存在則保持原狀（由教練管理啟用）。
+        if (!svcGetCoachByUser(targetId)) {
+          svcCreateCoach({ userId: targetId, displayName: target.name?.trim() || '教練' });
+        }
+      } else if (target.role === 'coach') {
+        // 從教練改成其他角色 → 停用教練檔案（保留資料與歷史預約）。
+        const c = svcGetCoachByUser(targetId);
+        if (c) svcSetCoachActive(c.id, false);
+      }
+    });
   }
-
-  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
   res.json({ ok: true, id: targetId, role });
 }));
 

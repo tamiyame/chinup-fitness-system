@@ -105,5 +105,26 @@ expect('還原 → 200 + archived_at=null', () => {
   assert.equal(db.prepare('SELECT archived_at FROM users WHERE id=?').get(bId).archived_at, null);
 });
 
+// 12) 角色變更（管理者可；UI 只 user/coach/admin）
+const rc1 = await req('PATCH', `/api/admin/users/${bId}/role`, { token, body: { role: 'coach' } });
+expect('管理者設為教練 → 200 + 自動建教練檔案(未啟用)', () => {
+  assert.equal(rc1.status, 200);
+  const c = db.prepare('SELECT is_active FROM coaches WHERE user_id=?').get(bId);
+  assert.ok(c); assert.equal(c.is_active, 0);
+  assert.equal(db.prepare('SELECT role FROM users WHERE id=?').get(bId).role, 'coach');
+});
+const rc2 = await req('PATCH', `/api/admin/users/${bId}/role`, { token, body: { role: 'user' } });
+expect('教練改回會員 → 200 + 教練檔案停用(保留)', () => {
+  assert.equal(rc2.status, 200);
+  const c = db.prepare('SELECT is_active FROM coaches WHERE user_id=?').get(bId);
+  assert.ok(c); assert.equal(c.is_active, 0);
+});
+const rc3 = await req('PATCH', `/api/admin/users/${bId}/role`, { token, body: { role: 'owner' } });
+expect('不可指派 owner → 400 invalid_role', () => { assert.equal(rc3.status, 400); assert.equal(rc3.data.error, 'invalid_role'); });
+const rc4 = await req('PATCH', `/api/admin/users/${ownerId}/role`, { token, body: { role: 'admin' } });
+expect('不可變更擁有者 → 403 cannot_modify_owner', () => { assert.equal(rc4.status, 403); assert.equal(rc4.data.error, 'cannot_modify_owner'); });
+const rc5 = await req('PATCH', `/api/admin/users/${adminId}/role`, { token, body: { role: 'user' } });
+expect('不可變更自己 → 400 cannot_change_own_role', () => { assert.equal(rc5.status, 400); assert.equal(rc5.data.error, 'cannot_change_own_role'); });
+
 clean();
 console.log('[member-admin-api] done');
