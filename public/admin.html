@@ -111,8 +111,14 @@
 
   <!-- user management -->
   <section class="mb-10">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="section-title">會員管理</h2>
+    <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+      <div class="flex items-center gap-3 flex-wrap">
+        <h2 class="section-title">會員管理</h2>
+        <input id="user-search" type="search" class="form-input" placeholder="搜尋姓名或電話…" style="max-width:240px;margin-bottom:0;" autocomplete="off" />
+        <label class="subtle" style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
+          <input id="show-archived" type="checkbox" /> 顯示已封存
+        </label>
+      </div>
       <span id="users-note" class="subtle"></span>
     </div>
     <div class="card p-0 overflow-hidden">

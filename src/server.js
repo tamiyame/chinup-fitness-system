@@ -432,7 +432,8 @@ app.delete('/api/admin/categories/:id', requireAdmin, asyncHandler((req, res) =>
 app.get('/api/admin/users', requireAdmin, asyncHandler((req, res) => {
   const rows = db.prepare(`
     SELECT u.id, u.name, u.email, u.phone, u.role, u.notification_preference,
-           (u.google_id IS NOT NULL) AS has_google, u.line_user_id, u.created_at
+           (u.google_id IS NOT NULL) AS has_google, u.line_user_id,
+           u.birthday, u.address, u.archived_at, u.created_at
     FROM users u
     ORDER BY u.id ASC
   `).all();
@@ -465,6 +466,61 @@ app.patch('/api/admin/users/:id/role', requireOwner, asyncHandler((req, res) => 
 
   db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
   res.json({ ok: true, id: targetId, role });
+}));
+
+// 編輯會員基本資料（姓名/手機/email/生日/地址）。管理者+擁有者皆可（requireAdmin）。
+// 角色不在此改（仍走上面的 owner-only 端點）。email/phone 皆有唯一限制 → 衝突回 409。
+app.patch('/api/admin/users/:id', requireAdmin, asyncHandler((req, res) => {
+  const targetId = Number(req.params.id);
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'user_not_found' });
+
+  const b = req.body || {};
+  const norm = (v) => { const s = (v == null ? '' : String(v)).trim(); return s === '' ? null : s; };
+  const name = norm(b.name);
+  if (!name) return res.status(400).json({ error: 'missing_name' });
+  const phone = norm(b.phone);
+  if (phone && !/^\d{8,15}$/.test(phone)) return res.status(400).json({ error: 'invalid_phone' });
+  const email = norm(b.email);
+  const birthday = norm(b.birthday);
+  const address = norm(b.address);
+
+  if (email && db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email, targetId)) {
+    return res.status(409).json({ error: 'email_taken' });
+  }
+  if (phone && db.prepare('SELECT id FROM users WHERE phone = ? AND id != ?').get(phone, targetId)) {
+    return res.status(409).json({ error: 'phone_taken' });
+  }
+
+  db.prepare('UPDATE users SET name = ?, phone = ?, email = ?, birthday = ?, address = ? WHERE id = ?')
+    .run(name, phone, email, birthday, address, targetId);
+  const row = db.prepare(`
+    SELECT id, name, email, phone, role, notification_preference,
+           (google_id IS NOT NULL) AS has_google, line_user_id, birthday, address, archived_at, created_at
+    FROM users WHERE id = ?`).get(targetId);
+  res.json(row);
+}));
+
+// 軟刪除（封存）會員：只影響後台列表，不動角色/登入。管理者+擁有者皆可。
+app.post('/api/admin/users/:id/archive', requireAdmin, asyncHandler((req, res) => {
+  const targetId = Number(req.params.id);
+  if (targetId === req.user.id) return res.status(400).json({ error: 'cannot_archive_self' });
+  const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'user_not_found' });
+  if (target.role === 'owner') {
+    const ownerCount = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'owner'").get().c;
+    if (ownerCount <= 1) return res.status(400).json({ error: 'last_owner' });
+  }
+  db.prepare("UPDATE users SET archived_at = datetime('now') WHERE id = ?").run(targetId);
+  res.json({ ok: true, id: targetId });
+}));
+
+app.post('/api/admin/users/:id/restore', requireAdmin, asyncHandler((req, res) => {
+  const targetId = Number(req.params.id);
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'user_not_found' });
+  db.prepare('UPDATE users SET archived_at = NULL WHERE id = ?').run(targetId);
+  res.json({ ok: true, id: targetId });
 }));
 
 // --- One-on-one: admin coach management ---

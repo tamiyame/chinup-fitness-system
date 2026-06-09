@@ -415,61 +415,90 @@ document.getElementById('run-reminders').addEventListener('click', async () => {
   } catch (e) { toast(`失敗：${e.message}`, 'error'); }
 });
 
+let allUsers = [];
+let usersWired = false;
+
 async function loadUsers() {
-  const el = document.getElementById('users-table');
   const note = document.getElementById('users-note');
   const canEdit = user.role === 'owner';
   note.textContent = canEdit
     ? '你是擁有者 — 可指派其他帳號為管理者'
     : '僅擁有者可變更角色';
 
-  try {
-    const rows = await api('/api/admin/users');
-    if (!rows.length) { el.innerHTML = '<div class="p-6 subtle text-center">無會員</div>'; return; }
-
-    el.innerHTML = `
-      <table class="data-table">
-        <thead><tr>
-          <th style="width:60px;">ID</th>
-          <th>姓名</th>
-          <th>Email / 手機</th>
-          <th>登入方式</th>
-          <th>角色</th>
-          <th>加入時間</th>
-        </tr></thead>
-        <tbody>
-          ${rows.map(r => renderUserRow(r, canEdit)).join('')}
-        </tbody>
-      </table>`;
-
-    if (canEdit) {
-      el.querySelectorAll('select.role-select').forEach(sel => {
-        sel.addEventListener('change', async (e) => {
-          const id = Number(sel.dataset.id);
-          const newRole = sel.value;
-          try {
-            await api(`/api/admin/users/${id}/role`, { method: 'PATCH', body: { role: newRole } });
-            toast(`已更新：${escapeHtml(sel.dataset.name)} → ${ROLE_LABEL[newRole]}`, 'success');
-            loadUsers();
-          } catch (err) {
-            const msgs = {
-              cannot_change_own_role: '不能變更自己的角色',
-              last_owner: '不能降級最後一位擁有者',
-              invalid_role: '無效的角色',
-            };
-            toast(msgs[err.data?.error] || `失敗：${err.message}`, 'error');
-            sel.value = sel.dataset.original;
-          }
-        });
-      });
-    }
-  } catch (e) {
-    el.innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
+  // 一次性綁定搜尋欄 + 顯示已封存切換（靜態元素，跨重繪持續存在）
+  if (!usersWired) {
+    document.getElementById('user-search')?.addEventListener('input', renderUsersTable);
+    document.getElementById('show-archived')?.addEventListener('change', renderUsersTable);
+    usersWired = true;
   }
+
+  try {
+    allUsers = await api('/api/admin/users');
+    renderUsersTable();
+  } catch (e) {
+    document.getElementById('users-table').innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderUsersTable() {
+  const el = document.getElementById('users-table');
+  if (!el) return;
+  const canEdit = user.role === 'owner'; // 角色下拉仍限擁有者
+  const q = (document.getElementById('user-search')?.value || '').trim().toLowerCase();
+  const showArchived = !!document.getElementById('show-archived')?.checked;
+
+  let rows = allUsers;
+  if (!showArchived) rows = rows.filter(r => !r.archived_at);
+  if (q) rows = rows.filter(r =>
+    (r.name || '').toLowerCase().includes(q) || (r.phone || '').toLowerCase().includes(q));
+
+  if (!rows.length) {
+    el.innerHTML = `<div class="p-6 subtle text-center">${q || showArchived ? '無符合的會員' : '無會員'}</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:60px;">ID</th>
+        <th>姓名</th>
+        <th>Email / 手機</th>
+        <th>登入方式</th>
+        <th>角色</th>
+        <th>加入時間</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => renderUserRow(r, canEdit)).join('')}
+      </tbody>
+    </table>`;
+
+  if (canEdit) {
+    el.querySelectorAll('select.role-select').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const id = Number(sel.dataset.id);
+        const newRole = sel.value;
+        try {
+          await api(`/api/admin/users/${id}/role`, { method: 'PATCH', body: { role: newRole } });
+          toast(`已更新：${escapeHtml(sel.dataset.name)} → ${ROLE_LABEL[newRole]}`, 'success');
+          loadUsers();
+        } catch (err) {
+          const msgs = {
+            cannot_change_own_role: '不能變更自己的角色',
+            last_owner: '不能降級最後一位擁有者',
+            invalid_role: '無效的角色',
+          };
+          toast(msgs[err.data?.error] || `失敗：${err.message}`, 'error');
+          sel.value = sel.dataset.original;
+        }
+      });
+    });
+  }
+  bindUserRowLongPress(el);
 }
 
 function renderUserRow(r, canEdit) {
   const isSelf = r.id === user.id;
+  const archived = !!r.archived_at;
   const loginBadge = r.has_google
     ? '<span class="badge badge-confirmed" style="font-size:11px;">Google</span>'
     : '<span class="badge badge-completed" style="font-size:11px;">Email</span>';
@@ -483,10 +512,12 @@ function renderUserRow(r, canEdit) {
        </select>`
     : `<span class="badge badge-${ROLE_BADGE[r.role] || 'open'}">${ROLE_LABEL[r.role] || escapeHtml(r.role)}</span>${isSelf ? ' <span class="subtle text-xs">(你)</span>' : ''}`;
 
+  const archBadge = archived ? ' <span class="badge badge-cancelled" style="font-size:10px;">已封存</span>' : '';
+
   return `
-    <tr>
+    <tr class="user-row${archived ? ' is-archived' : ''}" data-user-id="${r.id}"${archived ? ' style="opacity:0.55;"' : ''}>
       <td class="subtle">#${r.id}</td>
-      <td><span class="font-medium">${escapeHtml(r.name)}</span></td>
+      <td><span class="font-medium">${escapeHtml(r.name)}</span>${archBadge}</td>
       <td class="subtle">
         <div>${escapeHtml(r.email)}</div>
         <div style="font-size:12px;opacity:0.7;margin-top:2px;">${escapeHtml(r.phone)}</div>
@@ -495,6 +526,117 @@ function renderUserRow(r, canEdit) {
       <td>${roleCell}</td>
       <td class="subtle">${fmtDate(r.created_at)}</td>
     </tr>`;
+}
+
+// 長按（手機 touch / 桌機滑鼠按住約 0.5 秒）→ 開編輯彈窗。
+// 起手點若落在角色下拉等互動元件則略過，讓擁有者能正常操作下拉。
+function bindUserRowLongPress(container) {
+  container.querySelectorAll('tr.user-row').forEach(tr => {
+    const id = Number(tr.dataset.userId);
+    let timer = null;
+    const start = (e) => {
+      if (e.target.closest('select, a, button, input, option')) return;
+      timer = setTimeout(() => { timer = null; openUserEditModal(id); }, 500);
+    };
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    tr.addEventListener('touchstart', start, { passive: true });
+    tr.addEventListener('touchend', cancel);
+    tr.addEventListener('touchmove', cancel);
+    tr.addEventListener('mousedown', start);
+    tr.addEventListener('mouseup', cancel);
+    tr.addEventListener('mouseleave', cancel);
+  });
+}
+
+function ensureUserEditOverlay() {
+  let ov = document.getElementById('user-edit-overlay');
+  if (ov) return ov;
+  ov = document.createElement('div');
+  ov.id = 'user-edit-overlay';
+  ov.className = 'overlay';
+  ov.style.display = 'none';
+  ov.innerHTML = `
+    <div class="modal-panel" style="max-width:440px;position:relative;">
+      <button id="ue-close" class="text-slate-400 hover:text-slate-700 text-xl leading-none" style="position:absolute;top:16px;right:18px;">✕</button>
+      <h3 class="section-title" style="margin-bottom:16px;">編輯會員</h3>
+      <div id="ue-body"></div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', (e) => { if (e.target === ov) ov.style.display = 'none'; });
+  ov.querySelector('#ue-close').addEventListener('click', () => { ov.style.display = 'none'; });
+  return ov;
+}
+
+function openUserEditModal(id) {
+  const u = allUsers.find(x => x.id === id);
+  if (!u) return;
+  const ov = ensureUserEditOverlay();
+  const body = ov.querySelector('#ue-body');
+  const archived = !!u.archived_at;
+  const v = (x) => escapeHtml(x ?? '');
+  const fld = (label, inner) => `<div class="mb-2"><label class="subtle" style="font-size:13px;display:block;margin-bottom:2px;">${label}</label>${inner}</div>`;
+  body.innerHTML = `
+    ${fld('姓名', `<input id="ue-name" class="form-input" value="${v(u.name)}" style="margin-bottom:0;" />`)}
+    ${fld('手機', `<input id="ue-phone" class="form-input" value="${v(u.phone)}" inputmode="numeric" style="margin-bottom:0;" />`)}
+    ${fld('Email', `<input id="ue-email" type="email" class="form-input" value="${v(u.email)}" style="margin-bottom:0;" />`)}
+    ${fld('生日', `<input id="ue-birthday" type="date" class="form-input" value="${v(u.birthday)}" style="margin-bottom:0;" />`)}
+    ${fld('地址', `<input id="ue-address" class="form-input" value="${v(u.address)}" style="margin-bottom:0;" />`)}
+    <div class="flex items-center justify-between gap-2" style="margin-top:14px;">
+      <button id="ue-save" class="btn btn-primary btn-sm">儲存</button>
+      ${archived
+        ? '<button id="ue-restore" class="btn btn-ghost btn-sm">還原</button>'
+        : '<button id="ue-archive" class="btn btn-danger btn-sm">封存此會員</button>'}
+    </div>
+    ${archived ? '<p class="subtle" style="font-size:12px;margin-top:10px;">此會員已封存（僅後台列表隱藏；本人前台仍可查詢，下次同電話預約會自動還原）。</p>' : ''}`;
+  ov.style.display = 'grid';
+
+  body.querySelector('#ue-save').addEventListener('click', async () => {
+    const payload = {
+      name: body.querySelector('#ue-name').value,
+      phone: body.querySelector('#ue-phone').value,
+      email: body.querySelector('#ue-email').value,
+      birthday: body.querySelector('#ue-birthday').value,
+      address: body.querySelector('#ue-address').value,
+    };
+    try {
+      await api(`/api/admin/users/${id}`, { method: 'PATCH', body: payload });
+      toast('已更新會員資料', 'success');
+      ov.style.display = 'none';
+      await loadUsers();
+    } catch (e) {
+      const msgs = {
+        email_taken: 'Email 已被其他會員使用',
+        phone_taken: '手機已被其他會員使用',
+        invalid_phone: '手機格式錯誤（8–15 碼數字）',
+        missing_name: '姓名必填',
+      };
+      toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
+    }
+  });
+
+  const archiveBtn = body.querySelector('#ue-archive');
+  if (archiveBtn) archiveBtn.addEventListener('click', async () => {
+    if (!confirm(`確定封存「${u.name}」？封存後不會出現在會員列表（本人前台仍可查詢；下次同電話預約會自動還原）。`)) return;
+    try {
+      await api(`/api/admin/users/${id}/archive`, { method: 'POST' });
+      toast('已封存', 'success');
+      ov.style.display = 'none';
+      await loadUsers();
+    } catch (e) {
+      const msgs = { cannot_archive_self: '不能封存自己', last_owner: '不能封存最後一位擁有者' };
+      toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
+    }
+  });
+
+  const restoreBtn = body.querySelector('#ue-restore');
+  if (restoreBtn) restoreBtn.addEventListener('click', async () => {
+    try {
+      await api(`/api/admin/users/${id}/restore`, { method: 'POST' });
+      toast('已還原', 'success');
+      ov.style.display = 'none';
+      await loadUsers();
+    } catch (e) { toast(`失敗：${e.message}`, 'error'); }
+  });
 }
 
 // --- Categories ---
