@@ -94,6 +94,32 @@
     <button type="submit" class="btn btn-primary w-full" id="login-btn">登入</button>
   </form>
 
+  <button type="button" class="btn btn-ghost w-full" id="show-changepw" style="margin-top:10px;">修改密碼</button>
+
+  <!-- Change password form (hidden by default) -->
+  <form id="changepw-form" class="space-y-4" style="display:none;">
+    <p class="subtle text-sm">輸入帳號與目前密碼以設定新密碼（限教練 / 管理者帳號）。</p>
+    <div>
+      <label class="form-label" for="cp-email">電子郵件</label>
+      <input id="cp-email" type="email" required class="form-input" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div>
+      <label class="form-label" for="cp-current">目前密碼</label>
+      <input id="cp-current" type="password" required class="form-input" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div>
+      <label class="form-label" for="cp-new">新密碼（至少 6 碼）</label>
+      <input id="cp-new" type="password" required minlength="6" class="form-input" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <div>
+      <label class="form-label" for="cp-new2">確認新密碼</label>
+      <input id="cp-new2" type="password" required class="form-input" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <div id="cp-msg" class="text-sm" style="display:none;"></div>
+    <button type="submit" class="btn btn-primary w-full" id="cp-btn">更新密碼</button>
+    <button type="button" class="btn btn-ghost w-full" id="cp-back">返回登入</button>
+  </form>
+
 </div>
 
 <script type="module">
@@ -105,7 +131,7 @@ const loginForm = $('#login-form');
 if (localStorage.getItem('chinup.token')) {
   fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${localStorage.getItem('chinup.token')}` }})
     .then(r => r.ok ? r.json() : null)
-    .then(u => { if (u) location.href = ['admin','owner'].includes(u.role) ? '/admin.html' : u.role === 'coach' ? '/coach.html' : '/'; });
+    .then(u => { if (u) location.href = u.is_admin ? '/admin.html' : u.role === 'coach' ? '/coach.html' : '/'; });
 }
 
 // Display OAuth error on URL (?err=xxx)
@@ -135,12 +161,57 @@ loginForm.addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error(data.error === 'invalid_credentials' ? '帳號或密碼錯誤' : (data.error || 'login failed'));
     localStorage.setItem('chinup.token', data.token);
     localStorage.setItem('chinup.user', JSON.stringify(data.user));
-    const redirect = new URLSearchParams(location.search).get('redirect') || (['admin','owner'].includes(data.user.role) ? '/admin.html' : data.user.role === 'coach' ? '/coach.html' : '/');
+    const redirect = new URLSearchParams(location.search).get('redirect') || (data.user.is_admin ? '/admin.html' : data.user.role === 'coach' ? '/coach.html' : '/');
     location.href = redirect;
   } catch (e2) {
     errEl.textContent = e2.message;
     errEl.style.display = 'block';
     submit.disabled = false; submit.textContent = '登入';
+  }
+});
+
+// --- Change password ---
+const cpForm = $('#changepw-form');
+const loginEls = [$('.btn-google'), $('.divider'), loginForm, $('#show-changepw')];
+const showLogin = (showCp) => {
+  loginEls.forEach(el => { if (el) el.style.display = showCp ? 'none' : ''; });
+  cpForm.style.display = showCp ? '' : 'none';
+};
+$('#show-changepw').addEventListener('click', () => {
+  if ($('#email').value.trim()) $('#cp-email').value = $('#email').value.trim();
+  showLogin(true);
+});
+$('#cp-back').addEventListener('click', () => { $('#cp-msg').style.display = 'none'; showLogin(false); });
+
+cpForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = $('#cp-email').value.trim();
+  const currentPassword = $('#cp-current').value;
+  const newPassword = $('#cp-new').value;
+  const msgEl = $('#cp-msg');
+  const btn = $('#cp-btn');
+  const show = (text, ok) => { msgEl.textContent = text; msgEl.style.color = ok ? '#16a34a' : '#dc2626'; msgEl.style.display = 'block'; };
+  msgEl.style.display = 'none';
+  if (newPassword.length < 6) return show('新密碼至少 6 碼', false);
+  if (newPassword !== $('#cp-new2').value) return show('兩次新密碼不一致', false);
+  btn.disabled = true; btn.textContent = '更新中…';
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, currentPassword, newPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const m = { invalid_credentials: '帳號或目前密碼錯誤', weak_password: '新密碼至少 6 碼', user_login_disabled: '此帳號不可修改密碼', missing_fields: '請填寫所有欄位' };
+      throw new Error(m[data.error] || data.error || '修改失敗');
+    }
+    show('密碼已更新，請用新密碼登入', true);
+    cpForm.reset();
+    setTimeout(() => { $('#cp-msg').style.display = 'none'; showLogin(false); }, 1800);
+  } catch (e2) {
+    show(e2.message, false);
+  } finally {
+    btn.disabled = false; btn.textContent = '更新密碼';
   }
 });
 </script>
