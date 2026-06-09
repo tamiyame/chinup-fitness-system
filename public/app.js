@@ -127,7 +127,7 @@ export async function bootAuth({ requireAdmin = false } = {}) {
     return null;
   }
 
-  if (requireAdmin && !['admin', 'owner'].includes(user.role)) {
+  if (requireAdmin && !user.is_admin) {
     location.href = '/';
     return null;
   }
@@ -162,7 +162,7 @@ export async function bootPublic() {
 
 export async function renderAuthBar(user) {
   // Show admin nav link only for admin/owner — toggle via .admin-only class
-  const showAdmin = ['admin', 'owner'].includes(user.role);
+  const showAdmin = !!user.is_admin;
   document.querySelectorAll('.admin-only').forEach((el) => {
     if (showAdmin) el.classList.remove('hidden');
     else el.classList.add('hidden');
@@ -188,13 +188,12 @@ export async function renderAuthBar(user) {
 
   const el = document.getElementById('auth-bar');
   if (!el) return;
-  const badgeMap = {
-    owner: '<span class="badge badge-waitlisted" style="font-size:10px;">擁有者</span>',
-    admin: '<span class="badge badge-confirmed" style="font-size:10px;">管理者</span>',
-    coach: '<span class="badge badge-coach" style="font-size:10px;">教練</span>',
-    user:  '<span class="badge badge-open" style="font-size:10px;">會員</span>',
-  };
-  const badge = badgeMap[user.role] || badgeMap.user;
+  // 管理者 = 有標籤的教練；徽章優先顯示「管理者」，其次教練，再來會員。
+  const badge = user.is_admin
+    ? '<span class="badge badge-confirmed" style="font-size:10px;">管理者</span>'
+    : user.role === 'coach'
+      ? '<span class="badge badge-coach" style="font-size:10px;">教練</span>'
+      : '<span class="badge badge-open" style="font-size:10px;">會員</span>';
 
   // Only admin/owner/coach can be logged in now (members use the public phone+name flow),
   // so identity is just the role badge — no points pill, no name/email line.

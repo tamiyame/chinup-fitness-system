@@ -148,24 +148,28 @@ export function ensureInitialAdmin() {
   const password = process.env.ADMIN_PASSWORD;
   const name = process.env.ADMIN_NAME || 'Administrator';
 
+  // 管理者 = 有管理者標籤的教練（role='coach', is_admin=1）+ 未啟用教練檔案（不顯示於公開清單）。
+  const createAdmin = (nm, em, pw) => {
+    const info = db.prepare(
+      "INSERT INTO users (name, email, password_hash, role, is_admin, notification_preference) VALUES (?, ?, ?, 'coach', 1, 'email')"
+    ).run(nm, em, hashPassword(pw));
+    db.prepare('INSERT INTO coaches (user_id, display_name) VALUES (?, ?)').run(Number(info.lastInsertRowid), nm);
+  };
+
   if (email && password) {
     const existing = getUserByEmail.get(email);
     if (!existing) {
-      db.prepare(
-        'INSERT INTO users (name, email, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?)'
-      ).run(name, email, hashPassword(password), 'admin', 'email');
+      createAdmin(name, email, password);
       console.log(`[auth] created admin from env: ${email}`);
     }
     return;
   }
 
-  const anyAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get();
+  const anyAdmin = db.prepare('SELECT id FROM users WHERE is_admin = 1 LIMIT 1').get();
   if (!anyAdmin) {
     const defaultEmail = 'admin@chinup.local';
     const defaultPassword = 'admin1234';
-    db.prepare(
-      'INSERT INTO users (name, email, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?)'
-    ).run('Administrator', defaultEmail, hashPassword(defaultPassword), 'admin', 'email');
+    createAdmin('Administrator', defaultEmail, defaultPassword);
     console.log('');
     console.log('  ╔══════════════════════════════════════════════════╗');
     console.log('  ║  ⚠️  DEFAULT ADMIN CREATED — change credentials!  ║');

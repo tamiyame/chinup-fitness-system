@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
 import { findOrCreateUserByPhone } from '../src/services/userService.js';
+import { hashPassword } from '../src/services/auth.js';
 
 const BASE = process.env.BASE || 'http://localhost:3000';
 async function req(method, path, { body, token } = {}) {
@@ -90,14 +91,7 @@ expect('同電話預約 → 自動還原 archived_at=null', () => assert.equal(d
 const self = await req('POST', `/api/admin/users/${adminId}/archive`, { token });
 expect('封存自己 → 400 cannot_archive_self', () => { assert.equal(self.status, 400); assert.equal(self.data.error, 'cannot_archive_self'); });
 
-// 10) 不可封存最後一位擁有者
-const ownerId = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('M Test Owner','mtest-owner@x.com','owner')").run().lastInsertRowid);
-const ownerCount = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role='owner'").get().c;
-const lo = await req('POST', `/api/admin/users/${ownerId}/archive`, { token });
-if (ownerCount === 1) expect('封存最後一位擁有者 → 400 last_owner', () => { assert.equal(lo.status, 400); assert.equal(lo.data.error, 'last_owner'); });
-else expect('非最後擁有者 → 可封存 200', () => assert.equal(lo.status, 200));
-
-// 11) 還原
+// 10) 還原
 await req('POST', `/api/admin/users/${bId}/archive`, { token });
 const re = await req('POST', `/api/admin/users/${bId}/restore`, { token });
 expect('還原 → 200 + archived_at=null', () => {
@@ -105,26 +99,44 @@ expect('還原 → 200 + archived_at=null', () => {
   assert.equal(db.prepare('SELECT archived_at FROM users WHERE id=?').get(bId).archived_at, null);
 });
 
-// 12) 角色變更（管理者可；UI 只 user/coach/admin）
+// 11) 角色/標籤變更（新模型：role=user/coach；is_admin 標籤只在 coach 有效）
 const rc1 = await req('PATCH', `/api/admin/users/${bId}/role`, { token, body: { role: 'coach' } });
-expect('管理者設為教練 → 200 + 自動建教練檔案(未啟用)', () => {
+expect('設為教練 → 200 + 建教練檔案(未啟用) + is_admin=0', () => {
   assert.equal(rc1.status, 200);
   const c = db.prepare('SELECT is_active FROM coaches WHERE user_id=?').get(bId);
   assert.ok(c); assert.equal(c.is_active, 0);
-  assert.equal(db.prepare('SELECT role FROM users WHERE id=?').get(bId).role, 'coach');
+  const u = db.prepare('SELECT role,is_admin FROM users WHERE id=?').get(bId);
+  assert.equal(u.role, 'coach'); assert.equal(u.is_admin, 0);
 });
-const rc2 = await req('PATCH', `/api/admin/users/${bId}/role`, { token, body: { role: 'user' } });
-expect('教練改回會員 → 200 + 教練檔案停用(保留)', () => {
-  assert.equal(rc2.status, 200);
-  const c = db.prepare('SELECT is_active FROM coaches WHERE user_id=?').get(bId);
-  assert.ok(c); assert.equal(c.is_active, 0);
+const rc2 = await req('PATCH', `/api/admin/users/${bId}/role`, { token, body: { role: 'coach', is_admin: true } });
+expect('教練加管理者標籤 → is_admin=1', () => { assert.equal(rc2.status, 200); assert.equal(db.prepare('SELECT is_admin FROM users WHERE id=?').get(bId).is_admin, 1); });
+const rc3 = await req('PATCH', `/api/admin/users/${bId}/role`, { token, body: { role: 'user', is_admin: true } });
+expect('改回會員 → 標籤強制清0 + 教練檔案停用', () => {
+  assert.equal(rc3.status, 200);
+  const u = db.prepare('SELECT role,is_admin FROM users WHERE id=?').get(bId);
+  assert.equal(u.role, 'user'); assert.equal(u.is_admin, 0);
+  assert.equal(db.prepare('SELECT is_active FROM coaches WHERE user_id=?').get(bId).is_active, 0);
 });
-const rc3 = await req('PATCH', `/api/admin/users/${bId}/role`, { token, body: { role: 'owner' } });
-expect('不可指派 owner → 400 invalid_role', () => { assert.equal(rc3.status, 400); assert.equal(rc3.data.error, 'invalid_role'); });
-const rc4 = await req('PATCH', `/api/admin/users/${ownerId}/role`, { token, body: { role: 'admin' } });
-expect('不可變更擁有者 → 403 cannot_modify_owner', () => { assert.equal(rc4.status, 403); assert.equal(rc4.data.error, 'cannot_modify_owner'); });
-const rc5 = await req('PATCH', `/api/admin/users/${adminId}/role`, { token, body: { role: 'user' } });
-expect('不可變更自己 → 400 cannot_change_own_role', () => { assert.equal(rc5.status, 400); assert.equal(rc5.data.error, 'cannot_change_own_role'); });
+const rc4 = await req('PATCH', `/api/admin/users/${bId}/role`, { token, body: { role: 'coach' } });
+expect('再設教練 → 教練檔案自動重新啟用(is_active=1)', () => { assert.equal(rc4.status, 200); assert.equal(db.prepare('SELECT is_active FROM coaches WHERE user_id=?').get(bId).is_active, 1); });
+const rc5 = await req('PATCH', `/api/admin/users/${bId}/role`, { token, body: { role: 'owner' } });
+expect('非法角色 → 400 invalid_role', () => { assert.equal(rc5.status, 400); assert.equal(rc5.data.error, 'invalid_role'); });
+const rc6 = await req('PATCH', `/api/admin/users/${adminId}/role`, { token, body: { role: 'user' } });
+expect('不可改自己 → 400 cannot_change_self', () => { assert.equal(rc6.status, 400); assert.equal(rc6.data.error, 'cannot_change_self'); });
+
+// 12) 權限閘門（新模型）：會員不可登入；教練(無管理者標籤)不可用管理端點；有標籤才可。
+const memberLogin = await req('POST', '/api/auth/login', { body: { email: 'user1@chinup.local', password: 'pass1234' } });
+expect('會員不可登入 → 403 user_login_disabled', () => { assert.equal(memberLogin.status, 403); });
+
+db.prepare("INSERT INTO users (name,email,password_hash,role,is_admin) VALUES ('M Plain Coach','mtest-pc@x.com',?, 'coach', 0)").run(hashPassword('coachpass1'));
+const pcLogin = await req('POST', '/api/auth/login', { body: { email: 'mtest-pc@x.com', password: 'coachpass1' } });
+expect('教練可登入 → 200 + token', () => { assert.equal(pcLogin.status, 200); assert.ok(pcLogin.data.token); });
+const pcGet = await req('GET', '/api/admin/users', { token: pcLogin.data.token });
+expect('教練(無標籤)用管理端點 → 403 admin_only', () => { assert.equal(pcGet.status, 403); assert.equal(pcGet.data.error, 'admin_only'); });
+// 給他標籤後即可
+await req('PATCH', `/api/admin/users/${pcLogin.data.user?.id || db.prepare("SELECT id FROM users WHERE email='mtest-pc@x.com'").get().id}/role`, { token, body: { role: 'coach', is_admin: true } });
+const pcGet2 = await req('GET', '/api/admin/users', { token: pcLogin.data.token });
+expect('教練(加標籤後)用管理端點 → 200', () => assert.equal(pcGet2.status, 200));
 
 clean();
 console.log('[member-admin-api] done');

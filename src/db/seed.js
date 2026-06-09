@@ -7,7 +7,11 @@ const insertUser = db.prepare(
   'INSERT INTO users (name, email, phone, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?, ?)'
 );
 
-insertUser.run('Admin', 'admin@chinup.local', '0900000000', hashPassword('admin1234'), 'admin', 'email');
+// 管理者 = 有管理者標籤(is_admin=1)的教練；教練檔案未啟用 → 不出現在公開教練清單。
+const adminInfo = db.prepare(
+  "INSERT INTO users (name, email, phone, password_hash, role, is_admin, notification_preference) VALUES (?, ?, ?, ?, 'coach', 1, 'email')"
+).run('Admin', 'admin@chinup.local', '0900000000', hashPassword('admin1234'));
+db.prepare('INSERT INTO coaches (user_id, display_name) VALUES (?, ?)').run(Number(adminInfo.lastInsertRowid), 'Admin');
 for (let i = 1; i <= 12; i++) {
   insertUser.run(
     `會員${i}`,

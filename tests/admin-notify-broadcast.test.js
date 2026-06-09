@@ -27,7 +27,7 @@ function reset() {
 console.log('[admin-notify-broadcast test] start');
 reset();
 
-const adminId = db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES ('ANB Admin','anb-admin@x.com',?, 'admin')").run(hashPassword('x')).lastInsertRowid;
+const adminId = db.prepare("INSERT INTO users (name,email,password_hash,role,is_admin) VALUES ('ANB Admin','anb-admin@x.com',?, 'coach', 1)").run(hashPassword('x')).lastInsertRowid;
 const cu = db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES ('ANB Coach','anb-coach@x.com',?, 'coach')").run(hashPassword('x'));
 const coach = createCoach({ userId: cu.lastInsertRowid, displayName: 'ANB 教練' });
 setCoachActive(coach.id, true);
@@ -68,7 +68,7 @@ expect('團課 → 教練仍收 course_registered_coach、會員仍收 payment_r
 });
 
 // ── 排除本人：管理者若自己是報名者，不應收到第三人稱廣播（只收第二人稱確認）──
-const adminId2 = db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES ('ANB Admin2','anb-admin2@x.com',?, 'admin')").run(hashPassword('x')).lastInsertRowid;
+const adminId2 = db.prepare("INSERT INTO users (name,email,password_hash,role,is_admin) VALUES ('ANB Admin2','anb-admin2@x.com',?, 'coach', 1)").run(hashPassword('x')).lastInsertRowid;
 createBooking({ coachId: coach.id, memberId: adminId2, startAt: futureLocal(6) });
 expect('管理者本人報名 → 收到第二人稱 booking_confirmed', () => {
   assert(db.prepare("SELECT 1 FROM notifications WHERE user_id=? AND type='booking_confirmed'").get(adminId2), '本人應收確認');
