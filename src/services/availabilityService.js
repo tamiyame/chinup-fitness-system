@@ -61,8 +61,13 @@ export function addException({ coachId, exceptionDate, type, startTime = null, e
     if (!startTime || !endTime) throw new ApiError(400, 'missing_time');
     validateTimes(startTime, endTime);
   } else {
-    startTime = null;
-    endTime = null;
+    // 請假：兩個時間都給 → 部分時段請假（驗證）；否則 → 整天請假（null）
+    if (startTime && endTime) {
+      validateTimes(startTime, endTime);
+    } else {
+      startTime = null;
+      endTime = null;
+    }
   }
   const info = insertExceptionStmt.run(coachId, exceptionDate, type, startTime, endTime, note);
   return { id: info.lastInsertRowid };
@@ -123,11 +128,13 @@ export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindow
 
   const dates = enumerateDates(fromDate, toDate);
   const rawSlots = [];
+  const toMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
   for (const date of dates) {
     const exceptions = listExceptionsForDate.all(coachId, date);
-    const hasLeave = exceptions.some(e => e.type === 'leave');
+    // 整天請假（無時段）→ 當天完全封鎖；部分時段請假 → 只扣掉重疊的 slot。
+    const allDayLeave = exceptions.some(e => e.type === 'leave' && !e.start_time);
     const windows = [];
-    if (!hasLeave) {
+    if (!allDayLeave) {
       const dow = new Date(date + 'T00:00:00').getDay();
       const rules = listRulesForDate.all(coachId, dow, date, date);
       for (const r of rules) windows.push({ start: r.start_time, end: r.end_time });
@@ -135,9 +142,15 @@ export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindow
         if (e.type === 'extra') windows.push({ start: e.start_time, end: e.end_time });
       }
     }
+    const partialLeaves = exceptions.filter(e => e.type === 'leave' && e.start_time && e.end_time);
     for (const w of windows) {
       const slotStartsHH = splitWindowIntoSlots(w.start, w.end, SLOT_DURATION_MINUTES);
-      for (const hh of slotStartsHH) rawSlots.push(`${date}T${hh}:00`);
+      for (const hh of slotStartsHH) {
+        const s = toMin(hh), e = s + SLOT_DURATION_MINUTES;
+        // 與任一請假時段重疊（slot[s,e) ∩ leave[ls,le) ≠ ∅）→ 封鎖
+        const blocked = partialLeaves.some(l => s < toMin(l.end_time) && e > toMin(l.start_time));
+        if (!blocked) rawSlots.push(`${date}T${hh}:00`);
+      }
     }
   }
   rawSlots.sort();
