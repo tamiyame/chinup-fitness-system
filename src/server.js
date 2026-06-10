@@ -324,7 +324,11 @@ function gmailRedirectUri(req) {
 app.get('/api/admin/gmail-auth/callback', async (req, res) => {
   try {
     const { code, state, error } = req.query;
-    if (error) return res.status(400).send(`授權失敗：${String(error)}`);
+    // error 參數不回顯（避免 HTML injection）；只允許白名單字元摘要進 log
+    if (error) {
+      console.error('[gmail-auth] consent error:', String(error).replace(/[^\w.-]/g, '').slice(0, 50));
+      return res.status(400).send('授權未完成（Google 回報錯誤或您取消了授權），請回後台重新發起。');
+    }
     if (!code || !state || !gmailAuthStates.has(String(state))) return res.status(400).send('授權連結無效或已過期，請回後台重新發起。');
     gmailAuthStates.delete(String(state));
     const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
@@ -340,7 +344,8 @@ app.get('/api/admin/gmail-auth/callback', async (req, res) => {
     });
     const tokens = await tokenResp.json();
     if (!tokenResp.ok || !tokens.refresh_token) {
-      console.error('[gmail-auth] token exchange failed:', tokens);
+      // 不印 tokens 物件——重複授權時 Google 可能回含 access_token 的部分成功內容
+      console.error('[gmail-auth] token exchange failed:', `HTTP ${tokenResp.status}`, tokens?.error || (tokens?.refresh_token ? '' : 'no_refresh_token'));
       return res.status(400).send('未取得 refresh token。請確認 OAuth 同意畫面已發布正式版，並於授權時勾選同意；如先前已授權過，請至 Google 帳號「安全性→第三方存取」移除本應用程式後重試。');
     }
     res.send(`<!DOCTYPE html><html lang="zh-TW"><meta charset="UTF-8"><body style="font-family:sans-serif;max-width:640px;margin:40px auto">
