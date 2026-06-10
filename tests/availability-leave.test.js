@@ -14,7 +14,7 @@ const pad = (n) => String(n).padStart(2, '0');
 const d = new Date(Date.now() + 3 * 86400000);
 const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 addRule({ coachId, dayOfWeek: d.getDay(), startTime: '09:00', endTime: '18:00' });
-const slots = () => computeAvailableSlots({ coachId, fromDate: date, toDate: date }).filter(s => s.startsWith(date));
+const slots = () => computeAvailableSlots({ coachId, fromDate: date, toDate: date }).map(o => o.start).filter(s => s.startsWith(date));
 
 expect('baseline 09–18 → 9 個 slot (09:00..17:00)', () => assert.equal(slots().length, 9));
 
