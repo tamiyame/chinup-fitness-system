@@ -53,6 +53,15 @@ expect('每場次日期為週三', () => {
 });
 expect('場次狀態為 open', () => sessions.forEach(s => assert.equal(s.status, 'open')));
 
+// 展開出的場次帶「固定日曆 deadline」（每月第一個週三 19:00 前 24h）。
+// processDeadlines() 是全域掃描：執行測試的當下，任何固定 deadline 已過的 open 場次
+// 都會在 case 5 的呼叫中被一併取消（例如 2026-06-02T19:00 之後跑，六月場次就先被取消），
+// 導致 case 6 要用的第二場次不再是 open → dl2 找不到 entry。
+// 把全部場次 deadline 先推到「現在 +7 天」，之後各 case 再明確設定自己要的 deadline，
+// 讓進入掃描視窗的場次完全由測試自己控制 → 任何時刻執行結果都相同。
+db.prepare("UPDATE course_sessions SET registration_deadline = ? WHERE template_id = ?")
+  .run(offsetLocal(7 * 24 * 3600 * 1000), t1.templateId);
+
 // --- Case 2: 報名滿額 → 候補 ---
 // 為了繞過 registration_deadline，把第一個 session 改為未來日期
 const firstSessionId = sessions[0].id;

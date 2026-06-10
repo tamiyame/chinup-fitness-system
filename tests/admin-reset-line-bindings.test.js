@@ -4,7 +4,16 @@ import { db } from '../src/db/connection.js';
 import { resetAllLineBindings } from '../src/services/lineBindingService.js';
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
-function reset(){ db.exec("DELETE FROM users WHERE email LIKE 'rlb-%'"); }
+// 前次留下的 rlb-b（admin）會被遷移成 is_admin=1 並收到其他測試的管理者廣播通知（FK 無 cascade）→ 先刪通知。
+// 另外 resetAllLineBindings 是「全域」操作：共用測試 DB 裡其他測試殘留的綁定（如 notifications-flow 的
+// notif-test 使用者）會讓 cleared 計數失準 → 先把所有殘留綁定歸零，讓計數只反映本測試插入的 2 筆。
+function reset(){
+  db.exec(`
+    DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'rlb-%');
+    DELETE FROM users WHERE email LIKE 'rlb-%';
+    UPDATE users SET line_user_id=NULL WHERE line_user_id IS NOT NULL;
+  `);
+}
 
 console.log('[admin-reset-line-bindings test] start');
 reset();
