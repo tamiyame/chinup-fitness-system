@@ -293,6 +293,68 @@ app.get('/api/auth/google/callback', async (req, res) => {
   }
 });
 
+// ── Gmail 寄信授權（一次性）──────────────────────────────────────────
+// 後台按鈕 → start 取授權 URL → Google 同意 → callback 一次性顯示 refresh token，
+// 由業主自行貼到 Railway 環境變數 GMAIL_REFRESH_TOKEN（不落 DB、不寫檔）。
+const gmailAuthStates = new Map();
+app.post('/api/admin/gmail-auth/start', requireAdmin, (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'google_not_configured' });
+  const state = randomBytes(16).toString('hex');
+  gmailAuthStates.set(state, Date.now());
+  for (const [k, ts] of gmailAuthStates) {
+    if (Date.now() - ts > 10 * 60 * 1000) gmailAuthStates.delete(k);
+  }
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: gmailRedirectUri(req),
+    response_type: 'code',
+    scope: 'https://www.googleapis.com/auth/gmail.send',
+    access_type: 'offline',
+    prompt: 'consent',
+    state,
+  });
+  res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
+});
+
+function gmailRedirectUri(req) {
+  if (PUBLIC_URL) return `${PUBLIC_URL}/api/admin/gmail-auth/callback`;
+  return `${req.protocol}://${req.get('host')}/api/admin/gmail-auth/callback`;
+}
+
+app.get('/api/admin/gmail-auth/callback', async (req, res) => {
+  try {
+    const { code, state, error } = req.query;
+    if (error) return res.status(400).send(`授權失敗：${String(error)}`);
+    if (!code || !state || !gmailAuthStates.has(String(state))) return res.status(400).send('授權連結無效或已過期，請回後台重新發起。');
+    gmailAuthStates.delete(String(state));
+    const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: String(code),
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: gmailRedirectUri(req),
+        grant_type: 'authorization_code',
+      }),
+    });
+    const tokens = await tokenResp.json();
+    if (!tokenResp.ok || !tokens.refresh_token) {
+      console.error('[gmail-auth] token exchange failed:', tokens);
+      return res.status(400).send('未取得 refresh token。請確認 OAuth 同意畫面已發布正式版，並於授權時勾選同意；如先前已授權過，請至 Google 帳號「安全性→第三方存取」移除本應用程式後重試。');
+    }
+    res.send(`<!DOCTYPE html><html lang="zh-TW"><meta charset="UTF-8"><body style="font-family:sans-serif;max-width:640px;margin:40px auto">
+<h2>Gmail 寄信授權成功</h2>
+<p>請把下方 refresh token 完整複製，貼到 Railway 環境變數 <code>GMAIL_REFRESH_TOKEN</code>，存檔後服務會自動重啟生效。</p>
+<p><strong>此 token 僅顯示這一次，本系統不會儲存。</strong>完成後請關閉此頁。</p>
+<textarea readonly style="width:100%;height:90px;font-size:13px" onclick="this.select()">${tokens.refresh_token}</textarea>
+</body></html>`);
+  } catch (e) {
+    console.error('[gmail-auth] callback error:', e);
+    res.status(500).send('授權處理失敗，請回後台重試。');
+  }
+});
+
 // --- Browse courses (any authenticated user) ---
 app.get('/api/sessions', asyncHandler((req, res) => {
   res.json(listOpenSessions());
