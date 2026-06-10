@@ -4,11 +4,10 @@ const $ = (id) => document.getElementById(id);
 const DOW_LABELS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 let me = null;
 
-// 班表時間欄：下拉只給 10 分為單位（00/10/20/30/40/50），手動仍可打精確分鐘。
-// 用文字欄 + datalist（原生時間欄的下拉無法自訂）；送出/離開焦點時正規化為 HH:MM。
+// 班表時間欄：下拉只給 10 分為單位（00/10/20/30/40/50），呈現像 Google Calendar 的小捲動框；
+// 手動仍可打精確分鐘（送出/離開焦點時正規化為 HH:MM）。原生時間欄/ datalist 的下拉高度無法自訂，故自製。
 const TIME10_OPTIONS = Array.from({ length: 24 * 6 }, (_, i) =>
   `${String(Math.floor(i / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}`);
-const TIME10_DATALIST = `<datalist id="time10">${TIME10_OPTIONS.map(t => `<option value="${t}">`).join('')}</datalist>`;
 function normTime(v) {
   v = (v || '').trim();
   if (!v) return '';
@@ -19,7 +18,45 @@ function normTime(v) {
   if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return v; // 無法解析 → 原樣，交後端擋
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
-const TIME10_ATTRS = 'type="text" list="time10" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off"';
+const TIME10_ATTRS = 'type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" data-time10';
+
+// 自訂時間下拉（固定高度小框、可捲動）。掛在 body 以免被父層裁切。
+function attachTimeDropdown(input) {
+  const dd = document.createElement('div');
+  dd.className = 'time-dd';
+  dd.style.display = 'none';
+  document.body.appendChild(dd);
+  const position = () => {
+    const r = input.getBoundingClientRect();
+    dd.style.left = `${r.left}px`;
+    dd.style.top = `${r.bottom + 2}px`;
+    dd.style.width = `${r.width}px`;
+  };
+  const show = () => {
+    const digits = input.value.replace(/\D/g, '');
+    const opts = TIME10_OPTIONS.filter(t => !digits || t.replace(':', '').startsWith(digits));
+    if (!opts.length) { dd.style.display = 'none'; return; } // 打精確分鐘(非10單位) → 不顯示
+    dd.innerHTML = opts.map(t => `<div class="time-dd-opt" data-v="${t}">${t}</div>`).join('');
+    position();
+    dd.style.display = 'block';
+    // 捲到目前值附近（沒值則 08:00）
+    const anchor = dd.querySelector(`[data-v="${normTime(input.value)}"]`) || dd.querySelector('[data-v="08:00"]');
+    if (anchor) dd.scrollTop = Math.max(0, anchor.offsetTop - dd.clientHeight / 2);
+  };
+  const hide = () => { dd.style.display = 'none'; };
+  input.addEventListener('focus', show);
+  input.addEventListener('input', show);
+  input.addEventListener('blur', () => setTimeout(() => { if (input.value.trim()) input.value = normTime(input.value); hide(); }, 150));
+  dd.addEventListener('mousedown', (e) => {
+    const o = e.target.closest('.time-dd-opt');
+    if (!o) return;
+    e.preventDefault(); // 保持 input 焦點、避免先觸發 blur
+    input.value = o.dataset.v;
+    hide();
+  });
+  window.addEventListener('scroll', () => { if (dd.style.display !== 'none') position(); }, true);
+  window.addEventListener('resize', () => { if (dd.style.display !== 'none') position(); });
+}
 
 async function init() {
   try {
@@ -96,7 +133,6 @@ async function renderAvailability() {
   ]);
 
   $('tab-availability').innerHTML = `
-    ${TIME10_DATALIST}
     <h2 class="section-title">每週基底班表</h2>
     <div id="rule-list" class="space-y-2 mb-4"></div>
     <details class="card mb-6">
@@ -136,10 +172,9 @@ async function renderAvailability() {
     </details>
   `;
 
-  // 時間欄離開焦點時正規化為 HH:MM（手動輸入彈性，例如打 0916 / 9:16 都會變 09:16）
-  document.querySelectorAll('#tab-availability input[list="time10"]').forEach(inp => {
-    inp.addEventListener('blur', () => { if (inp.value.trim()) inp.value = normTime(inp.value); });
-  });
+  // 重繪時先移除舊的下拉浮層（避免殘留），再為每個時間欄掛自訂下拉 + 正規化。
+  document.querySelectorAll('.time-dd').forEach(el => el.remove());
+  document.querySelectorAll('#tab-availability input[data-time10]').forEach(attachTimeDropdown);
 
   const ruleList = $('rule-list');
   if (rules.length === 0) ruleList.innerHTML = '<p class="text-slate-500 text-sm">還沒設定班表</p>';
