@@ -67,6 +67,9 @@ import { runBackup, listBackups, safeBackupPath } from './services/backupService
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl } from './services/discountService.js';
+import { isValidPhone } from './services/userService.js';
+import { getExternalBusySafe, syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
+import { sendBookingConfirmation } from './services/emailService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -689,12 +692,13 @@ app.get('/api/coach/me/bookings', requireCoach, asyncHandler((req, res) => {
   res.json(svcListCoachBookings(coach.id));
 }));
 
-app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler((req, res) => {
+app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler(async (req, res) => {
   const coach = loadCoachForUser(req, res);
   if (!coach) return;
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'missing_range' });
-  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
+  const externalBusy = await getExternalBusySafe(from, to);
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy }));
 }));
 
 app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
@@ -737,9 +741,32 @@ app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
   res.json({ valid: true, discount_type: v.type, discount_value: v.value, discount_amount: v.discountAmount, original: v.subtotal, final_total: v.finalTotal });
 }));
 
-app.post('/api/public/bookings', asyncHandler((req, res) => {
-  const { coachId, startAt, name, phone, note, discountCode, sessionType } = req.body || {};
-  const r = svcCreateBookingAnon({ coachId: Number(coachId), startAt, name, phone, note: note || null, discountCode: discountCode || null, sessionType: sessionType || '1on1' });
+app.post('/api/public/bookings', asyncHandler(async (req, res) => {
+  const { coachId, startAt, name, phone, note, discountCode, sessionType, email } = req.body || {};
+  const type = sessionType || '1on1';
+  // 檢查順序維持既有契約：coach(404/409) → phone(400) → 時段(409) → service
+  const coach = svcGetCoach(Number(coachId));
+  if (!coach) return res.status(404).json({ error: 'coach_not_found' });
+  if (!coach.is_active) return res.status(409).json({ error: 'coach_inactive' });
+  // phone 不做正規化：與 service 的 findOrCreateUserByPhone 同一套驗證（驗原始字串），
+  // route 過 ⇔ service 過，不會出現「route 過、service 擋」的不一致。
+  if (!isValidPhone(phone)) return res.status(400).json({ error: 'invalid_phone', detail: '電話需為 8-15 碼數字' });
+  if (typeof startAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/.test(startAt)) {
+    return res.status(400).json({ error: 'invalid_start_at' });
+  }
+  // 時段合法性（班表/請假/緩衝/視窗 + 容量 + Google freebusy）。
+  // freebusy 失敗 → fail-open（getExternalBusySafe 回 null，退回純 DB 檢查）。
+  const date = startAt.slice(0, 10);
+  const externalBusy = await getExternalBusySafe(date, date);
+  const units = type === '1on2' ? 2 : 1;
+  const slots = svcComputeSlots({ coachId: coach.id, fromDate: date, toDate: date, externalBusy });
+  const hit = slots.find(s => s.start === startAt);
+  if (!hit || hit.remain < units) return res.status(409).json({ error: 'slot_unavailable' });
+
+  const r = svcCreateBookingAnon({ coachId: coach.id, startAt, name, phone, note: note || null, discountCode: discountCode || null, sessionType: type, email: email || null });
+  // commit 後副作用（不 await、不持鎖；比照 notify() 慣例）
+  syncBookingCreate(r.id);
+  if (email) sendBookingConfirmation(r.id);
   res.status(201).json(r);
 }));
 
@@ -761,7 +788,10 @@ app.post('/api/public/my', asyncHandler((req, res) => {
 
 app.delete('/api/public/bookings/:id', asyncHandler((req, res) => {
   const { phone, name } = req.body || {};
-  res.json(svcCancelBookingAnon({ bookingId: Number(req.params.id), phone, name }));
+  const id = Number(req.params.id);
+  const r = svcCancelBookingAnon({ bookingId: id, phone, name });
+  syncBookingCancel(id); // commit 後（svcCancel 的 tx 已結束）、不 await
+  res.json(r);
 }));
 
 app.delete('/api/public/registrations/:id', asyncHandler((req, res) => {
@@ -792,12 +822,13 @@ app.get('/api/coaches/:id', asyncHandler((req, res) => {
   res.json(coach);
 }));
 
-app.get('/api/coaches/:id/availability', asyncHandler((req, res) => {
+app.get('/api/coaches/:id/availability', asyncHandler(async (req, res) => {
   const coach = svcGetCoach(Number(req.params.id));
   if (!coach || !coach.is_active) return res.status(404).json({ error: 'coach_not_found' });
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'missing_range' });
-  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
+  const externalBusy = await getExternalBusySafe(from, to);
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy }));
 }));
 
 // Kept for coach 緊急取消 (coach has a token; member login is disabled).
@@ -816,6 +847,7 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
     isCoach: actorIsCoach,
     reason: actorIsCoach ? (reason || null) : null,
   });
+  syncBookingCancel(id); // commit 後副作用、不 await（失敗交 reconcile 兜底）
   res.json({ ok: true });
 }));
 

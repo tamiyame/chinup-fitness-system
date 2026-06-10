@@ -3,6 +3,7 @@
 // Seeds discount codes directly via SQL (D8 admin endpoints not yet implemented).
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
+import { addRule } from '../src/services/availabilityService.js';
 
 const BASE = process.env.BASE || 'http://localhost:3000';
 
@@ -181,6 +182,13 @@ console.log('[7] POST /api/public/bookings with discountCode');
 const coachesRes = await req('GET', '/api/coaches');
 expect('coaches list 200', () => assert.equal(coachesRes.status, 200));
 const activeCoach = Array.isArray(coachesRes.data) && coachesRes.data[0];
+// 預約管線現在驗時段合法性（班表內才可約）→ 先確保 +7 天當週有班表 rule
+if (activeCoach) {
+  const d7 = new Date(); d7.setDate(d7.getDate() + 7);
+  // 冪等：重跑測試不累積重複 rule
+  const hasRule = db.prepare('SELECT 1 FROM coach_availability_rules WHERE coach_id=? AND day_of_week=?').get(activeCoach.id, d7.getDay());
+  if (!hasRule) addRule({ coachId: activeCoach.id, dayOfWeek: d7.getDay(), startTime: '09:00', endTime: '18:00' });
+}
 if (activeCoach) {
   const futureStart = (() => {
     const d = new Date(); d.setDate(d.getDate() + 7);
