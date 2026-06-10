@@ -1,7 +1,7 @@
 // SA JWT 簽章正確性（本地 keypair 驗簽，不打網路）+ 金鑰解析（raw / base64）。
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
-import { _buildJwt, _parseServiceAccountJson } from '../src/services/googleAuth.js';
+import { _buildJwt, _parseServiceAccountJson, getCalendarToken } from '../src/services/googleAuth.js';
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 console.log('[google-auth test] start');
@@ -32,4 +32,19 @@ expect('金鑰解析：base64', () => {
   assert.equal(_parseServiceAccountJson(b64).client_email, 'x@y.z');
 });
 expect('金鑰解析：壞輸入 → null', () => assert.equal(_parseServiceAccountJson('not json'), null));
+
+// never-throws 契約：壞 private_key 不丟例外，回 {ok:false, error:'jwt_signing:...'}
+{
+  const envBackup = process.env.GCAL_SERVICE_ACCOUNT_JSON;
+  const mockBackup = process.env.GCAL_MOCK;
+  delete process.env.GCAL_MOCK;
+  process.env.GCAL_SERVICE_ACCOUNT_JSON = JSON.stringify({ client_email: 'a@b.c', private_key: 'not a pem' });
+  const r = await getCalendarToken();
+  expect('壞 private_key → never-throws {ok:false jwt_signing}', () => {
+    assert.equal(r.ok, false);
+    assert.match(String(r.error), /jwt_signing/);
+  });
+  if (envBackup === undefined) delete process.env.GCAL_SERVICE_ACCOUNT_JSON; else process.env.GCAL_SERVICE_ACCOUNT_JSON = envBackup;
+  if (mockBackup !== undefined) process.env.GCAL_MOCK = mockBackup;
+}
 console.log('[google-auth test] done');

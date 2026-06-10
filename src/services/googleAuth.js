@@ -54,18 +54,27 @@ let _saCache = null;    // { token, expMs }
 let _gmailCache = null; // { token, expMs }
 
 export async function getCalendarToken() {
-  if (process.env.GCAL_MOCK) return { ok: true, token: 'mock-gcal-token' };
+  // mock 判斷比照 lineClient：'1' 成功、'fail' 失敗（精確比對）
+  if (process.env.GCAL_MOCK === '1') return { ok: true, token: 'mock-gcal-token' };
+  if (process.env.GCAL_MOCK === 'fail') return { ok: false, error: 'mock_fail' };
   const sa = _parseServiceAccountJson(process.env.GCAL_SERVICE_ACCOUNT_JSON);
   if (!sa || !sa.private_key) return { ok: false, error: 'gcal_not_configured' };
   if (_saCache && Date.now() < _saCache.expMs - 5 * 60_000) return { ok: true, token: _saCache.token };
-  const jwt = _buildJwt(sa, Math.floor(Date.now() / 1000));
+  // 金鑰格式錯誤時 createSign 會 throw → 包住維持 never-throws 契約
+  let jwt;
+  try {
+    jwt = _buildJwt(sa, Math.floor(Date.now() / 1000));
+  } catch (e) {
+    return { ok: false, error: `jwt_signing: ${e.message}` };
+  }
   const r = await fetchToken({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt });
   if (r.ok) _saCache = { token: r.token, expMs: Date.now() + r.expiresIn * 1000 };
   return r;
 }
 
 export async function getGmailToken() {
-  if (process.env.GMAIL_MOCK) return { ok: true, token: 'mock-gmail-token' };
+  if (process.env.GMAIL_MOCK === '1') return { ok: true, token: 'mock-gmail-token' };
+  if (process.env.GMAIL_MOCK === 'fail') return { ok: false, error: 'mock_fail' };
   const { GMAIL_REFRESH_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env;
   if (!GMAIL_REFRESH_TOKEN || !GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     return { ok: false, error: 'gmail_not_configured' };
