@@ -759,7 +759,6 @@ document.getElementById('new-cat-btn').addEventListener('click', newCategory);
 // --- Coach management ---
 async function loadCoachMgmt() {
   const coaches = await api('/api/admin/coaches');
-  const users = await api('/api/admin/users');
   const wrap = document.getElementById('coach-mgmt-list');
   wrap.innerHTML = '';
   if (coaches.length === 0) wrap.innerHTML = '<p class="text-slate-500 text-sm">尚無教練</p>';
@@ -791,23 +790,7 @@ async function loadCoachMgmt() {
       toast(e.data?.error === 'cannot_change_self' ? '不能把自己降為一般用戶' : `失敗：${e.message}`, 'error');
     }
   }));
-
-  const sel = document.getElementById('user-to-promote');
-  sel.innerHTML = users
-    .filter(u => u.role === 'user')
-    .map(u => `<option value="${u.id}">${escapeHtml(u.name)}（${escapeHtml(u.email)}）</option>`)
-    .join('');
 }
-
-document.getElementById('promote-coach-form')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const userId = Number(new FormData(e.target).get('user_id'));
-  try {
-    await api('/api/admin/coaches', { method: 'POST', body: { user_id: userId } });
-    toast('已升為教練（待設定資料後啟用）');
-    loadCoachMgmt();
-  } catch (err) { toast(`錯誤：${err.message}`, 'error'); }
-});
 
 // --- Create coach account form ---
 document.getElementById('create-coach-account-form')?.addEventListener('submit', async (e) => {
