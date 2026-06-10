@@ -1094,3 +1094,13 @@ details.session-row summary:hover { background: #f8faf9; }
 }
 .time-dd-opt { padding: 7px 12px; font-size: 14px; cursor: pointer; white-space: nowrap; }
 .time-dd-opt:hover { background: var(--brand-50); }
+
+/* 後台「?」說明小圓鈕 */
+.help-btn {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--surface);
+  color: #64748b; font-size: 13px; font-weight: 700; line-height: 1;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.help-btn:hover { background: var(--brand-50); color: #0ea5e9; border-color: #bae6fd; }
