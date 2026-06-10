@@ -83,6 +83,9 @@ app.set('trust proxy', 1);
 //   選 30 仍然把暴力破解速率壓到 120/小時，配合 scrypt 雜湊已足夠
 const loginLimiter = createRateLimiter({ name: 'login', windowMs: 15 * 60_000, max: 30 });
 const changePwLimiter = createRateLimiter({ name: 'change-password', windowMs: 15 * 60_000, max: 20 });
+// 公開預約：20/min/IP——正常顧客一分鐘約 1-2 筆綽綽有餘；同時壓住
+// freebusy 放大（不同日期參數可繞過 60s 快取打到 Google API）與濫用 email 確認信
+const bookingLimiter = createRateLimiter({ name: 'public-booking', windowMs: 60_000, max: 20 });
 app.use(express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; },
@@ -808,7 +811,7 @@ app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
   res.json({ valid: true, discount_type: v.type, discount_value: v.value, discount_amount: v.discountAmount, original: v.subtotal, final_total: v.finalTotal });
 }));
 
-app.post('/api/public/bookings', asyncHandler(async (req, res) => {
+app.post('/api/public/bookings', bookingLimiter, asyncHandler(async (req, res) => {
   const { coachId, startAt, name, phone, note, discountCode, sessionType, email } = req.body || {};
   const type = sessionType || '1on1';
   // 檢查順序維持既有契約：coach(404/409) → phone(400) → 時段(409) → service
