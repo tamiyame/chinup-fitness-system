@@ -121,3 +121,9 @@ export function getOneOnOnePriceByType(sessionType) {
 const DEFAULT_BANK_INFO = '合作金庫 (006) 0640765-607824 戶名：許秉毅';
 export function getBankInfo() { return getSetting('bank_info') || process.env.BANK_INFO || DEFAULT_BANK_INFO; }
 export function getLineOfficialUrl() { return getSetting('line_official_url') || ''; }
+export function getGcalCalendarId() { return getSetting('gcal_calendar_id') || ''; }
+// 每小時桶容量上限（全店跨教練）。非法值（NaN/<1）退回預設 3。
+export function getBookingHourlyCapacity() {
+  const n = parseInt(getSetting('booking_hourly_capacity') || '3', 10);
+  return Number.isInteger(n) && n >= 1 ? n : 3;
+}

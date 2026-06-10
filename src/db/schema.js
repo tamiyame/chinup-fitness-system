@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   retry_count INTEGER NOT NULL DEFAULT 0,
   next_retry_at TEXT,
   last_error TEXT,
+  recipient TEXT,
   sent_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -179,6 +180,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   discount_code TEXT,
   discount_amount INTEGER,
   original_amount INTEGER,
+  gcal_event_id TEXT,
+  customer_email TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK (start_at < end_at)
 );
@@ -224,6 +227,8 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('one_on_one_price', '150
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('one_on_two_price', '2000');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('bank_info', '合作金庫 (006) 0640765-607824 戶名：許秉毅');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('line_official_url', '');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('gcal_calendar_id', '');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('booking_hourly_capacity', '3');
 
 CREATE TABLE IF NOT EXISTS point_transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

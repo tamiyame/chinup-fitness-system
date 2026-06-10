@@ -202,6 +202,14 @@ if (legacyStaff.length) {
   console.log(`[migrate] roles redesign: ${legacyStaff.length} admin/owner → coach+is_admin`);
 }
 
+// ── 2026-06-10 Google Calendar 整合 + 容量限制 ──
+// gcal_event_id：「日曆上已有事件」旗標（建立成功寫入、刪除成功清空，reconcile 依此補建/補刪）。
+// customer_email：確認信收件位址（不寫 users.email——那是員工登入識別且有 UNIQUE partial index）。
+// notifications.recipient：email 通知收件位址（LINE 通知為 NULL），重試時直接取用。
+addColumnIfMissing('bookings', 'gcal_event_id', 'TEXT');
+addColumnIfMissing('bookings', 'customer_email', 'TEXT');
+addColumnIfMissing('notifications', 'recipient', 'TEXT');
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.
