@@ -4,6 +4,23 @@ const $ = (id) => document.getElementById(id);
 const DOW_LABELS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 let me = null;
 
+// 班表時間欄：下拉只給 10 分為單位（00/10/20/30/40/50），手動仍可打精確分鐘。
+// 用文字欄 + datalist（原生時間欄的下拉無法自訂）；送出/離開焦點時正規化為 HH:MM。
+const TIME10_OPTIONS = Array.from({ length: 24 * 6 }, (_, i) =>
+  `${String(Math.floor(i / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}`);
+const TIME10_DATALIST = `<datalist id="time10">${TIME10_OPTIONS.map(t => `<option value="${t}">`).join('')}</datalist>`;
+function normTime(v) {
+  v = (v || '').trim();
+  if (!v) return '';
+  let h, m;
+  if (v.includes(':')) { const p = v.split(':'); h = p[0]; m = p[1]; }
+  else { const d = v.replace(/\D/g, ''); if (d.length <= 2) { h = d; m = '0'; } else { h = d.slice(0, d.length - 2); m = d.slice(-2); } }
+  h = parseInt(h, 10); m = parseInt(m, 10);
+  if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return v; // 無法解析 → 原樣，交後端擋
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+const TIME10_ATTRS = 'type="text" list="time10" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off"';
+
 async function init() {
   try {
     me = await api('/api/coach/me');
@@ -79,16 +96,17 @@ async function renderAvailability() {
   ]);
 
   $('tab-availability').innerHTML = `
+    ${TIME10_DATALIST}
     <h2 class="section-title">每週基底班表</h2>
     <div id="rule-list" class="space-y-2 mb-4"></div>
     <details class="card mb-6">
       <summary class="font-semibold cursor-pointer">+ 新增規則</summary>
-      <form id="rule-form" novalidate class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <form id="rule-form" class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
         <select name="day_of_week" class="border rounded p-2 text-sm">
           ${DOW_LABELS.map((l, i) => `<option value="${i}">${l}</option>`).join('')}
         </select>
-        <input type="time" name="start_time" step="600" class="border rounded p-2 text-sm">
-        <input type="time" name="end_time" step="600" class="border rounded p-2 text-sm">
+        <input ${TIME10_ATTRS} name="start_time" class="border rounded p-2 text-sm">
+        <input ${TIME10_ATTRS} name="end_time" class="border rounded p-2 text-sm">
         <button class="btn-primary text-sm">加入</button>
       </form>
     </details>
@@ -97,7 +115,7 @@ async function renderAvailability() {
     <div id="exception-list" class="space-y-2 mb-4"></div>
     <details class="card">
       <summary class="font-semibold cursor-pointer">+ 標記例外</summary>
-      <form id="exception-form" novalidate class="mt-3 space-y-2">
+      <form id="exception-form" class="mt-3 space-y-2">
         <div class="flex gap-2">
           <input type="date" name="exception_date" required class="border rounded p-2 text-sm flex-1">
           <select name="type" class="border rounded p-2 text-sm">
@@ -109,14 +127,19 @@ async function renderAvailability() {
           <input type="checkbox" id="ex-allday" checked> 整天
         </label>
         <div class="flex gap-2 hidden" id="ex-times">
-          <input type="time" name="start_time" step="600" class="border rounded p-2 text-sm flex-1">
-          <input type="time" name="end_time" step="600" class="border rounded p-2 text-sm flex-1">
+          <input ${TIME10_ATTRS} name="start_time" class="border rounded p-2 text-sm flex-1">
+          <input ${TIME10_ATTRS} name="end_time" class="border rounded p-2 text-sm flex-1">
         </div>
         <input type="text" name="note" placeholder="備註（選填）" class="border rounded p-2 text-sm w-full">
         <button class="btn-primary text-sm w-full">加入</button>
       </form>
     </details>
   `;
+
+  // 時間欄離開焦點時正規化為 HH:MM（手動輸入彈性，例如打 0916 / 9:16 都會變 09:16）
+  document.querySelectorAll('#tab-availability input[list="time10"]').forEach(inp => {
+    inp.addEventListener('blur', () => { if (inp.value.trim()) inp.value = normTime(inp.value); });
+  });
 
   const ruleList = $('rule-list');
   if (rules.length === 0) ruleList.innerHTML = '<p class="text-slate-500 text-sm">還沒設定班表</p>';
@@ -136,8 +159,8 @@ async function renderAvailability() {
   $('rule-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const start = fd.get('start_time');
-    const end = fd.get('end_time');
+    const start = normTime(fd.get('start_time'));
+    const end = normTime(fd.get('end_time'));
     if (!start || !end) { toast('請選擇起訖時間', 'error'); return; }
     try {
       await api('/api/coach/me/rules', {
@@ -189,8 +212,8 @@ async function renderAvailability() {
     const fd = new FormData(e.target);
     const type = fd.get('type');
     const allDay = type === 'leave' && exAllday.checked;
-    const start_time = allDay ? null : (fd.get('start_time') || null);
-    const end_time = allDay ? null : (fd.get('end_time') || null);
+    const start_time = allDay ? null : (normTime(fd.get('start_time')) || null);
+    const end_time = allDay ? null : (normTime(fd.get('end_time')) || null);
     if (!allDay && (!start_time || !end_time)) { toast('請選擇起訖時間', 'error'); return; }
     try {
       await api('/api/coach/me/exceptions', {
