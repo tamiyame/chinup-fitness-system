@@ -1080,3 +1080,17 @@ details.session-row summary:hover { background: #f8faf9; }
   border: 1px dashed #86efac; border-radius: 10px;
   padding: 6px 16px;
 }
+
+/* 班表時間欄自訂下拉（Google Calendar 風格的小捲動框） */
+.time-dd {
+  position: fixed;
+  z-index: 60;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.time-dd-opt { padding: 7px 12px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.time-dd-opt:hover { background: var(--brand-50); }

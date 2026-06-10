@@ -4,6 +4,60 @@ const $ = (id) => document.getElementById(id);
 const DOW_LABELS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 let me = null;
 
+// 班表時間欄：下拉只給 10 分為單位（00/10/20/30/40/50），呈現像 Google Calendar 的小捲動框；
+// 手動仍可打精確分鐘（送出/離開焦點時正規化為 HH:MM）。原生時間欄/ datalist 的下拉高度無法自訂，故自製。
+const TIME10_OPTIONS = Array.from({ length: 24 * 6 }, (_, i) =>
+  `${String(Math.floor(i / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}`);
+function normTime(v) {
+  v = (v || '').trim();
+  if (!v) return '';
+  let h, m;
+  if (v.includes(':')) { const p = v.split(':'); h = p[0]; m = p[1]; }
+  else { const d = v.replace(/\D/g, ''); if (d.length <= 2) { h = d; m = '0'; } else { h = d.slice(0, d.length - 2); m = d.slice(-2); } }
+  h = parseInt(h, 10); m = parseInt(m, 10);
+  if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return v; // 無法解析 → 原樣，交後端擋
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+const TIME10_ATTRS = 'type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" data-time10';
+
+// 自訂時間下拉（固定高度小框、可捲動）。掛在 body 以免被父層裁切。
+function attachTimeDropdown(input) {
+  const dd = document.createElement('div');
+  dd.className = 'time-dd';
+  dd.style.display = 'none';
+  document.body.appendChild(dd);
+  const position = () => {
+    const r = input.getBoundingClientRect();
+    dd.style.left = `${r.left}px`;
+    dd.style.top = `${r.bottom + 2}px`;
+    dd.style.width = `${r.width}px`;
+  };
+  const show = () => {
+    const digits = input.value.replace(/\D/g, '');
+    const opts = TIME10_OPTIONS.filter(t => !digits || t.replace(':', '').startsWith(digits));
+    if (!opts.length) { dd.style.display = 'none'; return; } // 打精確分鐘(非10單位) → 不顯示
+    dd.innerHTML = opts.map(t => `<div class="time-dd-opt" data-v="${t}">${t}</div>`).join('');
+    position();
+    dd.style.display = 'block';
+    // 捲到目前值附近（沒值則 08:00）
+    const anchor = dd.querySelector(`[data-v="${normTime(input.value)}"]`) || dd.querySelector('[data-v="08:00"]');
+    if (anchor) dd.scrollTop = Math.max(0, anchor.offsetTop - dd.clientHeight / 2);
+  };
+  const hide = () => { dd.style.display = 'none'; };
+  input.addEventListener('focus', show);
+  input.addEventListener('input', show);
+  input.addEventListener('blur', () => setTimeout(() => { if (input.value.trim()) input.value = normTime(input.value); hide(); }, 150));
+  dd.addEventListener('mousedown', (e) => {
+    const o = e.target.closest('.time-dd-opt');
+    if (!o) return;
+    e.preventDefault(); // 保持 input 焦點、避免先觸發 blur
+    input.value = o.dataset.v;
+    hide();
+  });
+  window.addEventListener('scroll', () => { if (dd.style.display !== 'none') position(); }, true);
+  window.addEventListener('resize', () => { if (dd.style.display !== 'none') position(); });
+}
+
 async function init() {
   try {
     me = await api('/api/coach/me');
@@ -83,12 +137,12 @@ async function renderAvailability() {
     <div id="rule-list" class="space-y-2 mb-4"></div>
     <details class="card mb-6">
       <summary class="font-semibold cursor-pointer">+ 新增規則</summary>
-      <form id="rule-form" novalidate class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <form id="rule-form" class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
         <select name="day_of_week" class="border rounded p-2 text-sm">
           ${DOW_LABELS.map((l, i) => `<option value="${i}">${l}</option>`).join('')}
         </select>
-        <input type="time" name="start_time" step="600" class="border rounded p-2 text-sm">
-        <input type="time" name="end_time" step="600" class="border rounded p-2 text-sm">
+        <input ${TIME10_ATTRS} name="start_time" class="border rounded p-2 text-sm">
+        <input ${TIME10_ATTRS} name="end_time" class="border rounded p-2 text-sm">
         <button class="btn-primary text-sm">加入</button>
       </form>
     </details>
@@ -97,7 +151,7 @@ async function renderAvailability() {
     <div id="exception-list" class="space-y-2 mb-4"></div>
     <details class="card">
       <summary class="font-semibold cursor-pointer">+ 標記例外</summary>
-      <form id="exception-form" novalidate class="mt-3 space-y-2">
+      <form id="exception-form" class="mt-3 space-y-2">
         <div class="flex gap-2">
           <input type="date" name="exception_date" required class="border rounded p-2 text-sm flex-1">
           <select name="type" class="border rounded p-2 text-sm">
@@ -109,14 +163,18 @@ async function renderAvailability() {
           <input type="checkbox" id="ex-allday" checked> 整天
         </label>
         <div class="flex gap-2 hidden" id="ex-times">
-          <input type="time" name="start_time" step="600" class="border rounded p-2 text-sm flex-1">
-          <input type="time" name="end_time" step="600" class="border rounded p-2 text-sm flex-1">
+          <input ${TIME10_ATTRS} name="start_time" class="border rounded p-2 text-sm flex-1">
+          <input ${TIME10_ATTRS} name="end_time" class="border rounded p-2 text-sm flex-1">
         </div>
         <input type="text" name="note" placeholder="備註（選填）" class="border rounded p-2 text-sm w-full">
         <button class="btn-primary text-sm w-full">加入</button>
       </form>
     </details>
   `;
+
+  // 重繪時先移除舊的下拉浮層（避免殘留），再為每個時間欄掛自訂下拉 + 正規化。
+  document.querySelectorAll('.time-dd').forEach(el => el.remove());
+  document.querySelectorAll('#tab-availability input[data-time10]').forEach(attachTimeDropdown);
 
   const ruleList = $('rule-list');
   if (rules.length === 0) ruleList.innerHTML = '<p class="text-slate-500 text-sm">還沒設定班表</p>';
@@ -136,8 +194,8 @@ async function renderAvailability() {
   $('rule-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const start = fd.get('start_time');
-    const end = fd.get('end_time');
+    const start = normTime(fd.get('start_time'));
+    const end = normTime(fd.get('end_time'));
     if (!start || !end) { toast('請選擇起訖時間', 'error'); return; }
     try {
       await api('/api/coach/me/rules', {
@@ -189,8 +247,8 @@ async function renderAvailability() {
     const fd = new FormData(e.target);
     const type = fd.get('type');
     const allDay = type === 'leave' && exAllday.checked;
-    const start_time = allDay ? null : (fd.get('start_time') || null);
-    const end_time = allDay ? null : (fd.get('end_time') || null);
+    const start_time = allDay ? null : (normTime(fd.get('start_time')) || null);
+    const end_time = allDay ? null : (normTime(fd.get('end_time')) || null);
     if (!allDay && (!start_time || !end_time)) { toast('請選擇起訖時間', 'error'); return; }
     try {
       await api('/api/coach/me/exceptions', {
