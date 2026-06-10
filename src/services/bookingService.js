@@ -4,6 +4,10 @@ import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js
 import { notify, notifyAdmins, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getOneOnOnePriceByType, getLineOfficialUrl } from './discountService.js';
+import { assertBookableTx } from './availabilityService.js';
+
+const START_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const insertBookingStmt = db.prepare(`
   INSERT INTO bookings (coach_id, member_id, start_at, end_at, note, session_type)
@@ -61,6 +65,8 @@ const getMostRecentBookingWithCoachStmt = db.prepare(`
 // 核心建單：寫 bookings + 通知教練/會員。不碰點數。
 function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1' }) {
   const endAt = addMinutes(startAt, 60);
+  // 同教練重疊 / 全店容量（tx 內、純 DB → 無競態）。UNIQUE index 仍為最後兜底。
+  assertBookableTx({ coachId: coach.id, startAt, endAt, units: sessionType === '1on2' ? 2 : 1 });
   let bookingId;
   try {
     const info = insertBookingStmt.run(coach.id, memberId, startAt, endAt, note, sessionType);
@@ -84,15 +90,18 @@ function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1
 
 export function createBooking({ coachId, memberId, startAt, note = null }) {
   if (!coachId || !memberId || !startAt) throw new ApiError(400, 'missing_fields');
+  if (typeof startAt !== 'string' || !START_AT_RE.test(startAt)) throw new ApiError(400, 'invalid_start_at');
   const coach = getCoachStmt.get(coachId);
   if (!coach) throw new ApiError(404, 'coach_not_found');
   if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
   return tx(() => createBookingCore({ coach, memberId, startAt, note }));
 }
 
-export function createBookingAnon({ coachId, startAt, name, phone, note = null, discountCode = null, sessionType = '1on1' }) {
+export function createBookingAnon({ coachId, startAt, name, phone, note = null, discountCode = null, sessionType = '1on1', email = null }) {
   if (!coachId || !startAt) throw new ApiError(400, 'missing_fields');
   if (sessionType !== '1on1' && sessionType !== '1on2') throw new ApiError(400, 'invalid_session_type');
+  if (typeof startAt !== 'string' || !START_AT_RE.test(startAt)) throw new ApiError(400, 'invalid_start_at');
+  if (email != null && email !== '' && !EMAIL_RE.test(email)) throw new ApiError(400, 'invalid_email');
   const coach = getCoachStmt.get(coachId);
   if (!coach) throw new ApiError(404, 'coach_not_found');
   if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
@@ -106,9 +115,10 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
     let originalAmount = subtotal, discountAmount = null, discountCode_ = null, finalAmount = subtotal;
     const applied = applyDiscountTx({ code: discountCode, phone, subtotal, kind: 'booking', refId: r.id });
     if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalAmount = applied.finalTotal; }
-    db.prepare('UPDATE bookings SET original_amount=?, discount_amount=?, discount_code=? WHERE id=?')
-      .run(originalAmount, discountAmount, discountCode_, r.id);
+    db.prepare('UPDATE bookings SET original_amount=?, discount_amount=?, discount_code=?, customer_email=? WHERE id=?')
+      .run(originalAmount, discountAmount, discountCode_, (email || null), r.id);
     r.sessionType = sessionType;
+    r.customerEmail = email || null;
     r.originalAmount = originalAmount; r.discountAmount = discountAmount; r.discountCode = discountCode_; r.finalAmount = finalAmount;
     return r;
   });

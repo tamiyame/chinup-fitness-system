@@ -920,6 +920,10 @@ async function loadOneOnOnePrice() {
     if (bankInput) bankInput.value = r.bank_info ?? '';
     const lineInput = document.getElementById('line-official-url');
     if (lineInput) lineInput.value = r.line_official_url ?? '';
+    const gcalInput = document.getElementById('gcal-calendar-id');
+    if (gcalInput) gcalInput.value = r.gcal_calendar_id ?? '';
+    const capInput = document.getElementById('booking-hourly-capacity');
+    if (capInput) capInput.value = r.booking_hourly_capacity ?? 3;
   } catch (e) {
     toast(`載入營運設定失敗：${escapeHtml(e.message)}`, 'error');
   }
@@ -971,6 +975,31 @@ document.getElementById('save-bank-line')?.addEventListener('click', async () =>
     toast('收款與 LINE 設定已更新', 'success');
   } catch (e) {
     toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');
+  }
+});
+
+// --- Settings: Google 日曆 ID + 每小時容量 + Gmail 寄信授權 ---
+document.getElementById('save-gcal-settings')?.addEventListener('click', async () => {
+  const gcal_calendar_id = (document.getElementById('gcal-calendar-id')?.value || '').trim();
+  const cap = Number(document.getElementById('booking-hourly-capacity')?.value);
+  if (!Number.isInteger(cap) || cap < 1 || cap > 99) {
+    toast('容量需為 1–99 的整數', 'error');
+    return;
+  }
+  try {
+    await api('/api/admin/settings', { method: 'PATCH', body: { gcal_calendar_id, booking_hourly_capacity: cap } });
+    toast('Google 日曆與容量設定已更新', 'success');
+  } catch (e) {
+    toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');
+  }
+});
+
+document.getElementById('gmail-auth-btn')?.addEventListener('click', async () => {
+  try {
+    const r = await api('/api/admin/gmail-auth/start', { method: 'POST' });
+    window.location.href = r.url;
+  } catch (e) {
+    toast(`無法發起授權：${escapeHtml(e.message)}`, 'error');
   }
 });
 

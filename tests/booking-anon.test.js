@@ -100,4 +100,33 @@ expect('invalid sessionType creates no user', () => {
   assert.equal(u, undefined);
 });
 
+// ── gcal 整合：email 存儲 + 容量守門（tx 內 assertBookableTx）──
+const rE = createBookingAnon({ coachId: coach.id, startAt: futureLocal(6, 9), name: '小信', phone: '0998000222', email: 'mail@example.com' });
+expect('email 寫入 bookings.customer_email', () => {
+  assert.equal(db.prepare('SELECT customer_email FROM bookings WHERE id=?').get(rE.id).customer_email, 'mail@example.com');
+});
+expect('email 格式錯 → 400 invalid_email', () => {
+  assert.throws(() => createBookingAnon({ coachId: coach.id, startAt: futureLocal(6, 12), name: '壞信', phone: '0998000333', email: 'not-an-email' }), /invalid_email/);
+});
+expect('startAt 格式錯 → 400 invalid_start_at', () => {
+  assert.throws(() => createBookingAnon({ coachId: coach.id, startAt: 'garbage', name: 'x', phone: '0998000444' }), /invalid_start_at/);
+});
+// 容量：同一小時三組（不同教練）滿 3 → 第四組 slot_full
+const cu2 = db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES ('Coach V','anon-bk-coach2@x.com','x','coach')").run();
+const coach2 = createCoach({ userId: cu2.lastInsertRowid, displayName: 'Coach V' });
+setCoachActive(coach2.id, true);
+const cu3 = db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES ('Coach W','anon-bk-coach3@x.com','x','coach')").run();
+const coach3 = createCoach({ userId: cu3.lastInsertRowid, displayName: 'Coach W' });
+setCoachActive(coach3.id, true);
+const capSlot = futureLocal(8, 14);
+createBookingAnon({ coachId: coach.id,  startAt: capSlot, name: '甲', phone: '0998000555' });
+createBookingAnon({ coachId: coach2.id, startAt: capSlot, name: '乙', phone: '0998000666' });
+createBookingAnon({ coachId: coach3.id, startAt: capSlot, name: '丙', phone: '0998000777' });
+const cu4 = db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES ('Coach X','anon-bk-coach4@x.com','x','coach')").run();
+const coach4 = createCoach({ userId: cu4.lastInsertRowid, displayName: 'Coach X' });
+setCoachActive(coach4.id, true);
+expect('全店同小時第 4 組 → 409 slot_full', () => {
+  assert.throws(() => createBookingAnon({ coachId: coach4.id, startAt: capSlot, name: '丁', phone: '0998000888' }), /slot_full/);
+});
+
 console.log('[booking-anon test] done');

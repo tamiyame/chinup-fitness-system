@@ -8,6 +8,7 @@
 // and retried by processFailedNotifications() (called from scheduler cron).
 import { db, nowLocal, offsetLocal } from '../db/connection.js';
 import { sendMessage } from './lineClient.js';
+import { sendMail as sendGmail } from './gmailClient.js';
 
 // ─────────────────────────────────────────────────────────────────────
 // Templates
@@ -150,7 +151,7 @@ const insertNotif = db.prepare(`
 `);
 
 const selectDueFailed = db.prepare(`
-  SELECT id, user_id, session_id, type, body, retry_count
+  SELECT id, user_id, session_id, type, body, retry_count, channel, subject, recipient
   FROM notifications
   WHERE status = 'failed' AND next_retry_at <= ?
   ORDER BY next_retry_at ASC
@@ -282,14 +283,19 @@ export async function processFailedNotifications() {
     const due = selectDueFailed.all(nowLocal());
 
     for (const row of due) {
-      const user = getUserById.get(row.user_id);
-      if (!user?.line_user_id) {
-        // user removed binding (or was deleted) → no point retrying
-        updateFailedPermanent.run('user_not_bound', row.id);
-        continue;
+      let result;
+      if (row.channel === 'email') {
+        if (!row.recipient) { updateFailedPermanent.run('no_recipient', row.id); continue; }
+        result = await sendGmail({ to: row.recipient, subject: row.subject || '通知', html: row.body || '' });
+      } else {
+        const user = getUserById.get(row.user_id);
+        if (!user?.line_user_id) {
+          // user removed binding (or was deleted) → no point retrying
+          updateFailedPermanent.run('user_not_bound', row.id);
+          continue;
+        }
+        result = await sendMessage(user.line_user_id, row.body);
       }
-
-      const result = await sendMessage(user.line_user_id, row.body);
 
       if (result.ok) {
         updateSent.run(row.id);

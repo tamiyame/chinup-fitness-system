@@ -15,6 +15,7 @@ function futureLocal(days, hh=10){const d=new Date();d.setDate(d.getDate()+days)
 
 function reset() {
   db.exec(`
+    DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'idor-%' OR phone LIKE '0955%');
     DELETE FROM registrations WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'idor-%' OR phone LIKE '0955%');
     DELETE FROM group_orders WHERE customer_phone LIKE '0955%';
     DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'idor-%' OR phone LIKE '0955%');

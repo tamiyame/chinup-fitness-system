@@ -218,6 +218,22 @@
       <button id="save-bank-line" class="btn btn-primary btn-sm">儲存</button>
     </div>
 
+    <!-- Google 日曆整合 + 時段容量 -->
+    <div class="card mb-4">
+      <div class="font-semibold mb-3">Google 日曆與時段容量</div>
+      <label class="form-label" for="gcal-calendar-id">Google 日曆 ID（留空 = 關閉日曆同步；日曆需先共用給 Service Account「進行變更」）</label>
+      <input id="gcal-calendar-id" type="text" class="form-input mb-3" style="width:100%;" placeholder="xxx@group.calendar.google.com 或 Gmail 位址">
+      <div class="flex items-center gap-3 flex-wrap mb-3">
+        <label class="form-label mb-0" for="booking-hourly-capacity">每小時容量上限（全店、跨教練；1對2 佔 2 名額）</label>
+        <input id="booking-hourly-capacity" type="number" min="1" max="99" step="1" class="form-input" style="width:90px;" placeholder="3">
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <button id="save-gcal-settings" class="btn btn-primary btn-sm">儲存</button>
+        <button id="gmail-auth-btn" class="btn btn-secondary btn-sm">Gmail 寄信授權</button>
+      </div>
+      <p class="text-xs text-slate-500 mt-2">「Gmail 寄信授權」會開啟 Google 同意畫面，完成後頁面會顯示 refresh token，請自行貼到 Railway 環境變數 GMAIL_REFRESH_TOKEN。</p>
+    </div>
+
     <!-- create discount code form -->
     <div class="card mb-4">
       <h3 class="font-semibold mb-3">建立折扣碼</h3>

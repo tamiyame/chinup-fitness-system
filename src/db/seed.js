@@ -1,7 +1,20 @@
 import { db } from './connection.js';
 import { hashPassword } from '../services/auth.js';
 
-db.exec('DELETE FROM auth_sessions; DELETE FROM notifications; DELETE FROM registrations; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM users;');
+// 依 FK 依賴順序清空：group_orders/bookings/point_transactions 都引用 users（無 cascade），
+// 測試跑完常留下這些列（測試只在開頭 reset），不先刪會讓 DELETE FROM users 撞 FK。
+db.exec(`
+  DELETE FROM auth_sessions;
+  DELETE FROM notifications;
+  DELETE FROM point_transactions;
+  DELETE FROM discount_redemptions;
+  DELETE FROM registrations;
+  DELETE FROM group_orders;
+  DELETE FROM bookings;
+  DELETE FROM course_sessions;
+  DELETE FROM course_templates;
+  DELETE FROM users;
+`);
 
 const insertUser = db.prepare(
   'INSERT INTO users (name, email, phone, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?, ?)'

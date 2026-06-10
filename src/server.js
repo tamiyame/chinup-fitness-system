@@ -66,7 +66,10 @@ import {
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
-import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl } from './services/discountService.js';
+import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity } from './services/discountService.js';
+import { isValidPhone } from './services/userService.js';
+import { getExternalBusySafe, syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
+import { sendBookingConfirmation } from './services/emailService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -80,6 +83,9 @@ app.set('trust proxy', 1);
 //   選 30 仍然把暴力破解速率壓到 120/小時，配合 scrypt 雜湊已足夠
 const loginLimiter = createRateLimiter({ name: 'login', windowMs: 15 * 60_000, max: 30 });
 const changePwLimiter = createRateLimiter({ name: 'change-password', windowMs: 15 * 60_000, max: 20 });
+// 公開預約：20/min/IP——正常顧客一分鐘約 1-2 筆綽綽有餘；同時壓住
+// freebusy 放大（不同日期參數可繞過 60s 快取打到 Google API）與濫用 email 確認信
+const bookingLimiter = createRateLimiter({ name: 'public-booking', windowMs: 60_000, max: 20 });
 app.use(express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; },
@@ -287,6 +293,73 @@ app.get('/api/auth/google/callback', async (req, res) => {
   } catch (e) {
     console.error('[google] callback error:', e);
     res.redirect('/login.html?err=google_callback_error');
+  }
+});
+
+// ── Gmail 寄信授權（一次性）──────────────────────────────────────────
+// 後台按鈕 → start 取授權 URL → Google 同意 → callback 一次性顯示 refresh token，
+// 由業主自行貼到 Railway 環境變數 GMAIL_REFRESH_TOKEN（不落 DB、不寫檔）。
+const gmailAuthStates = new Map();
+app.post('/api/admin/gmail-auth/start', requireAdmin, (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(500).json({ error: 'google_not_configured' });
+  const state = randomBytes(16).toString('hex');
+  gmailAuthStates.set(state, Date.now());
+  for (const [k, ts] of gmailAuthStates) {
+    if (Date.now() - ts > 10 * 60 * 1000) gmailAuthStates.delete(k);
+  }
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: gmailRedirectUri(req),
+    response_type: 'code',
+    scope: 'https://www.googleapis.com/auth/gmail.send',
+    access_type: 'offline',
+    prompt: 'consent',
+    state,
+  });
+  res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
+});
+
+function gmailRedirectUri(req) {
+  if (PUBLIC_URL) return `${PUBLIC_URL}/api/admin/gmail-auth/callback`;
+  return `${req.protocol}://${req.get('host')}/api/admin/gmail-auth/callback`;
+}
+
+app.get('/api/admin/gmail-auth/callback', async (req, res) => {
+  try {
+    const { code, state, error } = req.query;
+    // error 參數不回顯（避免 HTML injection）；只允許白名單字元摘要進 log
+    if (error) {
+      console.error('[gmail-auth] consent error:', String(error).replace(/[^\w.-]/g, '').slice(0, 50));
+      return res.status(400).send('授權未完成（Google 回報錯誤或您取消了授權），請回後台重新發起。');
+    }
+    if (!code || !state || !gmailAuthStates.has(String(state))) return res.status(400).send('授權連結無效或已過期，請回後台重新發起。');
+    gmailAuthStates.delete(String(state));
+    const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: String(code),
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: gmailRedirectUri(req),
+        grant_type: 'authorization_code',
+      }),
+    });
+    const tokens = await tokenResp.json();
+    if (!tokenResp.ok || !tokens.refresh_token) {
+      // 不印 tokens 物件——重複授權時 Google 可能回含 access_token 的部分成功內容
+      console.error('[gmail-auth] token exchange failed:', `HTTP ${tokenResp.status}`, tokens?.error || (tokens?.refresh_token ? '' : 'no_refresh_token'));
+      return res.status(400).send('未取得 refresh token。請確認 OAuth 同意畫面已發布正式版，並於授權時勾選同意；如先前已授權過，請至 Google 帳號「安全性→第三方存取」移除本應用程式後重試。');
+    }
+    res.send(`<!DOCTYPE html><html lang="zh-TW"><meta charset="UTF-8"><body style="font-family:sans-serif;max-width:640px;margin:40px auto">
+<h2>Gmail 寄信授權成功</h2>
+<p>請把下方 refresh token 完整複製，貼到 Railway 環境變數 <code>GMAIL_REFRESH_TOKEN</code>，存檔後服務會自動重啟生效。</p>
+<p><strong>此 token 僅顯示這一次，本系統不會儲存。</strong>完成後請關閉此頁。</p>
+<textarea readonly style="width:100%;height:90px;font-size:13px" onclick="this.select()">${tokens.refresh_token}</textarea>
+</body></html>`);
+  } catch (e) {
+    console.error('[gmail-auth] callback error:', e);
+    res.status(500).send('授權處理失敗，請回後台重試。');
   }
 });
 
@@ -689,12 +762,13 @@ app.get('/api/coach/me/bookings', requireCoach, asyncHandler((req, res) => {
   res.json(svcListCoachBookings(coach.id));
 }));
 
-app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler((req, res) => {
+app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler(async (req, res) => {
   const coach = loadCoachForUser(req, res);
   if (!coach) return;
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'missing_range' });
-  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
+  const externalBusy = await getExternalBusySafe(from, to);
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy }));
 }));
 
 app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
@@ -737,9 +811,32 @@ app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
   res.json({ valid: true, discount_type: v.type, discount_value: v.value, discount_amount: v.discountAmount, original: v.subtotal, final_total: v.finalTotal });
 }));
 
-app.post('/api/public/bookings', asyncHandler((req, res) => {
-  const { coachId, startAt, name, phone, note, discountCode, sessionType } = req.body || {};
-  const r = svcCreateBookingAnon({ coachId: Number(coachId), startAt, name, phone, note: note || null, discountCode: discountCode || null, sessionType: sessionType || '1on1' });
+app.post('/api/public/bookings', bookingLimiter, asyncHandler(async (req, res) => {
+  const { coachId, startAt, name, phone, note, discountCode, sessionType, email } = req.body || {};
+  const type = sessionType || '1on1';
+  // 檢查順序維持既有契約：coach(404/409) → phone(400) → 時段(409) → service
+  const coach = svcGetCoach(Number(coachId));
+  if (!coach) return res.status(404).json({ error: 'coach_not_found' });
+  if (!coach.is_active) return res.status(409).json({ error: 'coach_inactive' });
+  // phone 不做正規化：與 service 的 findOrCreateUserByPhone 同一套驗證（驗原始字串），
+  // route 過 ⇔ service 過，不會出現「route 過、service 擋」的不一致。
+  if (!isValidPhone(phone)) return res.status(400).json({ error: 'invalid_phone', detail: '電話需為 8-15 碼數字' });
+  if (typeof startAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/.test(startAt)) {
+    return res.status(400).json({ error: 'invalid_start_at' });
+  }
+  // 時段合法性（班表/請假/緩衝/視窗 + 容量 + Google freebusy）。
+  // freebusy 失敗 → fail-open（getExternalBusySafe 回 null，退回純 DB 檢查）。
+  const date = startAt.slice(0, 10);
+  const externalBusy = await getExternalBusySafe(date, date);
+  const units = type === '1on2' ? 2 : 1;
+  const slots = svcComputeSlots({ coachId: coach.id, fromDate: date, toDate: date, externalBusy });
+  const hit = slots.find(s => s.start === startAt);
+  if (!hit || hit.remain < units) return res.status(409).json({ error: 'slot_unavailable' });
+
+  const r = svcCreateBookingAnon({ coachId: coach.id, startAt, name, phone, note: note || null, discountCode: discountCode || null, sessionType: type, email: email || null });
+  // commit 後副作用（不 await、不持鎖；比照 notify() 慣例）
+  syncBookingCreate(r.id);
+  if (email) sendBookingConfirmation(r.id);
   res.status(201).json(r);
 }));
 
@@ -761,7 +858,10 @@ app.post('/api/public/my', asyncHandler((req, res) => {
 
 app.delete('/api/public/bookings/:id', asyncHandler((req, res) => {
   const { phone, name } = req.body || {};
-  res.json(svcCancelBookingAnon({ bookingId: Number(req.params.id), phone, name }));
+  const id = Number(req.params.id);
+  const r = svcCancelBookingAnon({ bookingId: id, phone, name });
+  syncBookingCancel(id); // commit 後（svcCancel 的 tx 已結束）、不 await
+  res.json(r);
 }));
 
 app.delete('/api/public/registrations/:id', asyncHandler((req, res) => {
@@ -792,12 +892,13 @@ app.get('/api/coaches/:id', asyncHandler((req, res) => {
   res.json(coach);
 }));
 
-app.get('/api/coaches/:id/availability', asyncHandler((req, res) => {
+app.get('/api/coaches/:id/availability', asyncHandler(async (req, res) => {
   const coach = svcGetCoach(Number(req.params.id));
   if (!coach || !coach.is_active) return res.status(404).json({ error: 'coach_not_found' });
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'missing_range' });
-  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to }));
+  const externalBusy = await getExternalBusySafe(from, to);
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy }));
 }));
 
 // Kept for coach 緊急取消 (coach has a token; member login is disabled).
@@ -816,6 +917,7 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
     isCoach: actorIsCoach,
     reason: actorIsCoach ? (reason || null) : null,
   });
+  syncBookingCancel(id); // commit 後副作用、不 await（失敗交 reconcile 兜底）
   res.json({ ok: true });
 }));
 
@@ -945,6 +1047,8 @@ function settingsPayload() {
     one_on_two_price: Number(getSetting('one_on_two_price') || '2000'),
     bank_info: getBankInfo(),
     line_official_url: getLineOfficialUrl(),
+    gcal_calendar_id: getGcalCalendarId(),
+    booking_hourly_capacity: getBookingHourlyCapacity(),
   };
 }
 app.get('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
@@ -974,6 +1078,15 @@ app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
     if (url && !/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'invalid_line_url' });
     writes.push(['line_official_url', url]); // 空字串代表清除（不顯示按鈕）
   }
+  if (b.gcal_calendar_id !== undefined) {
+    const v = String(b.gcal_calendar_id).trim();
+    writes.push(['gcal_calendar_id', v]); // 空字串 = 關閉日曆同步
+  }
+  if (b.booking_hourly_capacity !== undefined) {
+    const n = Number(b.booking_hourly_capacity);
+    if (!Number.isInteger(n) || n < 1 || n > 99) return res.status(400).json({ error: 'invalid_capacity' });
+    writes.push(['booking_hourly_capacity', String(n)]);
+  }
   tx(() => { for (const [k, v] of writes) setSetting(k, v); });
   res.json(settingsPayload());
 }));
@@ -986,6 +1099,7 @@ if (process.env.NODE_ENV !== 'test') {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[server] listening on port ${PORT}`);
+    console.log(`[server] tz=${Intl.DateTimeFormat().resolvedOptions().timeZone} now=${new Date().toString()}`);
     startScheduler();
   });
 }

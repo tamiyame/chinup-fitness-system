@@ -96,8 +96,9 @@ console.log('[group-order-service part2] start');
 // 接續 part1 狀態：s1 cap=2，o1(甲:s1,s2 pending)、o2(乙:s1 pending)、o3(丙:s1 waitlisted)
 // 核對 o2 付款 → confirmed
 expect('confirm order → paid + regs confirmed', () => {
-  const adminId = db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get()?.id
-    || db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES ('A','goa@x.com','x','owner') RETURNING id").get().id;
+  // 角色重構（PR #40）後管理者 = role='coach' + is_admin=1；找不到才補一個（冪等：重跑時 SELECT 會命中前次 INSERT 的列）
+  const adminId = db.prepare("SELECT id FROM users WHERE is_admin=1 LIMIT 1").get()?.id
+    || db.prepare("INSERT INTO users (name,email,password_hash,role,is_admin) VALUES ('A','goa@x.com','x','coach',1) RETURNING id").get().id;
   const res = confirmGroupOrder({ orderId: o2.orderId, actorId: adminId });
   assert.equal(res.ok, true);
   const o = db.prepare('SELECT status FROM group_orders WHERE id=?').get(o2.orderId);

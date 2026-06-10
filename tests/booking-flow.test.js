@@ -139,7 +139,7 @@ addRule({ coachId: cA.id, dayOfWeek: 1, startTime: '09:00', endTime: '12:00', ef
 addRule({ coachId: cA.id, dayOfWeek: 3, startTime: '14:00', endTime: '16:00', effectiveFrom: '2099-01-01' });
 
 // 2099-05-04 is a Monday; 2099-05-06 is a Wednesday
-const slots = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-04', toDate: '2099-05-06', bookingWindowDays: 365 * 100 });
+const slots = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-04', toDate: '2099-05-06', bookingWindowDays: 365 * 100 }).map(o => o.start);
 expect('Monday expands to 3 60-min slots (09,10,11)', () => {
   const mon = slots.filter(s => s.startsWith('2099-05-04'));
   assert.deepEqual(mon, ['2099-05-04T09:00:00', '2099-05-04T10:00:00', '2099-05-04T11:00:00']);
@@ -159,7 +159,7 @@ expect('leave exception removes all slots that day', () => assert.equal(slots2.l
 
 // extra exception adds a window
 addException({ coachId: cA.id, exceptionDate: '2099-05-07', type: 'extra', startTime: '10:00', endTime: '12:00' });
-const slots3 = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-07', toDate: '2099-05-07', bookingWindowDays: 365 * 100 });
+const slots3 = computeAvailableSlots({ coachId: cA.id, fromDate: '2099-05-07', toDate: '2099-05-07', bookingWindowDays: 365 * 100 }).map(o => o.start);
 expect('extra exception adds 2 slots', () => {
   assert.deepEqual(slots3, ['2099-05-07T10:00:00', '2099-05-07T11:00:00']);
 });
@@ -185,7 +185,7 @@ expect('Tuesday after effective_to yields nothing', () => assert.equal(tueOut.le
 // past slots filtered
 addRule({ coachId: cB.id, dayOfWeek: new Date().getDay(), startTime: '00:00', endTime: '23:00', effectiveFrom: '2000-01-01' });
 const today = (() => { const d=new Date(); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; })();
-const todaySlots = computeAvailableSlots({ coachId: cB.id, fromDate: today, toDate: today });
+const todaySlots = computeAvailableSlots({ coachId: cB.id, fromDate: today, toDate: today }).map(o => o.start);
 expect('today: no slots before now()', () => {
   const now = new Date();
   const nowStr = `${today}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:00`;
@@ -215,7 +215,7 @@ expect('booking_created notification row exists', () => {
   assert(r, 'expected a booking_created notification row');
   assert.equal(r.channel, 'console');  // test users are not LINE-bound
 });
-const slotsC = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04', bookingWindowDays: 365 * 100 });
+const slotsC = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04', bookingWindowDays: 365 * 100 }).map(o => o.start);
 expect('booked slot removed from availability', () => {
   assert.deepEqual(slotsC, ['2099-05-04T09:00:00', '2099-05-04T11:00:00']);
 });

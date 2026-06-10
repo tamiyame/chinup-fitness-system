@@ -10,7 +10,10 @@ function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){con
 function dstr(days){const d=new Date();d.setDate(d.getDate()+days);const p=(n)=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;}
 
 function reset() {
+  // 注意：前次跑完留下的 asc-admin 會被開機遷移轉成 coach+is_admin=1，
+  // 之後其他測試的管理者廣播通知會掛在他名下（notifications.user_id 無 ON DELETE）→ 先刪通知再刪 user。
   db.exec(`
+    DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'asc-%' OR phone LIKE '0977%');
     DELETE FROM registrations WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'asc-%' OR phone LIKE '0977%');
     DELETE FROM group_orders WHERE customer_phone LIKE '0977%';
     DELETE FROM course_sessions WHERE template_id IN (SELECT id FROM course_templates WHERE name LIKE 'ASC%');

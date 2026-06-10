@@ -3,6 +3,7 @@ import { processDeadlines, processReminders } from './services/courseService.js'
 import { processFailedNotifications } from './services/notifications.js';
 import { runBackup } from './services/backupService.js';
 import { expirePendingOrders } from './services/groupOrderService.js';
+import { reconcile } from './services/gcalSync.js';
 
 export function startScheduler() {
   // 每小時整點跑截止判定
@@ -41,6 +42,15 @@ export function startScheduler() {
       await processFailedNotifications();
     } catch (e) {
       console.error('[cron] processFailedNotifications failed:', e);
+    }
+  });
+
+  // 每 5 分鐘：Google 日曆 reconcile（補建/補刪；功能未啟用時內部直接 return）
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      await reconcile();
+    } catch (e) {
+      console.error('[scheduler] gcal reconcile error:', e);
     }
   });
 

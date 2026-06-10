@@ -33,7 +33,7 @@ const SESSION_TYPE_LABELS = { '1on1': '1對1', '1on2': '1對2' };
 // Only one card is expanded at a time. null = nothing expanded.
 let currentlyExpandedId = null;
 
-// In-memory cache: coachId -> Array of ISO datetime strings (slot starts).
+// In-memory cache: coachId -> 物件陣列 {start, remain}（start 為 ISO datetime 字串，remain 為剩餘名額）。
 // Cleared naturally by a full page reload; no TTL.
 const slotCacheByCoach = new Map();
 
@@ -140,10 +140,10 @@ function renderSlotsInto(slotArea, slots, coachId) {
 
   // 前 3 個 miniSlot
   const miniCards = slots.slice(0, 3).map((s) => {
-    const { md, tm } = fmtMiniSlot(s);
+    const { md, tm } = fmtMiniSlot(s.start);
     return `
       <div class="miniSlot" role="button" tabindex="0"
-           data-slot="${escapeHtml(s)}" data-coach-id="${coachId}">
+           data-slot="${escapeHtml(s.start)}" data-remain="${s.remain}" data-coach-id="${coachId}">
         <div class="md">${escapeHtml(md)}</div>
         <div class="tm">${escapeHtml(tm)}</div>
       </div>
@@ -161,7 +161,7 @@ function renderSlotsInto(slotArea, slots, coachId) {
   slotArea.querySelectorAll('.miniSlot[data-slot]').forEach((el) => {
     const trigger = () => {
       const coach = allCoachesById.get(Number(el.dataset.coachId));
-      if (coach) openBookingModal(coach, el.dataset.slot);
+      if (coach) openBookingModal(coach, { start: el.dataset.slot, remain: Number(el.dataset.remain) });
     };
     el.addEventListener('click', trigger);
     el.addEventListener('keydown', (ev) => {
@@ -319,7 +319,7 @@ function weekRange(offset) {
 
 // ── 日期選擇狀態（詳細頁）────────────────────────────────────────────────────
 let selectedDateKey = null;   // 目前選中的日期鍵值（YYYY-MM-DD）
-let weekSlotsByDate = {};     // { 'YYYY-MM-DD': [iso, ...] }
+let weekSlotsByDate = {};     // { 'YYYY-MM-DD': [{start, remain}, ...] }
 
 /** 依日期鍵值渲染時段卡 grid */
 function renderTimegrid(dateKey) {
@@ -350,10 +350,11 @@ function renderTimegrid(dateKey) {
     el.className = 'timeslot';
     el.setAttribute('role', 'button');
     el.setAttribute('tabindex', '0');
-    el.dataset.slot = s;
-    el.innerHTML = `<div class="t-main">${escapeHtml(fmtTime(s))}</div><div class="t-sub">60 分鐘</div>`;
+    el.dataset.slot = s.start;
+    el.dataset.remain = s.remain;
+    el.innerHTML = `<div class="t-main">${escapeHtml(fmtTime(s.start))}</div><div class="t-sub">60 分鐘${s.remain === 1 ? ' · 剩 1 名額' : ''}</div>`;
     // 點擊時段卡 → 直接開 modal（不停留 sel 狀態，modal 開啟即有 UI 回饋）
-    const trigger = () => openBookingModal(currentCoach, s);
+    const trigger = () => openBookingModal(currentCoach, { start: s.start, remain: s.remain });
     el.addEventListener('click', trigger);
     el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); trigger(); }
@@ -367,10 +368,10 @@ function renderDayRail(from, to, allSlots) {
   const rail = $('day-rail');
   rail.innerHTML = '';
 
-  // 建立日期 → slots 的 map
+  // 建立日期 → slots 的 map（存 {start, remain} 物件）
   weekSlotsByDate = {};
   for (const s of allSlots) {
-    const key = isoToDateKey(s);
+    const key = isoToDateKey(s.start);
     if (!weekSlotsByDate[key]) weekSlotsByDate[key] = [];
     weekSlotsByDate[key].push(s);
   }
@@ -458,6 +459,7 @@ $('back-to-list').addEventListener('click', () => show('list'));
 // --- Booking modal ---------------------------------------------------------
 
 let modalCoach = null;
+// modalSlot 存 { start, remain } 物件（start 為 ISO datetime 字串）
 let modalSlot = null;
 // Discount state: null or { code, discountAmount, finalTotal }
 let modalAppliedDiscount = null;
@@ -493,6 +495,12 @@ function refreshSessionTypeButtons() {
 // 切換課程型態：更新價格、按鈕樣式，並清掉已套用的折扣（小計改變 → 折後金額失效）。
 function setSessionType(type) {
   if (type !== '1on1' && type !== '1on2') return;
+  // 名額守門：剩 1 名額的時段不可選 1對2
+  if (type === '1on2' && modalSlot && modalSlot.remain < 2) {
+    $('modal-general-err').textContent = '此時段僅剩 1 個名額，無法選擇 1對2，請改選其他時段。';
+    return;
+  }
+  $('modal-general-err').textContent = '';
   modalSessionType = type;
   refreshSessionTypeButtons();
   refreshModalPrice();
@@ -506,18 +514,20 @@ function setSessionType(type) {
   }
 }
 
-function openBookingModal(coach, slotIso) {
+function openBookingModal(coach, slot) {
   modalCoach = coach;
-  modalSlot = slotIso;
+  modalSlot = slot;
   modalAppliedDiscount = null;
   modalSessionType = '1on1';
 
   $('modal-coach-name').textContent = coach.display_name;
-  $('modal-slot-time').textContent = fmtDate(slotIso) + '（60 分鐘）';
+  $('modal-slot-time').textContent = fmtDate(slot.start) + '（60 分鐘）';
   $('modal-name').value = '';
   $('modal-phone').value = '';
+  $('modal-email').value = '';
   $('modal-name-err').textContent = '';
   $('modal-phone-err').textContent = '';
+  $('modal-email-err').textContent = '';
   $('modal-general-err').textContent = '';
   $('modal-submit-btn').disabled = false;
   $('modal-submit-btn').textContent = '確認預約';
@@ -526,6 +536,15 @@ function openBookingModal(coach, slotIso) {
   $('modal-discount-code').value = '';
   $('modal-discount-msg').textContent = '';
   $('modal-discount-msg').classList.add('hidden');
+
+  // 名額守門：剩 1 名額的時段不可選 1對2
+  const btn1on2 = document.querySelector('#modal-session-type .session-type-btn[data-type="1on2"]');
+  if (btn1on2) {
+    const disabled = slot.remain < 2;
+    btn1on2.disabled = disabled;
+    btn1on2.classList.toggle('opacity-40', disabled);
+    btn1on2.title = disabled ? '此時段僅剩 1 個名額' : '';
+  }
 
   // 課程型態（預設 1對1）+ 單堂價
   refreshSessionTypeButtons();
@@ -631,6 +650,7 @@ $('modal-submit-btn').addEventListener('click', async () => {
   // Clear previous errors
   $('modal-name-err').textContent = '';
   $('modal-phone-err').textContent = '';
+  $('modal-email-err').textContent = '';
   $('modal-general-err').textContent = '';
 
   // Client-side validation
@@ -643,6 +663,11 @@ $('modal-submit-btn').addEventListener('click', async () => {
     $('modal-phone-err').textContent = '請輸入電話';
     hasErr = true;
   }
+  const emailVal = $('modal-email').value.trim();
+  if (emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+    $('modal-email-err').textContent = 'Email 格式不正確';
+    hasErr = true;
+  }
   if (hasErr) return;
 
   const btn = $('modal-submit-btn');
@@ -650,7 +675,8 @@ $('modal-submit-btn').addEventListener('click', async () => {
   btn.textContent = '送出中…';
 
   try {
-    const bookingBody = { coachId: modalCoach.id, startAt: modalSlot, name: nameVal, phone: phoneNormalized, sessionType: modalSessionType };
+    const bookingBody = { coachId: modalCoach.id, startAt: modalSlot.start, name: nameVal, phone: phoneNormalized, sessionType: modalSessionType };
+    if (emailVal) bookingBody.email = emailVal;
     if (modalAppliedDiscount) bookingBody.discountCode = modalAppliedDiscount.code;
     const result = await api('/api/public/bookings', {
       method: 'POST',
@@ -658,7 +684,7 @@ $('modal-submit-btn').addEventListener('click', async () => {
     });
     // Success — 先存下 modal 狀態，closeBookingModal() 會把 modalCoach/modalSlot 清成 null
     const bookedCoach = modalCoach;
-    const bookedSlot = modalSlot;
+    const bookedSlot = modalSlot.start;
     closeBookingModal();
     showSuccessView(result, bookedCoach, bookedSlot);
 
@@ -673,8 +699,15 @@ $('modal-submit-btn').addEventListener('click', async () => {
     if (errCode === 'slot_taken') {
       $('modal-general-err').textContent = '此時段剛被預約走了，請選其他時段。';
       // Remove this slot from the grid so user doesn't try again
-      removeSlotFromGrid(modalSlot);
+      removeSlotFromGrid(modalSlot?.start);
       slotCacheByCoach.delete(modalCoach?.id);
+    } else if (errCode === 'slot_unavailable' || errCode === 'slot_full') {
+      $('modal-general-err').textContent = '此時段已額滿或不可預約，請重新選擇時段。';
+      removeSlotFromGrid(modalSlot?.start);
+      slotCacheByCoach.delete(modalCoach?.id);
+      if (currentCoach && !views.detail.classList.contains('hidden')) loadSlots();
+    } else if (errCode === 'invalid_email') {
+      $('modal-email-err').textContent = 'Email 格式不正確';
     } else if (errCode === 'invalid_phone') {
       $('modal-phone-err').textContent = e.data?.detail || '電話格式不正確';
     } else if (errCode === 'missing_name') {
@@ -691,19 +724,19 @@ $('modal-submit-btn').addEventListener('click', async () => {
   }
 });
 
-function removeSlotFromGrid(slotIso) {
-  // 從詳細頁 timegrid 移除已被預約的時段卡（.timeslot[data-slot]）
+function removeSlotFromGrid(slotStart) {
+  // 從詳細頁 timegrid 移除已被預約的時段卡（.timeslot[data-slot]）；slotStart 為 ISO datetime 字串
   const grid = $('slot-grid');
   if (grid) {
     grid.querySelectorAll('[data-slot]').forEach((el) => {
-      if (el.dataset.slot === slotIso) el.remove();
+      if (el.dataset.slot === slotStart) el.remove();
     });
   }
   // 同步從 weekSlotsByDate 快取移除，避免重新選日後仍出現
-  if (slotIso && weekSlotsByDate) {
-    const key = isoToDateKey(slotIso);
+  if (slotStart && weekSlotsByDate) {
+    const key = isoToDateKey(slotStart);
     if (weekSlotsByDate[key]) {
-      weekSlotsByDate[key] = weekSlotsByDate[key].filter((s) => s !== slotIso);
+      weekSlotsByDate[key] = weekSlotsByDate[key].filter((s) => s.start !== slotStart);
       // 若移除後此日無時段，更新 daypill 為 .empty
       if (weekSlotsByDate[key].length === 0) {
         const rail = $('day-rail');
@@ -757,6 +790,10 @@ function showSuccessView(bookingResult, coach = modalCoach, slot = modalSlot) {
     paymentHtml = '';
   }
 
+  // 有填 email 時顯示確認信提示
+  const emailLine = bookingResult.customerEmail
+    ? `<div class="mt-2 text-sm text-slate-500">確認信將寄至 ${escapeHtml(bookingResult.customerEmail)}（未收到請檢查垃圾信件匣）</div>` : '';
+
   successEl.innerHTML = `
     <div class="text-center py-6">
       <div class="text-5xl mb-4">✅</div>
@@ -766,6 +803,7 @@ function showSuccessView(bookingResult, coach = modalCoach, slot = modalSlot) {
         <div class="mb-2"><span class="text-slate-500">時間</span><br><strong>${slotTime}</strong></div>
         <div><span class="text-slate-500">課程型態</span><br><strong>${escapeHtml(SESSION_TYPE_LABELS[bookingResult.sessionType] ?? '1對1')}</strong></div>
         ${paymentHtml}
+        ${emailLine}
       </div>
       ${lineHtml}
       <div class="mt-6 flex flex-col gap-3">

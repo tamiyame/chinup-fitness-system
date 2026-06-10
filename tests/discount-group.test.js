@@ -135,8 +135,9 @@ expect('DB group_orders row: no discount, original_amount=total_amount=1000', ()
 
 // ── Helpers for confirm-flow cases ──
 function adminId() {
-  return db.prepare("SELECT id FROM users WHERE role IN ('admin','owner') LIMIT 1").get()?.id
-    || db.prepare("INSERT INTO users (name,email,password_hash,role) VALUES ('A','dg-owner@x.com','x','owner') RETURNING id").get().id;
+  // 角色重構（PR #40）後管理者 = role='coach' + is_admin=1；找不到才補一個（冪等：重跑時 SELECT 會命中前次 INSERT 的列）
+  return db.prepare("SELECT id FROM users WHERE is_admin=1 LIMIT 1").get()?.id
+    || db.prepare("INSERT INTO users (name,email,password_hash,role,is_admin) VALUES ('A','dg-owner@x.com','x','coach',1) RETURNING id").get().id;
 }
 function redemptionRow(orderId) {
   return db.prepare('SELECT * FROM discount_redemptions WHERE kind=? AND ref_id=?').get('group_order', orderId);

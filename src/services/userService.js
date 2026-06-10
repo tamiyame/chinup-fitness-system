@@ -5,6 +5,8 @@ const PHONE_RE = /^\d{8,15}$/;
 export function validatePhone(phone) {
   return typeof phone === 'string' && PHONE_RE.test(phone);
 }
+// gcal 整合：對外慣用名（同 validatePhone，僅別名匯出，不改驗證行為）
+export const isValidPhone = validatePhone;
 
 const getByPhone = db.prepare('SELECT * FROM users WHERE phone = ?');
 const insertUser = db.prepare(
