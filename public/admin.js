@@ -1188,3 +1188,13 @@ loadPendingOrders();
 loadDiscountCodes();
 loadOneOnOnePrice();
 
+// 後台分頁切換：點頁籤只顯示對應 panel（各區塊資料已於上方一次載入）。
+document.querySelectorAll('#admin-tabs .tab').forEach((t) => {
+  t.addEventListener('click', () => {
+    const id = t.dataset.atab;
+    document.querySelectorAll('#admin-tabs .tab').forEach((x) => x.classList.toggle('tab-active', x === t));
+    document.querySelectorAll('[id^="apanel-"]').forEach((p) => p.classList.toggle('hidden', p.id !== `apanel-${id}`));
+    window.scrollTo({ top: 0 });
+  });
+});
+

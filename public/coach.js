@@ -133,10 +133,11 @@ async function renderAvailability() {
   ]);
 
   $('tab-availability').innerHTML = `
-    <h2 class="section-title">每週基底班表</h2>
-    <div id="rule-list" class="space-y-2 mb-4"></div>
-    <details class="card mb-6">
-      <summary class="font-semibold cursor-pointer">+ 新增規則</summary>
+    <details open class="mb-5">
+      <summary class="section-title cursor-pointer" style="margin-bottom:10px;">每週基底班表</summary>
+      <div id="rule-list" class="space-y-2 mb-4"></div>
+      <details class="card mb-2">
+        <summary class="font-semibold cursor-pointer">+ 新增規則</summary>
       <form id="rule-form" class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
         <select name="day_of_week" class="border rounded p-2 text-sm">
           ${DOW_LABELS.map((l, i) => `<option value="${i}">${l}</option>`).join('')}
@@ -145,12 +146,14 @@ async function renderAvailability() {
         <input ${TIME10_ATTRS} name="end_time" class="border rounded p-2 text-sm">
         <button class="btn-primary text-sm">加入</button>
       </form>
+      </details>
     </details>
 
-    <h2 class="section-title">特殊日期（請假 / 加開）</h2>
-    <div id="exception-list" class="space-y-2 mb-4"></div>
-    <details class="card">
-      <summary class="font-semibold cursor-pointer">+ 標記例外</summary>
+    <details open class="mb-2">
+      <summary class="section-title cursor-pointer" style="margin-bottom:10px;">特殊日期（請假 / 加開）</summary>
+      <div id="exception-list" class="space-y-2 mb-4"></div>
+      <details class="card">
+        <summary class="font-semibold cursor-pointer">+ 標記例外</summary>
       <form id="exception-form" class="mt-3 space-y-2">
         <div class="flex gap-2">
           <input type="date" name="exception_date" required class="border rounded p-2 text-sm flex-1">
@@ -169,6 +172,7 @@ async function renderAvailability() {
         <input type="text" name="note" placeholder="備註（選填）" class="border rounded p-2 text-sm w-full">
         <button class="btn-primary text-sm w-full">加入</button>
       </form>
+      </details>
     </details>
   `;
 
