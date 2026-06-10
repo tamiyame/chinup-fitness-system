@@ -83,12 +83,12 @@ async function renderAvailability() {
     <div id="rule-list" class="space-y-2 mb-4"></div>
     <details class="card mb-6">
       <summary class="font-semibold cursor-pointer">+ 新增規則</summary>
-      <form id="rule-form" class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <form id="rule-form" novalidate class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
         <select name="day_of_week" class="border rounded p-2 text-sm">
           ${DOW_LABELS.map((l, i) => `<option value="${i}">${l}</option>`).join('')}
         </select>
-        <input type="time" name="start_time" required class="border rounded p-2 text-sm">
-        <input type="time" name="end_time" required class="border rounded p-2 text-sm">
+        <input type="time" name="start_time" step="600" class="border rounded p-2 text-sm">
+        <input type="time" name="end_time" step="600" class="border rounded p-2 text-sm">
         <button class="btn-primary text-sm">加入</button>
       </form>
     </details>
@@ -97,17 +97,20 @@ async function renderAvailability() {
     <div id="exception-list" class="space-y-2 mb-4"></div>
     <details class="card">
       <summary class="font-semibold cursor-pointer">+ 標記例外</summary>
-      <form id="exception-form" class="mt-3 space-y-2">
+      <form id="exception-form" novalidate class="mt-3 space-y-2">
         <div class="flex gap-2">
           <input type="date" name="exception_date" required class="border rounded p-2 text-sm flex-1">
           <select name="type" class="border rounded p-2 text-sm">
-            <option value="leave">請假（整天）</option>
-            <option value="extra">加開（指定時段）</option>
+            <option value="leave">請假</option>
+            <option value="extra">加開</option>
           </select>
         </div>
-        <div class="flex gap-2 hidden" id="extra-times">
-          <input type="time" name="start_time" class="border rounded p-2 text-sm flex-1">
-          <input type="time" name="end_time" class="border rounded p-2 text-sm flex-1">
+        <label class="flex items-center gap-2 text-sm" id="ex-allday-wrap">
+          <input type="checkbox" id="ex-allday" checked> 整天
+        </label>
+        <div class="flex gap-2 hidden" id="ex-times">
+          <input type="time" name="start_time" step="600" class="border rounded p-2 text-sm flex-1">
+          <input type="time" name="end_time" step="600" class="border rounded p-2 text-sm flex-1">
         </div>
         <input type="text" name="note" placeholder="備註（選填）" class="border rounded p-2 text-sm w-full">
         <button class="btn-primary text-sm w-full">加入</button>
@@ -133,25 +136,29 @@ async function renderAvailability() {
   $('rule-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const start = fd.get('start_time');
+    const end = fd.get('end_time');
+    if (!start || !end) { toast('請選擇起訖時間', 'error'); return; }
     try {
       await api('/api/coach/me/rules', {
         method: 'POST',
-        body: {
-          day_of_week: Number(fd.get('day_of_week')),
-          start_time: fd.get('start_time'),
-          end_time: fd.get('end_time'),
-        }
+        body: { day_of_week: Number(fd.get('day_of_week')), start_time: start, end_time: end },
       });
       toast('已加入');
       renderAvailability();
-    } catch (err) { toast(`錯誤：${err.message}`, 'error'); }
+    } catch (err) {
+      const m = { invalid_time: '結束時間需晚於開始', invalid_time_format: '時間格式錯誤' };
+      toast(m[err.data?.error] || `錯誤：${err.message}`, 'error');
+    }
   });
 
   const exList = $('exception-list');
   if (exceptions.length === 0) exList.innerHTML = '<p class="text-slate-500 text-sm">沒有特殊日期</p>';
   for (const ex of exceptions) {
     const row = document.createElement('div');
-    const tag = ex.type === 'leave' ? '🟡 請假整天' : `🟢 加開 ${ex.start_time}–${ex.end_time}`;
+    const tag = ex.type === 'leave'
+      ? (ex.start_time ? `🟡 請假 ${ex.start_time}–${ex.end_time}` : '🟡 請假（整天）')
+      : `🟢 加開 ${ex.start_time}–${ex.end_time}`;
     row.className = 'flex items-center justify-between p-2 border rounded';
     row.innerHTML = `<span>${ex.exception_date} · ${tag}${ex.note ? ` · ${escapeHtml(ex.note)}` : ''}</span>
       <button data-id="${ex.id}" class="text-red-500 text-sm ex-del">刪除</button>`;
@@ -163,26 +170,39 @@ async function renderAvailability() {
     renderAvailability();
   }));
 
-  $('exception-form').querySelector('[name=type]').addEventListener('change', (e) => {
-    $('extra-times').classList.toggle('hidden', e.target.value !== 'extra');
-  });
+  // 表單切換：加開 → 一律顯示時段、無「整天」；請假 → 顯示「整天」勾選框，
+  // 勾「整天」時隱藏時段（整天請假），取消勾選則指定時段（部分請假）。
+  const exTypeSel = $('exception-form').querySelector('[name=type]');
+  const exAllday = $('ex-allday');
+  function syncExceptionForm() {
+    const isLeave = exTypeSel.value === 'leave';
+    $('ex-allday-wrap').classList.toggle('hidden', !isLeave);
+    const showTimes = !isLeave || !exAllday.checked;
+    $('ex-times').classList.toggle('hidden', !showTimes);
+  }
+  exTypeSel.addEventListener('change', syncExceptionForm);
+  exAllday.addEventListener('change', syncExceptionForm);
+  syncExceptionForm();
+
   $('exception-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const type = fd.get('type');
+    const allDay = type === 'leave' && exAllday.checked;
+    const start_time = allDay ? null : (fd.get('start_time') || null);
+    const end_time = allDay ? null : (fd.get('end_time') || null);
+    if (!allDay && (!start_time || !end_time)) { toast('請選擇起訖時間', 'error'); return; }
     try {
       await api('/api/coach/me/exceptions', {
         method: 'POST',
-        body: {
-          exception_date: fd.get('exception_date'),
-          type: fd.get('type'),
-          start_time: fd.get('start_time') || null,
-          end_time: fd.get('end_time') || null,
-          note: fd.get('note') || null,
-        }
+        body: { exception_date: fd.get('exception_date'), type, start_time, end_time, note: fd.get('note') || null },
       });
       toast('已加入');
       renderAvailability();
-    } catch (err) { toast(`錯誤：${err.message}`, 'error'); }
+    } catch (err) {
+      const m = { invalid_time: '結束時間需晚於開始', invalid_time_format: '時間格式錯誤', missing_time: '請選擇起訖時間' };
+      toast(m[err.data?.error] || `錯誤：${err.message}`, 'error');
+    }
   });
 }
 
