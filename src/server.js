@@ -573,26 +573,7 @@ app.get('/api/admin/coaches', requireAdmin, asyncHandler((req, res) => {
   res.json(rows);
 }));
 
-app.post('/api/admin/coaches', requireAdmin, asyncHandler((req, res) => {
-  const { user_id, display_name, specialty, bio, sort_order } = req.body || {};
-  if (!user_id) return res.status(400).json({ error: 'missing_user_id' });
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(user_id));
-  if (!user) return res.status(404).json({ error: 'user_not_found' });
-  if (svcGetCoachByUser(user.id)) return res.status(409).json({ error: 'coach_exists' });
-
-  tx(() => {
-    db.prepare("UPDATE users SET role = 'coach' WHERE id = ?").run(user.id);
-    svcCreateCoach({
-      userId: user.id,
-      displayName: display_name || user.name,
-      specialty,
-      bio,
-      sortOrder: sort_order || 0,
-    });
-  });
-  const created = svcGetCoachByUser(user.id);
-  res.status(201).json(created);
-}));
+// 註：「由現有 user 升級為教練」已移除（會員管理彈窗改角色=教練即可，且會自動建/啟用教練檔案）。
 
 app.patch('/api/admin/coaches/:id', requireAdmin, asyncHandler((req, res) => {
   const id = Number(req.params.id);
