@@ -93,7 +93,6 @@ function todayLocal() {
 // --- Configuration (Phase 1 constants) ---
 export const SLOT_DURATION_MINUTES = 60;
 export const BUFFER_HOURS = 2;
-export const BOOKING_WINDOW_DAYS = 30;
 
 // 同教練區間重疊（取代舊 exact-match）：撈出與範圍重疊的 confirmed 預約區間。
 const listCoachOverlapping = db.prepare(`
@@ -125,15 +124,17 @@ const listExceptionsForDate = db.prepare(`
  * remain = 該時段在全店小時桶容量下還可容納的人數（min over 所佔桶）。
  * externalBusy: Map<'YYYY-MM-DD', Array<{start:'HH:MM', end:'HH:MM'}>>（Google 日曆
  * 手動活動的忙碌區間；null = 無外部封鎖）。與部分請假同一套重疊過濾。
+ * bookingWindowDays: null（預設）= 預約日期無上限；傳數值可限縮視窗（測試用）。
  */
-export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindowDays = BOOKING_WINDOW_DAYS, externalBusy = null }) {
+export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindowDays = null, externalBusy = null }) {
   if (!YYYYMMDD.test(fromDate) || !YYYYMMDD.test(toDate)) {
     throw new ApiError(400, 'invalid_date_range');
   }
 
   const now = new Date();
   const bufferMs = now.getTime() + BUFFER_HOURS * 3600_000;
-  const windowEndMs = now.getTime() + bookingWindowDays * 86400_000;
+  // bookingWindowDays=null → 預約日期無上限（預設）；傳數值可限縮（測試用）
+  const windowEndMs = bookingWindowDays == null ? Infinity : now.getTime() + bookingWindowDays * 86400_000;
 
   const dates = enumerateDates(fromDate, toDate);
   const rawSlots = [];

@@ -220,9 +220,11 @@ expect('booked slot removed from availability', () => {
   assert.deepEqual(slotsC, ['2099-05-04T09:00:00', '2099-05-04T11:00:00']);
 });
 
-// Verify bookingWindowDays default filter
+// 2026-06-12 起預設視窗無上限：遠期日期不再被預設擋下（傳 bookingWindowDays 數值仍可限縮）
 const farFutureRule = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04' });
-expect('default window blocks far-future slots', () => assert.equal(farFutureRule.length, 0));
+expect('default window (unlimited) allows far-future slots', () => assert.equal(farFutureRule.length, 2));
+const farFutureCapped = computeAvailableSlots({ coachId: cC.id, fromDate: '2099-05-04', toDate: '2099-05-04', bookingWindowDays: 30 });
+expect('explicit bookingWindowDays still blocks far-future slots', () => assert.equal(farFutureCapped.length, 0));
 
 // --- Case 4: booking lifecycle ---
 

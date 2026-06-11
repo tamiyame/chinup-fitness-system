@@ -182,6 +182,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   original_amount INTEGER,
   gcal_event_id TEXT,
   customer_email TEXT,
+  paid_at TEXT,
+  paid_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK (start_at < end_at)
 );

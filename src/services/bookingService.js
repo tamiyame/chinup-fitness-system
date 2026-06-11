@@ -35,7 +35,7 @@ const listCoachStmt = db.prepare(`
   FROM bookings b
   JOIN users u ON u.id = b.member_id
   WHERE b.coach_id = ?
-  ORDER BY b.start_at DESC
+  ORDER BY b.created_at DESC, b.id DESC
 `);
 
 const getCoachStmt = db.prepare('SELECT * FROM coaches WHERE id = ?');
