@@ -62,6 +62,10 @@ const TEMPLATES = {
     subject: '教練取消預約 - {{coach_display_name}}',
     body: '⚠️ {{coach_display_name}} 教練取消了你 {{start_at}} 的預約，點數已退回。',
   },
+  booking_payment_received: {  // 寄給會員（admin 核對教練課款項後）
+    subject: '款項已確認 - {{coach_display_name}}',
+    body: '✅ 已收到您的款項，{{coach_display_name}} 教練 {{start_at}} 的課程預約確認成立，期待見到您！',
+  },
 
   // === new 2 (anon paid-group redesign) ===
   payment_received: {

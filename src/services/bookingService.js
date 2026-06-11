@@ -5,6 +5,7 @@ import { notify, notifyAdmins, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getOneOnOnePriceByType, getLineOfficialUrl } from './discountService.js';
 import { assertBookableTx } from './availabilityService.js';
+import { sendPaymentConfirmedEmail } from './emailService.js';
 
 const START_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -40,6 +41,18 @@ const listCoachStmt = db.prepare(`
 
 const getCoachStmt = db.prepare('SELECT * FROM coaches WHERE id = ?');
 const getUserNameStmt = db.prepare('SELECT name FROM users WHERE id = ?');
+
+const listPendingPaymentStmt = db.prepare(`
+  SELECT b.id, b.start_at, b.session_type, b.created_at,
+         b.original_amount, b.discount_amount, b.discount_code,
+         u.name AS member_name, u.phone AS member_phone,
+         c.display_name AS coach_display_name
+  FROM bookings b
+  JOIN users u ON u.id = b.member_id
+  JOIN coaches c ON c.id = b.coach_id
+  WHERE b.status = 'confirmed' AND b.paid_at IS NULL
+  ORDER BY b.created_at DESC, b.id DESC
+`);
 
 // Returns the member's most recent non-cancelled 1-on-1 booking and the coach
 // data joined through. ORDER by start_at so multi-booking same-day is
@@ -193,6 +206,60 @@ export function listMemberBookings(memberId) {
 
 export function listCoachBookings(coachId) {
   return listCoachStmt.all(coachId);
+}
+
+/** 後台「待核對匯款」：未核對的教練課預約（含應收金額）。 */
+export function listPendingPaymentBookings() {
+  return listPendingPaymentStmt.all().map((b) => ({
+    ...b,
+    final_amount: b.original_amount != null ? b.original_amount - (b.discount_amount || 0) : null,
+  }));
+}
+
+/** admin 核對教練課款項：寫 paid_at/paid_by，通知會員（LINE＋email）。 */
+export function confirmBookingPayment({ bookingId, actorId }) {
+  return tx(() => {
+    const b = getBookingStmt.get(bookingId);
+    if (!b) throw new ApiError(404, 'booking_not_found');
+    if (b.status === 'cancelled') throw new ApiError(409, 'booking_cancelled');
+    if (b.paid_at) throw new ApiError(409, 'already_paid');
+    db.prepare('UPDATE bookings SET paid_at=?, paid_by=? WHERE id=?').run(nowLocal(), actorId, bookingId);
+    const coach = getCoachStmt.get(b.coach_id);
+    if (coach) {
+      notify({ userId: b.member_id, sessionId: null, type: 'booking_payment_received',
+        vars: { coach_display_name: coach.display_name, start_at: fmtDateForLine(b.start_at) } });
+    }
+    sendPaymentConfirmedEmail(bookingId); // async fire-and-forget（無 email 自動略過）
+    return { ok: true };
+  });
+}
+
+/** 後台「已核對匯款」：教練課＋團課訂單合併，paid_at 新→舊，最多 50 筆。 */
+export function listConfirmedPayments() {
+  const bookings = db.prepare(`
+    SELECT 'booking' AS type, b.id, u.name AS customer_name, u.phone AS customer_phone,
+           CASE WHEN b.original_amount IS NULL THEN NULL
+                ELSE b.original_amount - COALESCE(b.discount_amount, 0) END AS amount,
+           b.start_at AS detail, b.session_type, b.paid_at, pu.name AS paid_by_name
+    FROM bookings b
+    JOIN users u ON u.id = b.member_id
+    LEFT JOIN users pu ON pu.id = b.paid_by
+    WHERE b.paid_at IS NOT NULL
+    ORDER BY b.paid_at DESC LIMIT 50
+  `).all();
+  const orders = db.prepare(`
+    SELECT 'group_order' AS type, o.id, o.customer_name, o.customer_phone,
+           o.total_amount AS amount,
+           (SELECT COUNT(*) FROM registrations r WHERE r.order_id = o.id AND r.status = 'confirmed') || ' 場次' AS detail,
+           NULL AS session_type, o.paid_at, pu.name AS paid_by_name
+    FROM group_orders o
+    LEFT JOIN users pu ON pu.id = o.paid_by
+    WHERE o.status = 'paid'
+    ORDER BY o.paid_at DESC LIMIT 50
+  `).all();
+  return [...bookings, ...orders]
+    .sort((a, b) => (a.paid_at < b.paid_at ? 1 : a.paid_at > b.paid_at ? -1 : 0))
+    .slice(0, 50);
 }
 
 /**
