@@ -218,7 +218,7 @@ if (!bkPayCols.includes('paid_at')) {
   db.exec('ALTER TABLE bookings ADD COLUMN paid_at TEXT');
   db.exec('ALTER TABLE bookings ADD COLUMN paid_by INTEGER REFERENCES users(id)');
   const { changes } = db.prepare(
-    "UPDATE bookings SET paid_at = created_at WHERE status='confirmed' AND start_at < ?"
+    "UPDATE bookings SET paid_at = created_at WHERE status='confirmed' AND paid_at IS NULL AND start_at < ?"
   ).run(nowLocal());
   console.log(`[migrate] bookings.paid_at/paid_by added; ${changes} past bookings backfilled as paid`);
 }
