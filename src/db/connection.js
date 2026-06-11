@@ -210,6 +210,19 @@ addColumnIfMissing('bookings', 'gcal_event_id', 'TEXT');
 addColumnIfMissing('bookings', 'customer_email', 'TEXT');
 addColumnIfMissing('notifications', 'recipient', 'TEXT');
 
+// ── 2026-06-12 教練課付款狀態流 ──
+// paid_at NULL=待核對、非 NULL=已核對（鏡像 group_orders.paid_at/paid_by；status 不變，佔時段/容量照舊）。
+// 一次性 backfill（偵測訊號=欄位不存在）：上線當下過去場次視為已核對、未來場次留 NULL 進待核對（業主決策）。
+const bkPayCols = db.prepare('PRAGMA table_info(bookings)').all().map((c) => c.name);
+if (!bkPayCols.includes('paid_at')) {
+  db.exec('ALTER TABLE bookings ADD COLUMN paid_at TEXT');
+  db.exec('ALTER TABLE bookings ADD COLUMN paid_by INTEGER REFERENCES users(id)');
+  const { changes } = db.prepare(
+    "UPDATE bookings SET paid_at = created_at WHERE status='confirmed' AND paid_at IS NULL AND start_at < ?"
+  ).run(nowLocal());
+  console.log(`[migrate] bookings.paid_at/paid_by added; ${changes} past bookings backfilled as paid`);
+}
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.

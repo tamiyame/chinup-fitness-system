@@ -30,6 +30,9 @@ import {
   cancelBooking as svcCancelBooking,
   createBookingAnon as svcCreateBookingAnon,
   cancelBookingAnon as svcCancelBookingAnon,
+  listPendingPaymentBookings as svcListPendingPaymentBookings,
+  confirmBookingPayment as svcConfirmBookingPayment,
+  listConfirmedPayments as svcListConfirmedPayments,
 } from './services/bookingService.js';
 import {
   createGroupOrder as svcCreateGroupOrder,
@@ -1002,6 +1005,17 @@ app.post('/api/admin/group-orders/:id/cancel', requireAdmin, asyncHandler((req, 
   const o = db.prepare('SELECT customer_phone, customer_name FROM group_orders WHERE id=?').get(Number(req.params.id));
   if (!o) return res.status(404).json({ error: 'order_not_found' });
   res.json(svcCancelGroupOrder({ orderId: Number(req.params.id), phone: o.customer_phone, name: o.customer_name }));
+}));
+
+// --- Admin: 教練課款項核對 ---
+app.get('/api/admin/bookings/pending', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcListPendingPaymentBookings());
+}));
+app.post('/api/admin/bookings/:id/confirm-payment', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcConfirmBookingPayment({ bookingId: Number(req.params.id), actorId: req.user.id }));
+}));
+app.get('/api/admin/payments/confirmed', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcListConfirmedPayments());
 }));
 
 // 手動觸發排程（用於測試 / 管理者按鈕）

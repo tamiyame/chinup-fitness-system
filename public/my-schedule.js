@@ -119,7 +119,7 @@ function dateBlock(start_at) {
 
 /**
  * Derive a status label and badge class for an item.
- * Booking: confirmed → 已確認, cancelled → 已取消
+ * Booking: confirmed+paid → 已確認, confirmed 未核款 → 待確認, cancelled → 已取消
  * Registration:
  *   confirmed  → 已確認
  *   waitlisted → 候補中
@@ -130,12 +130,14 @@ function dateBlock(start_at) {
  */
 function resolveStatus(item) {
   if (item.kind === 'booking') {
-    const labels = { confirmed: '已確認', cancelled: '已取消' };
-    const cls    = { confirmed: 'badge-confirmed', cancelled: 'badge-cancelled' };
-    return {
-      label: labels[item.status] || item.status,
-      cls:   cls[item.status]    || 'badge-completed',
-    };
+    if (item.status === 'cancelled') return { label: '已取消', cls: 'badge-cancelled' };
+    if (item.status === 'confirmed') {
+      // 兩階段：admin 核對款項前為「待確認」
+      return item.paid
+        ? { label: '已確認', cls: 'badge-confirmed' }
+        : { label: '待確認', cls: 'badge-waitlisted' };
+    }
+    return { label: item.status, cls: 'badge-completed' };
   }
   // registration
   if (item.status === 'pending') {
