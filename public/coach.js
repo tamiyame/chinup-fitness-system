@@ -98,10 +98,14 @@ async function renderBookings() {
     const card = document.createElement('div');
     card.className = 'card mb-3';
     const cancelled = b.status === 'cancelled';
+    // 付款狀態 badge：admin 核款後顯示「已確認」，否則「待確認」（已取消不顯示）
+    const payBadge = cancelled ? '' : (b.paid_at
+      ? ' <span class="text-xs font-medium text-sky-700 bg-sky-100 rounded px-1.5 py-0.5 align-middle">已確認</span>'
+      : ' <span class="text-xs font-medium text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 align-middle">待確認</span>');
     card.innerHTML = `
       <div class="flex items-start justify-between gap-3">
         <div>
-          <div class="font-semibold">${escapeHtml(b.member_name)}${b.session_type === '1on2' ? ' <span class="text-xs font-medium text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 align-middle">1對2</span>' : ''}</div>
+          <div class="font-semibold">${escapeHtml(b.member_name)}${b.session_type === '1on2' ? ' <span class="text-xs font-medium text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 align-middle">1對2</span>' : ''}${payBadge}</div>
           <div class="text-sm text-slate-600">${fmtDate(b.start_at)}</div>
           ${b.note ? `<div class="text-sm text-slate-500 mt-1">備註：${escapeHtml(b.note)}</div>` : ''}
           ${cancelled ? `<div class="text-sm text-red-500 mt-1">已取消${b.cancel_reason ? `（${escapeHtml(b.cancel_reason)}）` : ''}</div>` : ''}

@@ -828,14 +828,21 @@ document.getElementById('create-coach-account-form')?.addEventListener('submit',
   }
 });
 
-// --- Pending bank-transfer orders ---
+// --- Pending bank-transfer orders（團課訂單 + 教練課預約 合併清單） ---
 async function loadPendingOrders() {
   const container = document.getElementById('pending-orders-list');
   if (!container) return;
   container.innerHTML = '<div class="subtle p-4">載入中…</div>';
   try {
-    const orders = await api('/api/admin/group-orders');
-    if (!orders.length) {
+    const [orders, bookings] = await Promise.all([
+      api('/api/admin/group-orders'),
+      api('/api/admin/bookings/pending'),
+    ]);
+    const items = [
+      ...orders.map(o => ({ kind: 'order', created_at: o.created_at, o })),
+      ...bookings.map(b => ({ kind: 'booking', created_at: b.created_at, b })),
+    ].sort((a, c) => (a.created_at < c.created_at ? 1 : -1)); // 新→舊
+    if (!items.length) {
       container.innerHTML = `
         <div class="empty-state">
           <span class="empty-state-icon">✅</span>
@@ -843,70 +850,153 @@ async function loadPendingOrders() {
         </div>`;
       return;
     }
-    container.innerHTML = orders.map(o => {
-      const sessionRows = o.sessions.length
-        ? o.sessions.map(s => `<li class="subtle text-xs">${escapeHtml(s.course_name)} @ ${escapeHtml(s.start_at)}</li>`).join('')
-        : '<li class="subtle text-xs">（無場次）</li>';
-      return `
-        <article class="card">
-          <div class="flex items-start justify-between gap-4 flex-wrap">
-            <div class="flex-1 min-w-[220px]">
-              <div class="flex items-center gap-2 mb-1">
-                <h3 class="card-title">${escapeHtml(o.customer_name)}</h3>
-                <span class="badge badge-waitlisted">待核對</span>
-              </div>
-              <div class="meta mb-2">
-                <span class="meta-item">📞 ${escapeHtml(o.customer_phone)}</span>
-                <span class="meta-item">💰 NT$${Number(o.total_amount).toLocaleString()}</span>
-                <span class="meta-item">⏰ 到期 ${escapeHtml(fmtDate(o.expires_at))}</span>
-              </div>
-              <ul class="list-disc list-inside space-y-0.5">${sessionRows}</ul>
-            </div>
-            <div class="flex flex-col gap-2 min-w-[110px]">
-              <button data-id="${o.id}" class="confirm-order-btn btn btn-primary btn-sm">已收款</button>
-              <button data-id="${o.id}" class="cancel-order-btn btn btn-danger btn-sm">取消訂單</button>
-            </div>
-          </div>
-        </article>`;
-    }).join('');
-
-    container.querySelectorAll('.confirm-order-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm(`確認已收到「${btn.closest('article').querySelector('.card-title').textContent}」的匯款？`)) return;
-        btn.disabled = true;
-        try {
-          await api(`/api/admin/group-orders/${btn.dataset.id}/confirm`, { method: 'POST' });
-          toast('已確認收款，訂單完成', 'success');
-          loadPendingOrders();
-        } catch (e) {
-          const msgs = { order_not_found: '找不到訂單', order_cancelled: '訂單已取消' };
-          toast(msgs[e.data?.error] || `確認失敗：${e.message}`, 'error');
-          btn.disabled = false;
-        }
-      });
-    });
-
-    container.querySelectorAll('.cancel-order-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('確定取消此訂單？已佔的名額會釋出並通知候補者。')) return;
-        btn.disabled = true;
-        try {
-          await api(`/api/admin/group-orders/${btn.dataset.id}/cancel`, { method: 'POST' });
-          toast('已取消訂單', 'success');
-          loadPendingOrders();
-        } catch (e) {
-          const msgs = { order_not_found: '找不到訂單', order_already_paid: '訂單已付款', forbidden: '無權操作此訂單' };
-          toast(msgs[e.data?.error] || `取消失敗：${e.message}`, 'error');
-          btn.disabled = false;
-        }
-      });
-    });
+    container.innerHTML = items.map(it => it.kind === 'order' ? orderCardHtml(it.o) : pendingBookingCardHtml(it.b)).join('');
+    bindPendingHandlers(container);
   } catch (e) {
     container.innerHTML = `<div class="p-4 text-red-500">${escapeHtml(e.message)}</div>`;
   }
 }
 
-document.getElementById('btn-reload-orders')?.addEventListener('click', loadPendingOrders);
+function orderCardHtml(o) {
+  const sessionRows = o.sessions.length
+    ? o.sessions.map(s => `<li class="subtle text-xs">${escapeHtml(s.course_name)} @ ${escapeHtml(s.start_at)}</li>`).join('')
+    : '<li class="subtle text-xs">（無場次）</li>';
+  return `
+    <article class="card">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div class="flex-1 min-w-[220px]">
+          <div class="flex items-center gap-2 mb-1">
+            <h3 class="card-title">${escapeHtml(o.customer_name)}</h3>
+            <span class="badge badge-confirmed">團課</span>
+            <span class="badge badge-waitlisted">待核對</span>
+          </div>
+          <div class="meta mb-2">
+            <span class="meta-item">📞 ${escapeHtml(o.customer_phone)}</span>
+            <span class="meta-item">💰 NT$${Number(o.total_amount).toLocaleString()}</span>
+            <span class="meta-item">⏰ 到期 ${escapeHtml(fmtDate(o.expires_at))}</span>
+          </div>
+          <ul class="list-disc list-inside space-y-0.5">${sessionRows}</ul>
+        </div>
+        <div class="flex flex-col gap-2 min-w-[110px]">
+          <button data-id="${o.id}" class="confirm-order-btn btn btn-primary btn-sm">已收款</button>
+          <button data-id="${o.id}" class="cancel-order-btn btn btn-danger btn-sm">取消訂單</button>
+        </div>
+      </div>
+    </article>`;
+}
+
+function pendingBookingCardHtml(b) {
+  const label = b.session_type === '1on2' ? '1對2' : '1對1';
+  const amount = b.final_amount != null
+    ? `NT$${Number(b.final_amount).toLocaleString()}${b.discount_code ? `（折扣碼 ${escapeHtml(b.discount_code)}）` : ''}`
+    : '—';
+  return `
+    <article class="card">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div class="flex-1 min-w-[220px]">
+          <div class="flex items-center gap-2 mb-1">
+            <h3 class="card-title">${escapeHtml(b.member_name)}</h3>
+            <span class="badge badge-completed">教練課</span>
+            <span class="badge badge-waitlisted">待核對</span>
+          </div>
+          <div class="meta mb-2">
+            <span class="meta-item">📞 ${escapeHtml(b.member_phone || '')}</span>
+            <span class="meta-item">💰 ${amount}</span>
+            <span class="meta-item">🏋️ ${escapeHtml(b.coach_display_name)}（${label}）</span>
+            <span class="meta-item">🕐 ${escapeHtml(fmtDate(b.start_at))}</span>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2 min-w-[110px]">
+          <button data-id="${b.id}" class="confirm-booking-btn btn btn-primary btn-sm">已收款</button>
+        </div>
+      </div>
+    </article>`;
+}
+
+function bindPendingHandlers(container) {
+  container.querySelectorAll('.confirm-order-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm(`確認已收到「${btn.closest('article').querySelector('.card-title').textContent}」的匯款？`)) return;
+      btn.disabled = true;
+      try {
+        await api(`/api/admin/group-orders/${btn.dataset.id}/confirm`, { method: 'POST' });
+        toast('已確認收款，訂單完成', 'success');
+        loadPendingOrders(); loadConfirmedPayments();
+      } catch (e) {
+        const msgs = { order_not_found: '找不到訂單', order_cancelled: '訂單已取消' };
+        toast(msgs[e.data?.error] || `確認失敗：${e.message}`, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
+  container.querySelectorAll('.cancel-order-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('確定取消此訂單？已佔的名額會釋出並通知候補者。')) return;
+      btn.disabled = true;
+      try {
+        await api(`/api/admin/group-orders/${btn.dataset.id}/cancel`, { method: 'POST' });
+        toast('已取消訂單', 'success');
+        loadPendingOrders();
+      } catch (e) {
+        const msgs = { order_not_found: '找不到訂單', order_already_paid: '訂單已付款', forbidden: '無權操作此訂單' };
+        toast(msgs[e.data?.error] || `取消失敗：${e.message}`, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
+  container.querySelectorAll('.confirm-booking-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm(`確認已收到「${btn.closest('article').querySelector('.card-title').textContent}」的教練課款項？`)) return;
+      btn.disabled = true;
+      try {
+        await api(`/api/admin/bookings/${btn.dataset.id}/confirm-payment`, { method: 'POST' });
+        toast('已確認收款，預約成立並已通知會員', 'success');
+        loadPendingOrders(); loadConfirmedPayments();
+      } catch (e) {
+        const msgs = { booking_not_found: '找不到預約', booking_cancelled: '預約已取消', already_paid: '此筆已核對過' };
+        toast(msgs[e.data?.error] || `確認失敗：${e.message}`, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+// --- 已核對匯款（唯讀）---
+async function loadConfirmedPayments() {
+  const container = document.getElementById('confirmed-payments-list');
+  if (!container) return;
+  container.innerHTML = '<div class="subtle p-4">載入中…</div>';
+  try {
+    const list = await api('/api/admin/payments/confirmed');
+    if (!list.length) {
+      container.innerHTML = '<div class="subtle p-4">尚無已核對的款項</div>';
+      return;
+    }
+    container.innerHTML = list.map(x => {
+      const isBooking = x.type === 'booking';
+      const typeBadge = isBooking
+        ? `<span class="badge badge-completed">教練課${x.session_type === '1on2' ? '（1對2）' : ''}</span>`
+        : '<span class="badge badge-confirmed">團課</span>';
+      const detail = isBooking ? fmtDate(x.detail) : x.detail;
+      return `
+        <article class="card">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div class="flex items-center gap-2 flex-wrap">
+              <strong>${escapeHtml(x.customer_name)}</strong>
+              ${typeBadge}
+              <span class="subtle text-sm">${escapeHtml(detail || '')}</span>
+              <span class="subtle text-sm">💰 ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}</span>
+            </div>
+            <div class="subtle text-xs">核對 ${escapeHtml(fmtDate(x.paid_at))} · 經手 ${escapeHtml(x.paid_by_name || '—')}</div>
+          </div>
+        </article>`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = `<div class="p-4 text-red-500">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+document.getElementById('btn-reload-orders')?.addEventListener('click', () => { loadPendingOrders(); loadConfirmedPayments(); });
 
 // --- Settings: 1v1 price + 匯款帳號 + 官方 LINE 連結 ---
 async function loadOneOnOnePrice() {
@@ -1214,6 +1304,7 @@ loadCoachMgmt();
 loadBackupSummary();
 bindBackupHandlers();
 loadPendingOrders();
+loadConfirmedPayments();
 loadDiscountCodes();
 loadOneOnOnePrice();
 
