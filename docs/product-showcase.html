@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHINUP Performance 預約管理系統 · 功能與介面展示</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+/* ── 展示文件設計系統（淡藍商用風格）─────────────────────────────── */
+:root{
+  --sky-50:#f0f9ff; --sky-100:#e0f2fe; --sky-200:#bae6fd; --sky-300:#7dd3fc;
+  --sky-500:#0ea5e9; --sky-600:#0284c7; --sky-700:#0369a1; --sky-900:#0c4a6e;
+  --ink:#0f172a; --ink-soft:#475569; --ink-mute:#94a3b8;
+  --line:#e2e8f0; --surface:#ffffff; --bg:#f8fbfe;
+  --green:#15803d; --green-bg:#f0fdf4; --amber:#a16207; --amber-bg:#fffbeb;
+  --red:#b91c1c; --red-bg:#fef2f2;
+  --radius:16px; --radius-sm:10px;
+  --shadow:0 10px 30px -12px rgba(2,132,199,.18);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans TC','Inter',sans-serif;color:var(--ink);background:var(--bg);line-height:1.7}
+.wrap{max-width:1080px;margin:0 auto;padding:0 28px}
+
+/* hero */
+.hero{background:linear-gradient(160deg,var(--sky-900) 0%,var(--sky-700) 45%,var(--sky-500) 100%);color:#fff;padding:72px 0 96px;position:relative;overflow:hidden}
+.hero::after{content:'';position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:rgba(255,255,255,.07)}
+.hero::before{content:'';position:absolute;left:-80px;bottom:-160px;width:320px;height:320px;border-radius:50%;background:rgba(255,255,255,.05)}
+.hero .kicker{display:inline-block;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:5px 16px;font-size:13px;letter-spacing:.12em;margin-bottom:22px}
+.hero h1{font-size:42px;font-weight:900;letter-spacing:.01em;line-height:1.3}
+.hero p.lead{margin-top:16px;font-size:18px;color:var(--sky-100);max-width:640px}
+.hero .stats{display:flex;gap:14px;flex-wrap:wrap;margin-top:34px}
+.hero .stat{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:var(--radius-sm);padding:12px 20px;backdrop-filter:blur(4px)}
+.hero .stat b{display:block;font-size:22px}
+.hero .stat span{font-size:12.5px;color:var(--sky-100)}
+
+/* sections */
+section{padding:64px 0}
+section:nth-of-type(even){background:#fff}
+.sec-head{max-width:680px;margin-bottom:36px}
+.sec-no{display:inline-flex;align-items:center;gap:8px;color:var(--sky-600);font-weight:800;font-size:13px;letter-spacing:.18em;margin-bottom:10px}
+.sec-no::before{content:'';width:26px;height:2px;background:var(--sky-400,#38bdf8)}
+h2{font-size:28px;font-weight:900;letter-spacing:.01em}
+.sec-head p{margin-top:10px;color:var(--ink-soft);font-size:15.5px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:center}
+.cols.r{direction:rtl}.cols.r>*{direction:ltr}
+@media(max-width:860px){.cols{grid-template-columns:1fr}}
+.feature-list{list-style:none;display:grid;gap:14px;margin-top:8px}
+.feature-list li{display:flex;gap:12px;font-size:14.5px;color:var(--ink-soft)}
+.feature-list li::before{content:'✓';flex-shrink:0;width:22px;height:22px;border-radius:7px;background:var(--sky-100);color:var(--sky-700);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px;margin-top:2px}
+.feature-list b{color:var(--ink)}
+
+/* 介面 mockup 容器（瀏覽器框） */
+.mock{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.mock-bar{display:flex;align-items:center;gap:6px;background:var(--sky-50);border-bottom:1px solid var(--line);padding:10px 14px}
+.mock-bar i{width:10px;height:10px;border-radius:50%;background:var(--sky-200)}
+.mock-bar i:first-child{background:var(--sky-300)}
+.mock-bar span{margin-left:10px;font-size:11.5px;color:var(--ink-mute);background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 12px}
+.mock-body{padding:18px}
+
+/* mockup 內部元件（重現產品 UI） */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;border-radius:999px;padding:2px 10px;border:1px solid transparent}
+.badge::before{content:'●';font-size:7px}
+.b-blue{background:var(--sky-100);color:var(--sky-700);border-color:var(--sky-200)}
+.b-amber{background:var(--amber-bg);color:var(--amber);border-color:#fcd34d}
+.b-green{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.b-red{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.b-gray{background:#f1f5f9;color:#475569;border-color:#e2e8f0}
+.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;font-weight:700;font-size:13px;padding:9px 18px;border:none;cursor:default}
+.btn-p{background:var(--sky-500);color:#fff}
+.btn-d{background:#ef4444;color:#fff}
+.btn-s{background:#fff;color:var(--ink-soft);border:1px solid var(--line)}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.muted{color:var(--ink-mute)}.small{font-size:12.5px}.tiny{font-size:11.5px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.spread{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+
+/* 時段格 */
+.slotgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.slot{border:1px solid var(--line);border-radius:10px;text-align:center;padding:10px 4px;background:#fff}
+.slot b{font-size:15px}.slot .sub{font-size:10.5px;color:var(--ink-mute)}
+.slot.sel{border-color:var(--sky-500);background:var(--sky-50);box-shadow:0 0 0 2px var(--sky-100)}
+.slot.low .sub{color:var(--amber)}
+.daypills{display:flex;gap:6px;margin:10px 0}
+.dp{flex:1;border:1px solid var(--line);border-radius:10px;text-align:center;padding:6px 0;font-size:12px;color:var(--ink-soft);background:#fff}
+.dp.on{background:var(--sky-500);color:#fff;border-color:var(--sky-500)}
+.dp.off{opacity:.4}
+
+/* 表單列 */
+.f{margin-bottom:10px}
+.f label{display:block;font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:4px}
+.f .in{border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:13px;color:var(--ink);background:#fff}
+.f .in.ph{color:var(--ink-mute)}
+.checkline{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-soft)}
+.cb{width:15px;height:15px;border-radius:4px;border:1.5px solid var(--ink-mute);display:inline-block;flex-shrink:0}
+.cb.on{background:var(--sky-500);border-color:var(--sky-500);position:relative}
+.cb.on::after{content:'✓';color:#fff;font-size:11px;position:absolute;left:2.5px;top:-3px;font-weight:900}
+
+/* 預覽清單 */
+.preview{background:var(--sky-50);border:1px solid var(--sky-200);border-radius:10px;padding:10px 14px;font-size:12.5px}
+.preview .ok{color:var(--green)}.preview .ng{color:var(--red)}
+
+/* LINE 對話泡泡 */
+.chat{background:#8caebe33;border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:10px}
+.bubble{max-width:88%;background:#fff;border-radius:4px 14px 14px 14px;padding:10px 14px;font-size:13px;box-shadow:0 1px 3px rgba(15,23,42,.08)}
+.bubble .from{font-size:10.5px;color:var(--ink-mute);margin-bottom:3px}
+
+/* 行事曆 mockup */
+.cal{display:grid;grid-template-columns:44px repeat(5,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:10.5px;background:#fff}
+.cal .h{background:var(--sky-50);border-bottom:1px solid var(--line);padding:6px 4px;text-align:center;font-weight:700;color:var(--ink-soft)}
+.cal .t{border-right:1px solid var(--line);color:var(--ink-mute);text-align:right;padding:4px 6px 22px}
+.cal .c{border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;min-height:34px;position:relative;padding:2px}
+.ev{border-radius:6px;font-size:9.5px;line-height:1.35;padding:3px 6px;font-weight:600}
+.ev.sys{background:var(--sky-100);color:var(--sky-700);border-left:3px solid var(--sky-500)}
+.ev.busy{background:#e2e8f0;color:#475569;border-left:3px solid #64748b}
+.ev.block{background:repeating-linear-gradient(45deg,#fee2e2,#fee2e2 4px,#fecaca 4px,#fecaca 8px);color:var(--red);border-left:3px solid #ef4444}
+
+/* 流程 strip */
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:0;counter-reset:step}
+@media(max-width:860px){.flow{grid-template-columns:1fr 1fr}}
+.step{position:relative;padding:18px 22px 18px 26px;counter-increment:step}
+.step::before{content:counter(step);position:absolute;left:0;top:20px;width:30px;height:30px;border-radius:50%;background:var(--sky-600);color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;transform:translateX(-50%)}
+.step{border-left:2px dashed var(--sky-200);margin-left:15px}
+.step b{display:block;font-size:14.5px;margin-bottom:4px}
+.step p{font-size:12.5px;color:var(--ink-soft)}
+
+/* footer spec */
+.spec{background:var(--sky-900);color:var(--sky-100);padding:56px 0}
+.spec h2{color:#fff}
+.spec-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:26px}
+@media(max-width:860px){.spec-grid{grid-template-columns:1fr}}
+.spec .card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:var(--sky-100)}
+.spec .card b{color:#fff;display:block;margin-bottom:6px;font-size:15px}
+.spec .tiny{color:#bae6fd99}
+.disclaimer{padding:22px 0;text-align:center;font-size:12px;color:var(--ink-mute)}
+
+@media print{ section{padding:34px 0;break-inside:avoid} .hero{padding:46px 0} }
+</style>
+</head>
+<body>
+
+<!-- ════════ HERO ════════ -->
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">CHINUP PERFORMANCE · BOOKING SUITE</span>
+    <h1>健身房預約管理系統<br>功能與介面展示</h1>
+    <p class="lead">一對一教練課、團體課程、付款核對、Google 行事曆同步與 LINE／Email 通知——從顧客預約到店家對帳，一套系統完整接管。</p>
+    <div class="stats">
+      <div class="stat"><b>免註冊</b><span>顧客以電話即可預約</span></div>
+      <div class="stat"><b>52 堂</b><span>一鍵循環排課上限</span></div>
+      <div class="stat"><b>雙向</b><span>Google 行事曆同步</span></div>
+      <div class="stat"><b>3 通道</b><span>LINE · Email · 站內紀錄</span></div>
+    </div>
+  </div>
+</header>
+
+<!-- ════════ 01 一對一預約 ════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-no">FEATURE 01</div>
+      <h2>一對一教練課預約 — 免註冊、零門檻</h2>
+      <p>顧客不需要帳號：選教練、挑時段、留下姓名電話即完成。班表由教練自助維護，系統即時計算可預約時段。</p>
+    </div>
+    <div class="cols">
+      <div class="mock">
+        <div class="mock-bar"><i></i><i></i><i></i><span>chinup.example.com/coaches</span></div>
+        <div class="mock-body">
+          <div class="card" style="margin-bottom:12px">
+            <div class="row">
+              <div style="width:46px;height:46px;border-radius:12px;background:var(--sky-100);color:var(--sky-700);font-weight:900;display:flex;align-items:center;justify-content:center;font-size:18px">林</div>
+              <div>
+                <b>林沛霖（Penny）</b>
+                <div class="row" style="gap:5px;margin-top:3px">
+                  <span class="badge b-blue">肌力與體能</span><span class="badge b-blue">運動防護</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="small" style="font-weight:700;margin-bottom:4px">可預約時段</div>
+          <div class="daypills">
+            <span class="dp off">一</span><span class="dp on">二</span><span class="dp">三</span><span class="dp">四</span><span class="dp off">五</span><span class="dp">六</span><span class="dp off">日</span>
+          </div>
+          <div class="slotgrid">
+            <div class="slot"><b>10:00</b><div class="sub">60 分鐘</div></div>
+            <div class="slot sel"><b>14:00</b><div class="sub">60 分鐘</div></div>
+            <div class="slot low"><b>16:00</b><div class="sub">60 分鐘 · 剩 1 名額</div></div>
+          </div>
+          <div class="card" style="margin-top:12px;background:var(--sky-50);border-color:var(--sky-200)">
+            <div class="tiny muted">填寫預約資訊</div>
+            <div class="row" style="margin:8px 0 4px">
+              <span class="btn btn-p" style="flex:1">1對1<br><span class="tiny" style="font-weight:400;opacity:.85">單堂 $1,500</span></span>
+              <span class="btn btn-s" style="flex:1">1對2<br><span class="tiny" style="font-weight:400">單堂 $2,000</span></span>
+            </div>
+            <div class="f"><div class="in">王語彤</div></div>
+            <div class="f"><div class="in">0912-345-678</div></div>
+            <div class="f"><div class="in ph">Email（選填，寄送預約確認信）</div></div>
+            <span class="btn btn-p" style="width:100%">確認預約</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <ul class="feature-list">
+          <li><div><b>班表引擎</b>：每週基底班表＋特殊日期（請假／加開），預約日期無上限、開課前 2 小時自動關閉。</div></li>
+          <li><div><b>全店容量控管</b>：以整點為單位，全店同時段上限 3 人（後台可調）；1對2 佔 2 名額，剩 1 名額的時段自動擋下 1對2。</div></li>
+          <li><div><b>防撞期</b>：送出當下重新驗證班表、容量、教練重疊與行事曆封鎖，資料庫層再以唯一索引兜底併發。</div></li>
+          <li><div><b>付款兩階段</b>：預約成立先標「待確認」，店家核對款項後顧客自動收到「已確認」通知。</div></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 02 循環預約 ════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-no">FEATURE 02</div>
+      <h2>循環預約 — 一次排好整季課表</h2>
+      <p>教練或管理者登入後，預約視窗多出「開啟循環預約」。設定頻率與堂數、預覽每一場的可建立狀態，一鍵建立最多 52 堂；衝突場次自動跳過，之後再手動補排。</p>
+    </div>
+    <div class="cols r">
+      <div class="mock">
+        <div class="mock-bar"><i></i><i></i><i></i><span>填寫預約資訊（管理者 吳薇安 已登入）</span></div>
+        <div class="mock-body">
+          <div class="card" style="background:var(--sky-50);border-color:var(--sky-200);margin-bottom:10px">
+            <div class="small">教練：<b>張啟恆（Hank）</b>　時間：<b>2026/07/07（二）15:00</b></div>
+            <div class="checkline" style="margin-top:8px;border-top:1px solid var(--sky-200);padding-top:8px">
+              <span class="cb on"></span> 開啟循環預約（員工排課）
+            </div>
+          </div>
+          <div class="card" style="background:var(--sky-50);border-color:var(--sky-200);margin-bottom:10px">
+            <div class="row" style="gap:8px">
+              <div class="f" style="flex:1;margin:0"><label>重複頻率</label><div class="in">每週 ▾</div></div>
+              <div class="f" style="flex:1;margin:0"><label>共幾次（含本堂）</label><div class="in">10</div></div>
+            </div>
+            <div class="checkline" style="margin:10px 0"><span class="cb on"></span> 款項已收（包堂／預付，直接標記已核對）</div>
+            <div class="preview">
+              <div style="font-weight:800;color:var(--sky-700);margin-bottom:4px">可建立 9 堂 · 衝突 1 堂</div>
+              <div class="ok">✓ 7/07（二）15:00　✓ 7/14（二）15:00　✓ 7/21（二）15:00</div>
+              <div class="ng">✗ 7/28（二）15:00　教練請假（已跳過）</div>
+              <div class="ok">✓ 8/04 ～ 9/08 …共 6 堂</div>
+            </div>
+          </div>
+          <div class="small" style="margin-bottom:8px">折後預估總計 <b style="font-size:17px;color:var(--sky-700)">$12,900</b>（9 堂＝5 堂折扣＋4 堂原價）</div>
+          <span class="btn btn-p" style="width:100%">確認建立 9 堂</span>
+        </div>
+      </div>
+      <div>
+        <ul class="feature-list">
+          <li><div><b>四種頻率</b>：每日／每週／每月（短月自動跳過）／自訂間隔 1–90 天。</div></li>
+          <li><div><b>先預覽後建立</b>：逐場標示 ✓ 可建立、✗ 衝突原因（請假、撞期、容量滿、行事曆封鎖）。</div></li>
+          <li><div><b>折扣碼智慧估價</b>：限次數的折扣碼自動計算「前 X 堂折扣＋後 Y 堂原價」的精確總計。</div></li>
+          <li><div><b>通知不轟炸</b>：整批只發一則 LINE 摘要與一封 Email 場次清單，不會 10 堂噴 10 則。</div></li>
+          <li><div><b>每堂獨立管理</b>：單堂仍可個別取消、改期、退款。</div></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 03 行事曆 ════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-no">FEATURE 03</div>
+      <h2>Google 行事曆雙向同步</h2>
+      <p>每一筆預約自動寫進店家 Google 行事曆；反過來，你在行事曆上手動建立的「忙碌」活動，會即時封鎖網站上的可預約時段——用最習慣的工具管理整間店的行程。</p>
+    </div>
+    <div class="cols">
+      <div class="mock">
+        <div class="mock-bar"><i></i><i></i><i></i><span>Google Calendar · 店家日曆</span></div>
+        <div class="mock-body">
+          <div class="cal">
+            <div class="h"></div><div class="h">一</div><div class="h">二</div><div class="h">三</div><div class="h">四</div><div class="h">五</div>
+            <div class="t">10:00</div><div class="c"><span class="ev sys">1對1 林沛霖×王語彤</span></div><div class="c"></div><div class="c"><span class="ev sys">1對1 張啟恆×李承遠</span></div><div class="c"></div><div class="c"></div>
+            <div class="t">14:00</div><div class="c"></div><div class="c"><span class="ev sys">1對2 林沛霖×郭子晴</span></div><div class="c"></div><div class="c"><span class="ev busy">器材保養（手動）</span></div><div class="c"></div>
+            <div class="t">16:00</div><div class="c"></div><div class="c"></div><div class="c"><span class="ev block">場地外借 → 網站時段已封鎖</span></div><div class="c"></div><div class="c"><span class="ev sys">1對1 張啟恆×周柏宇</span></div>
+          </div>
+          <div class="row tiny" style="margin-top:10px;gap:14px">
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--sky-100);border-left:3px solid var(--sky-500)"></span> 系統自動建立</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#e2e8f0;border-left:3px solid #64748b"></span> 手動行程（忙碌＝封鎖時段）</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <ul class="feature-list">
+          <li><div><b>預約即上曆</b>：成立秒建事件（教練×顧客、方案、金額、電話備註），取消自動刪除。</div></li>
+          <li><div><b>手動封鎖</b>：在行事曆拉一個「忙碌」活動，該時段立刻從預約頁消失；改成「有空」即恢復。</div></li>
+          <li><div><b>聰明不誤鎖</b>：系統建立的事件標記為「有空」，A 教練的課不會誤鎖 B 教練的同時段。</div></li>
+          <li><div><b>自我修復</b>：每 5 分鐘核對補建／補刪，Google 短暫故障也不漏單。</div></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 04 付款核對 ════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-no">FEATURE 04</div>
+      <h2>付款核對與退款 — 對帳一目了然</h2>
+      <p>教練課與團課訂單統一進「待核對匯款」清單；同一批循環預約集中一張卡，一鍵整批收款。已核對紀錄完整保留核對時間與經手人，長按即可取消並退款。</p>
+    </div>
+    <div class="cols r">
+      <div class="mock">
+        <div class="mock-bar"><i></i><i></i><i></i><span>管理後台 › 報名作業</span></div>
+        <div class="mock-body">
+          <div class="small" style="font-weight:900;margin-bottom:8px">待核對匯款</div>
+          <div class="card" style="margin-bottom:10px">
+            <div class="spread">
+              <div>
+                <div class="row"><b>李承遠</b><span class="badge b-gray">教練課 ×4 堂</span><span class="badge b-amber">待核對</span></div>
+                <div class="tiny muted" style="margin:4px 0">📞 0987-654-321　💰 合計 NT$6,000　🏋️ 張啟恆（1對1）</div>
+                <div class="tiny muted">• 7/07（二）15:00　• 7/14（二）15:00　• 7/21（二）15:00　• 8/04（二）15:00</div>
+              </div>
+              <div style="display:grid;gap:6px"><span class="btn btn-p">已收款</span><span class="btn btn-d">取消預約</span></div>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:14px">
+            <div class="spread">
+              <div>
+                <div class="row"><b>郭子晴</b><span class="badge b-blue">團課</span><span class="badge b-amber">待核對</span></div>
+                <div class="tiny muted" style="margin:4px 0">📞 0922-333-444　💰 NT$1,800　⏰ 到期 7/05 18:00</div>
+                <div class="tiny muted"><b style="color:var(--ink-soft)">晨間流動瑜伽</b><br>　7/08 09:00　7/15 09:00　7/22 09:00<span style="color:var(--amber)">（候補，遞補後另收款）</span></div>
+              </div>
+              <div style="display:grid;gap:6px"><span class="btn btn-p">已收款</span><span class="btn btn-d">取消訂單</span></div>
+            </div>
+          </div>
+          <div class="small" style="font-weight:900;margin-bottom:2px">已核對匯款</div>
+          <div class="tiny muted" style="margin-bottom:8px">長按卡片可「取消預約並退款」（團課會釋出名額並遞補候補）</div>
+          <div class="card" style="margin-bottom:8px">
+            <div class="spread">
+              <div class="row"><b>王語彤</b><span class="badge b-gray">教練課 ×10 堂</span><span class="tiny muted">10 堂（首堂 07/02 14:00）　💰 NT$14,250</span></div>
+              <div class="tiny muted">核對 7/01 21:44 · 經手 吳薇安</div>
+            </div>
+          </div>
+          <div class="card" style="opacity:.6">
+            <div class="spread">
+              <div class="row"><b>周柏宇</b><span class="badge b-blue">團課</span><span class="badge b-red">已退款</span><span class="tiny muted">3 場次　💰 NT$1,800</span></div>
+              <div class="tiny muted">核對 6/28 10:12 · 經手 吳薇安</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <ul class="feature-list">
+          <li><div><b>兩階段狀態</b>：預約「待確認」→ 核對後「已確認」，顧客端課表即時同步，並發送 LINE／Email 通知。</div></li>
+          <li><div><b>整批操作</b>：循環預約 N 堂集中一張卡——一鍵全收款、整批取消、整批退款。</div></li>
+          <li><div><b>退款留痕</b>：長按已核對卡片取消並退款（時段釋出、行事曆同步刪除）；紀錄保留供對帳，支援「部分退款」標記。</div></li>
+          <li><div><b>付款期限可調</b>：團課訂單預設 72 小時，逾期自動取消並釋出名額。</div></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 05 候補遞補 ════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-no">FEATURE 05</div>
+      <h2>團體課程與候補遞補 — 名額一秒都不浪費</h2>
+      <p>課程額滿仍可登記候補；任何名額釋出（取消、請假、退款、逾期），系統自動依序遞補、開立 24 小時付款單並通知顧客。</p>
+    </div>
+    <div class="cols">
+      <div class="mock">
+        <div class="mock-bar"><i></i><i></i><i></i><span>chinup.example.com/group</span></div>
+        <div class="mock-body">
+          <div class="card" style="margin-bottom:10px">
+            <div class="spread">
+              <div><b>晨間流動瑜伽</b><div class="tiny muted">60 分鐘 · 6–10 人 · 🧑‍🏫 教練 陳曉夏</div></div>
+              <span class="badge b-green">NT$600 / 堂</span>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:8px">
+            <div class="spread">
+              <div><b>07/08 週三</b><div class="tiny muted">09:00–10:00</div></div>
+              <div style="text-align:right"><div class="tiny muted">已佔 4 / 上限 10</div><span class="badge b-blue">尚有名額</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="spread">
+              <div><b>07/15 週三</b><div class="tiny muted">09:00–10:00</div></div>
+              <div style="text-align:right"><div class="tiny muted">已佔 10 / 上限 10</div><span class="badge b-amber">額滿·可候補（2 人候補中）</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="flow" style="grid-template-columns:1fr;gap:2px">
+          <div class="step"><b>名額釋出</b><p>正取顧客取消／請假，或店家退款、訂單逾期。</p></div>
+          <div class="step"><b>自動遞補</b><p>候補序列第一位自動轉為待付款，多場連續遞補自動併成同一張訂單。</p></div>
+          <div class="step"><b>24 小時付款單</b><p>遞補者收到 LINE 通知，訂單出現在後台「待核對匯款」。</p></div>
+          <div class="step"><b>核對成立</b><p>店家確認收款 → 顧客轉正取、收到報名確認通知。</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 06 通知 ════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-no">FEATURE 06</div>
+      <h2>取消・退款・遞補通知 — LINE 與 Email 雙通道</h2>
+      <p>近 30 種情境模板：預約成立、款項確認、店家取消、退款、候補遞補、成班／停課、上課提醒……顧客綁定官方 LINE 即時收到；留 Email 另寄正式信件。發送失敗自動重試三次。</p>
+    </div>
+    <div class="cols r">
+      <div class="mock">
+        <div class="mock-bar"><i></i><i></i><i></i><span>LINE · CHINUP Performance 官方帳號</span></div>
+        <div class="mock-body">
+          <div class="chat">
+            <div class="bubble"><div class="from">預約成立</div>✅ 已成功預約 林沛霖 教練的 7/02（四）14:00 課程。</div>
+            <div class="bubble"><div class="from">款項確認</div>✅ 已收到您的款項，林沛霖 教練 7/02（四）14:00 起共 10 堂 的課程預約確認成立，期待見到您！</div>
+            <div class="bubble"><div class="from">候補遞補</div>🎉 您候補的 晨間流動瑜伽（7/15 09:00）有名額了！請於 24 小時內完成匯款，並至「我的課表」查看。</div>
+            <div class="bubble"><div class="from">取消與退款</div>⚠️ 您 7/22（三）16:00 與 張啟恆 教練的課程預約已由店家取消（原因：教練請假），款項（NT$1,500）將退還給您，請留意帳戶。</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <ul class="feature-list">
+          <li><div><b>LINE 綁定超簡單</b>：預約成功頁給 6 位數綁定碼，加官方帳號好友後貼上即完成。</div></li>
+          <li><div><b>Email 正式信件</b>：預約確認、款項確認、循環課表摘要（含全部場次清單與匯款資訊）。</div></li>
+          <li><div><b>店家端也通知</b>：新預約、會員取消、候補、成班結果——教練與管理者各自收到該收的。</div></li>
+          <li><div><b>失敗自動重試</b>：5／15／45 分鐘三段退避，全部紀錄可在後台查核。</div></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 07 顧客自助 ════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-no">FEATURE 07</div>
+      <h2>我的課表 — 顧客自助查詢與取消</h2>
+      <p>免帳號設計貫徹到底：輸入姓名＋電話即可查詢所有預約與報名、剩餘堂數，自助取消或團課請假。</p>
+    </div>
+    <div class="cols">
+      <div class="mock" style="max-width:460px">
+        <div class="mock-bar"><i></i><i></i><i></i><span>chinup.example.com/my-schedule</span></div>
+        <div class="mock-body">
+          <div class="card" style="background:var(--sky-50);border-color:var(--sky-200);margin-bottom:10px">
+            <b class="small" style="color:var(--sky-700)">1對1 剩 9 堂 · 團體 剩 3 堂</b>
+          </div>
+          <div class="card" style="margin-bottom:8px">
+            <div class="spread">
+              <div class="row">
+                <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:4px 10px"><b style="color:var(--sky-700)">02</b><div class="tiny muted">2026/07</div></div>
+                <div><span class="badge b-blue">一對一</span> <b>林沛霖（Penny）</b><div class="tiny muted">⏱ 14:00–15:00</div><span class="badge b-green">已確認</span></div>
+              </div>
+              <span class="btn btn-d" style="padding:6px 14px">取消</span>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:8px">
+            <div class="spread">
+              <div class="row">
+                <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:4px 10px"><b style="color:var(--sky-700)">09</b><div class="tiny muted">2026/07</div></div>
+                <div><span class="badge b-blue">一對一</span> <b>林沛霖（Penny）</b><div class="tiny muted">⏱ 14:00–15:00</div><span class="badge b-amber">待確認</span></div>
+              </div>
+              <span class="btn btn-d" style="padding:6px 14px">取消</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="spread">
+              <div class="row">
+                <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:4px 10px"><b style="color:var(--sky-700)">15</b><div class="tiny muted">2026/07</div></div>
+                <div><span class="badge b-gray">團課</span> <b>晨間流動瑜伽</b><div class="tiny muted">⏱ 09:00–10:00</div><span class="badge b-amber">候補中</span></div>
+              </div>
+              <span class="btn btn-s" style="padding:6px 14px">取消候補</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <ul class="feature-list">
+          <li><div><b>一查全有</b>：教練課與團課合併時間軸，狀態徽章（待確認／已確認／候補中／已請假）一眼分辨。</div></li>
+          <li><div><b>自助取消</b>：開課前可自行取消，名額即時釋出並通知教練、觸發候補遞補。</div></li>
+          <li><div><b>團課請假</b>：已付款場次可請假釋出名額（不退款），把座位讓給候補的同學。</div></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 08 管理後台 ════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-no">FEATURE 08</div>
+      <h2>管理後台 — 七大分頁，營運全掌握</h2>
+      <p>從排課、收款到會員管理與營運參數，全部集中在分頁式後台；管理者＝帶權限標籤的教練，權限模型簡單清楚。</p>
+    </div>
+    <div class="mock">
+      <div class="mock-bar"><i></i><i></i><i></i><span>chinup.example.com/admin · 管理者 吳薇安</span></div>
+      <div class="mock-body">
+        <div class="row" style="gap:18px;border-bottom:2px solid var(--line);padding-bottom:8px;margin-bottom:14px;font-size:13.5px;font-weight:700;color:var(--ink-mute)">
+          <span>總覽</span><span>課程</span><span style="color:var(--sky-600);border-bottom:2.5px solid var(--sky-500);padding-bottom:8px;margin-bottom:-10px">報名作業</span><span>會員</span><span>教練</span><span>折扣碼</span><span>通知</span>
+        </div>
+        <div class="cols" style="gap:14px;align-items:start">
+          <div>
+            <div class="small" style="font-weight:900;margin-bottom:6px">會員管理 <span class="tiny muted" style="font-weight:400">（即時搜尋・長按編輯・封存還原）</span></div>
+            <div class="card" style="padding:0;overflow:hidden">
+              <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+                <tr style="background:var(--sky-50);color:var(--ink-soft)"><th style="padding:8px 12px;text-align:left">姓名</th><th style="text-align:left">電話</th><th style="text-align:left">角色</th></tr>
+                <tr style="border-top:1px solid var(--line)"><td style="padding:8px 12px">王語彤</td><td>0912-345-678</td><td><span class="badge b-gray">會員</span></td></tr>
+                <tr style="border-top:1px solid var(--line)"><td style="padding:8px 12px">張啟恆</td><td>0933-111-222</td><td><span class="badge b-blue">教練</span></td></tr>
+                <tr style="border-top:1px solid var(--line)"><td style="padding:8px 12px">吳薇安</td><td>0955-666-777</td><td><span class="badge b-green">管理者</span></td></tr>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="small" style="font-weight:900;margin-bottom:6px">營運設定 <span class="tiny muted" style="font-weight:400">（即改即生效）</span></div>
+            <div class="card">
+              <div class="row" style="gap:8px">
+                <span class="badge b-blue">1對1 單堂 $1,500</span>
+                <span class="badge b-blue">1對2 單堂 $2,000</span>
+                <span class="badge b-blue">每小時容量 3 人</span>
+                <span class="badge b-blue">團課付款期限 72h</span>
+                <span class="badge b-blue">Google 日曆 ✓ 已連結</span>
+                <span class="badge b-blue">Gmail 寄信 ✓ 已授權</span>
+                <span class="badge b-blue">官方 LINE ✓</span>
+                <span class="badge b-blue">匯款帳號 ✓</span>
+              </div>
+              <div class="tiny muted" style="margin-top:10px">折扣碼：百分比／定額、有效期間、總量與每人上限、最低消費——教練課與團課通用。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 流程總覽 ════════ -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-no">WORKFLOW</div>
+      <h2>典型操作流程</h2>
+    </div>
+    <div class="cols" style="align-items:start">
+      <div>
+        <div class="small" style="font-weight:900;color:var(--sky-700);margin-bottom:8px">顧客預約一堂教練課</div>
+        <div class="flow" style="grid-template-columns:1fr">
+          <div class="step"><b>選教練與時段</b><p>免登入瀏覽教練與即時可約時段。</p></div>
+          <div class="step"><b>送出預約</b><p>姓名＋電話（Email 選填）；可套折扣碼。</p></div>
+          <div class="step"><b>收到確認</b><p>LINE 綁定碼＋確認信；預約進入「待確認」。</p></div>
+          <div class="step"><b>店家核對款項</b><p>顧客收到「已確認」通知，行事曆已同步。</p></div>
+        </div>
+      </div>
+      <div>
+        <div class="small" style="font-weight:900;color:var(--sky-700);margin-bottom:8px">店家取消一堂課（含退款）</div>
+        <div class="flow" style="grid-template-columns:1fr">
+          <div class="step"><b>長按已核對卡片</b><p>選「取消預約並退款」、填寫原因。</p></div>
+          <div class="step"><b>系統自動處理</b><p>時段釋出、行事曆事件刪除、折扣額度歸還。</p></div>
+          <div class="step"><b>通知顧客與教練</b><p>LINE 即時送達，附退款金額與原因。</p></div>
+          <div class="step"><b>對帳留痕</b><p>紀錄保留「已退款」標記、核對與經手資訊。</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 規格 ════════ -->
+<section class="spec">
+  <div class="wrap">
+    <h2>技術規格</h2>
+    <div class="spec-grid">
+      <div class="card"><b>輕量可靠</b>Node.js 24 ＋ SQLite（WAL），僅兩個外部依賴；交易層防併發，開機自動遷移。<div class="tiny" style="margin-top:6px">每週自動備份快照</div></div>
+      <div class="card"><b>整合即服務</b>LINE Messaging API、Google Calendar、Gmail——皆以原生實作（零 SDK），未設定時自動降級不影響核心功能。</div>
+      <div class="card"><b>安全設計</b>scrypt 密碼雜湊、權限分層（會員／教練／管理者標籤）、操作留痕（經手人）、API 限流與輸入驗證。</div>
+    </div>
+  </div>
+</section>
+
+<div class="disclaimer">本文件之介面為功能示意重繪，文中人物（林沛霖、張啟恆、陳曉夏、吳薇安、王語彤、李承遠、郭子晴、周柏宇）與電話號碼均為虛構，僅供展示用途。</div>
+
+</body>
+</html>
