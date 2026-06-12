@@ -74,6 +74,14 @@ const TEMPLATES = {
     subject: '預約已取消 - {{member_name}}',
     body: '⚠️ {{member_name}} {{start_at}} 的一對一預約已由店家取消。',
   },
+  booking_refunded: {  // 寄給會員（店家取消已收款的教練課預約並退款）
+    subject: '預約取消與退款 - {{coach_display_name}}',
+    body: '✅ 您 {{start_at}} 與 {{coach_display_name}} 教練的課程預約已取消，款項{{amount_text}}將退還給您，請留意帳戶；若有疑問請與我們聯繫。',
+  },
+  group_order_refunded: {  // 寄給會員（店家取消已收款的團課訂單並退款）
+    subject: '訂單取消與退款通知',
+    body: '✅ 您的團課訂單{{amount_text}}已取消，款項將退還給您，請留意帳戶；若有疑問請與我們聯繫。',
+  },
 
   // === new 2 (anon paid-group redesign) ===
   payment_received: {
