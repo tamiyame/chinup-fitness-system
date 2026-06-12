@@ -66,6 +66,14 @@ const TEMPLATES = {
     subject: '款項已確認 - {{coach_display_name}}',
     body: '✅ 已收到您的款項，{{coach_display_name}} 教練 {{start_at}} 的課程預約確認成立，期待見到您！',
   },
+  booking_cancelled_by_shop: {  // 寄給會員（店家於後台取消教練課預約）
+    subject: '預約已取消 - {{coach_display_name}}',
+    body: '⚠️ 很抱歉，您 {{start_at}} 與 {{coach_display_name}} 教練的課程預約已由店家取消{{reason_suffix}}，如有疑問請與我們聯繫。',
+  },
+  booking_cancelled_by_shop_coach: {  // 寄給教練（店家於後台取消其教練課預約）
+    subject: '預約已取消 - {{member_name}}',
+    body: '⚠️ {{member_name}} {{start_at}} 的一對一預約已由店家取消。',
+  },
 
   // === new 2 (anon paid-group redesign) ===
   payment_received: {

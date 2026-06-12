@@ -9,7 +9,7 @@ const ROLE_BADGE = { owner: 'waitlisted', admin: 'confirmed', coach: 'coach', us
 
 const RECURRENCE_LABEL = { weekly: '每週', monthly: '每月', bimonthly: '每兩個月', quarterly: '每季', semiannual: '每半年' };
 const SESSION_STATUS_LABEL = { open: '開放', confirmed: '已成班', cancelled: '未開課', completed: '結束' };
-const REG_STATUS_LABEL = { confirmed: '正取', waitlisted: '候補', cancelled: '取消', rejected: '未開課' };
+const REG_STATUS_LABEL = { confirmed: '正取', waitlisted: '候補', pending: '待付款', cancelled: '已取消', rejected: '未開課' };
 
 async function loadTemplates() {
   const container = document.getElementById('templates');
@@ -339,7 +339,7 @@ async function openDrawer(templateId) {
             ? `<button type="button" class="badge ${s.is_open === 0 ? 'badge-closed' : 'badge-open'} session-toggle" data-session-id="${s.id}" data-open="${s.is_open === 0 ? '0' : '1'}" title="點擊切換開放／關閉此場次">${s.is_open === 0 ? '關閉' : '開放'}</button>`
             : `<span class="badge badge-${s.status}">${SESSION_STATUS_LABEL[s.status]}</span>`}
         </summary>
-        <div class="px-5 pb-4" data-session-id="${s.id}">
+        <div class="px-5 pb-4 session-roster" data-session-id="${s.id}">
           <div class="subtle">載入中…</div>
         </div>
       </details>`).join('');
@@ -347,23 +347,33 @@ async function openDrawer(templateId) {
     c.querySelectorAll('details.session-row').forEach(det => {
       det.addEventListener('toggle', async () => {
         if (!det.open) return;
-        const inner = det.querySelector('[data-session-id]');
+        // 注意：summary 內的開關按鈕也帶 data-session-id，必須用 .session-roster
+        // 精準選名單容器（曾因 [data-session-id] 撈到按鈕導致名單塞錯位、永遠「載入中」）。
+        const inner = det.querySelector('.session-roster');
         if (inner.dataset.loaded === '1') return;
         const sid = Number(inner.dataset.sessionId);
-        const list = await api(`/api/admin/sessions/${sid}/registrations`);
-        if (!list.length) { inner.innerHTML = '<div class="subtle py-2">尚無人報名</div>'; inner.dataset.loaded = '1'; return; }
-        inner.innerHTML = list.map(r => `
-          <div class="reg-row">
-            <div>
-              <div class="font-medium">${escapeHtml(r.user_name)}</div>
-              <div class="subtle text-xs">${escapeHtml(r.email)}</div>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="badge badge-${r.status}">${REG_STATUS_LABEL[r.status]}</span>
-              ${r.position ? `<span class="subtle text-xs">#${r.position}</span>` : ''}
-            </div>
-          </div>`).join('');
-        inner.dataset.loaded = '1';
+        try {
+          const list = await api(`/api/admin/sessions/${sid}/registrations`);
+          if (!list.length) { inner.innerHTML = '<div class="subtle py-2">尚無人報名</div>'; inner.dataset.loaded = '1'; return; }
+          inner.innerHTML = list.map(r => {
+            const inactive = r.status === 'cancelled' || r.status === 'rejected';
+            return `
+            <div class="reg-row"${inactive ? ' style="opacity:.45"' : ''}>
+              <div>
+                <div class="font-medium">${escapeHtml(r.user_name)}</div>
+                <div class="subtle text-xs">${escapeHtml(r.email || r.phone || '')}</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="badge badge-${r.status}">${REG_STATUS_LABEL[r.status] || r.status}</span>
+                ${r.position ? `<span class="subtle text-xs">#${r.position}</span>` : ''}
+              </div>
+            </div>`;
+          }).join('');
+          inner.dataset.loaded = '1';
+        } catch (e) {
+          // 失敗顯示錯誤並允許收合後重開重試（不標 loaded）
+          inner.innerHTML = `<div class="text-red-500 py-2">名單載入失敗：${escapeHtml(e.message)}</div>`;
+        }
       });
     });
   } catch (e) {
@@ -908,6 +918,7 @@ function pendingBookingCardHtml(b) {
         </div>
         <div class="flex flex-col gap-2 min-w-[110px]">
           <button data-id="${b.id}" class="confirm-booking-btn btn btn-primary btn-sm">已收款</button>
+          <button data-id="${b.id}" class="cancel-booking-btn btn btn-danger btn-sm">取消預約</button>
         </div>
       </div>
     </article>`;
@@ -955,6 +966,24 @@ function bindPendingHandlers(container) {
       } catch (e) {
         const msgs = { booking_not_found: '找不到預約', booking_cancelled: '預約已取消', already_paid: '此筆已核對過' };
         toast(msgs[e.data?.error] || `確認失敗：${e.message}`, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
+  container.querySelectorAll('.cancel-booking-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.closest('article').querySelector('.card-title').textContent;
+      // prompt 即守門：按「取消」(null) 中止；原因可留空（不會附在通知裡）
+      const reason = prompt(`取消「${name}」的教練課預約？\n會釋出時段並以 LINE/系統通知顧客與教練。\n取消原因（可留空）：`);
+      if (reason === null) return;
+      btn.disabled = true;
+      try {
+        await api(`/api/admin/bookings/${btn.dataset.id}/cancel`, { method: 'POST', body: { reason: reason.trim() } });
+        toast('已取消預約並通知顧客', 'success');
+        loadPendingOrders(); loadConfirmedPayments();
+      } catch (e) {
+        const msgs = { booking_not_found: '找不到預約', already_cancelled: '此預約已取消' };
+        toast(msgs[e.data?.error] || `取消失敗：${e.message}`, 'error');
         btn.disabled = false;
       }
     });
