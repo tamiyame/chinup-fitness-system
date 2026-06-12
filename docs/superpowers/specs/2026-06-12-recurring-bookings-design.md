@@ -15,7 +15,7 @@
 | 付款狀態 | 建立時可勾「**款項已收（包堂/預付）**」→ 全部直接標已核對（經手人=操作者）；沒勾則逐堂進待核對 |
 | 權限 | 後端 `requireCoach`（管理者也是教練，涵蓋）；前端僅對登入教練/管理者顯示 UI（純顯示層，後端強制） |
 | 通知 | **摘要一則**（不逐堂轟炸）：會員 LINE 一則＋教練一則（操作者本人略過）＋管理者廣播一則；email 有填寄一封摘要信 |
-| 折扣碼 | 循環模式**不支援**（UI 隱藏、API 忽略）——員工排課情境，價格為單堂價×堂數 |
+| 折扣碼 | **照常可用、逐堂套用**（業主指示不隱藏）：與單堂同規則——百分比每堂折、定額每堂折定額；折扣碼次數/每人限制逐堂消耗，用罄後其餘堂數原價（結果如實回報各堂金額） |
 | 上限 | 次數 2–52；自訂間隔 1–90 天 |
 | 每月重複 | 以首堂「日」為準（如每月 10 號）；當月無此日（如 31 號遇 2 月）→ 該場標記跳過 |
 | 單堂後續調整 | 各場為**獨立預約**，沿用既有取消流程（待核對取消鈕／已核對長按退款／教練緊急取消／顧客自助取消）；「改時段」＝取消該堂後重建 |
@@ -47,7 +47,7 @@ occurrences(startAt, frequency, intervalDays, count):
 | 端點 | 行為 |
 |---|---|
 | `POST /api/bookings/recurring/preview` | body `{ coachId, startAt, sessionType, frequency, intervalDays?, count }`。驗證參數（frequency ∈ daily/weekly/monthly/custom；custom 需 intervalDays 1–90；count 2–52；startAt 格式；coach 存在且啟用）。回 `{ occurrences: [{ startAt, ok, reason? }] }`，reason ∈ `no_date`（當月無此日）/`unavailable`（班表外/請假/已被預訂/容量滿/日曆封鎖，不細分） |
-| `POST /api/bookings/recurring` | body 同上＋`{ name, phone, email?, markPaid }`。單一 tx 內逐場重驗（fresh）：可建立者走 `createBookingCore`（**silent 模式**，見 3.4）＋寫 `recurring_group_id`＝首筆 id；`markPaid` → 各筆 `paid_at=now, paid_by=操作者`。衝突者跳過。回 `{ created: [{id, startAt}], skipped: [{startAt, reason}], totalAmount, lineBindCode?, lineOfficialUrl }`（totalAmount＝單堂價×created 數）。`created` 為空 → 409 `all_conflicted`（不建任何東西、不發通知） |
+| `POST /api/bookings/recurring` | body 同上＋`{ name, phone, email?, markPaid }`。單一 tx 內逐場重驗（fresh）：可建立者走 `createBookingCore`（**silent 模式**，見 3.4）＋寫 `recurring_group_id`＝首筆 id；`markPaid` → 各筆 `paid_at=now, paid_by=操作者`。衝突者跳過。`discountCode` 有給則對每一筆建立的預約各自 `applyDiscountTx`（與單堂語意一致；額度用罄的堂數原價）。回 `{ created: [{id, startAt, finalAmount}], skipped: [{startAt, reason}], totalAmount, lineBindCode?, lineOfficialUrl }`（totalAmount＝各堂折後金額加總）。`created` 為空 → 409 `all_conflicted`（不建任何東西、不發通知） |
 
 ### 3.4 通知與副作用
 
@@ -63,7 +63,7 @@ occurrences(startAt, frequency, intervalDays, count):
 ## 4. 前端（coaches.html / coaches.js）
 
 - `coaches.js` 以 `getUser()`（app.js 既有）判斷登入者 `role==='coach' || is_admin` → 顯示彈窗資訊卡內（紅框處）的「**開啟循環預約**」核取框；未登入/一般會員完全不可見。
-- 勾選後展開（並隱藏折扣碼區）：
+- 勾選後展開（折扣碼區照常顯示；套用後顯示「每堂折後估價 ×N 堂」並註明逐堂套用、依剩餘次數為準）：
   - **重複頻率**：select（每日／每週／每月／自訂間隔）＋自訂時顯示「每 N 天」數字框（1–90）
   - **次數**：「共 N 次」數字框（2–52，預設 4）
   - **款項已收（包堂/預付，直接標記已核對）**核取框
@@ -82,4 +82,4 @@ occurrences(startAt, frequency, intervalDays, count):
 - `markPaid` 一批 N 筆會佔「已核對匯款」清單（LIMIT 50）多列——對帳本語意正確，先接受；之後若吵再做分組顯示。
 - 未勾已收款 → N 張待核對卡（業主已知情選擇此模型）。
 - 長週期（52 次≈一年）首堂外的場次不受 2 小時緩衝限制（僅首堂可能因緩衝被擋，屬正確行為）。
-- 循環不支援折扣碼；如需包堂優惠價，請先調整單堂價或於對帳時自行處理。
+- 折扣逐堂套用：定額折扣碼會每堂都折（N 堂＝N 倍折抵）、次數有限的碼用罄後其餘堂數原價——建立結果會逐堂列出實際金額，對帳以結果為準。
