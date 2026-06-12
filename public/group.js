@@ -218,7 +218,7 @@ function renderSessionRow(s, tpl) {
       </div>
       <div style="text-align:right;">
         <div class="sess-row-cap">${escapeHtml(capStr)}</div>
-        <span class="badge badge-waitlisted" style="font-size:11px;margin-top:3px;display:inline-flex;">額滿·可候補</span>
+        <span class="badge badge-waitlisted" style="font-size:11px;margin-top:3px;display:inline-flex;">額滿·可候補${s.waitlist_count > 0 ? `（${s.waitlist_count} 人候補中）` : ''}</span>
       </div>
     </div>`;
   }
@@ -503,7 +503,18 @@ function showSuccess(result) {
 
   const sv = $('success-view');
 
-  // order info
+  // order info（純候補：無訂單、無應付款項 → 顯示候補說明，不顯示匯款資訊）
+  if (!result.orderId) {
+    $('success-order-info').innerHTML = `
+      <div class="mb-2">
+        <span class="subtle">候補登記完成</span><br>
+        <strong style="font-size:18px;">目前無需付款</strong>
+      </div>
+      <div class="mt-2 text-sm" style="color:var(--ink-mute);">
+        有名額遞補時會通知您，屆時再於 24 小時內完成匯款即可。
+      </div>`;
+    $('success-bank-info').innerHTML = '';
+  } else {
   const expiresStr = fmtDate(result.expiresAt);
   let amountHtml;
   if (result.discountAmount) {
@@ -537,6 +548,7 @@ function showSuccess(result) {
     <strong>${escapeHtml(result.bankInfo)}</strong>
     <div class="text-xs mt-2" style="color:var(--ink-mute);">匯款後請保留收據，等待管理員確認後課程即生效。</div>
   `;
+  } // end if (result.orderId)
 
   // waitlist sessions
   if (result.waitlisted && result.waitlisted.length > 0) {

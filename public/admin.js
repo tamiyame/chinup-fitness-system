@@ -869,7 +869,7 @@ async function loadPendingOrders() {
 
 function orderCardHtml(o) {
   const sessionRows = o.sessions.length
-    ? o.sessions.map(s => `<li class="subtle text-xs">${escapeHtml(s.course_name)} @ ${escapeHtml(s.start_at)}</li>`).join('')
+    ? o.sessions.map(s => `<li class="subtle text-xs">${escapeHtml(s.course_name)} @ ${escapeHtml(fmtDate(s.start_at))}${s.status === 'waitlisted' ? ' <span style="color:#a16207;">（候補，遞補後另收款）</span>' : ''}</li>`).join('')
     : '<li class="subtle text-xs">（無場次）</li>';
   return `
     <article class="card">
@@ -1043,6 +1043,8 @@ async function loadOneOnOnePrice() {
     if (gcalInput) gcalInput.value = r.gcal_calendar_id ?? '';
     const capInput = document.getElementById('booking-hourly-capacity');
     if (capInput) capInput.value = r.booking_hourly_capacity ?? 3;
+    const expiryInput = document.getElementById('group-order-expiry-hours');
+    if (expiryInput) expiryInput.value = r.group_order_expiry_hours ?? 72;
   } catch (e) {
     toast(`載入營運設定失敗：${escapeHtml(e.message)}`, 'error');
   }
@@ -1081,6 +1083,7 @@ document.getElementById('save-one-on-two-price')?.addEventListener('click', asyn
 document.getElementById('save-bank-line')?.addEventListener('click', async () => {
   const bank_info = (document.getElementById('bank-info')?.value || '').trim();
   const line_official_url = (document.getElementById('line-official-url')?.value || '').trim();
+  const expiryHours = Number(document.getElementById('group-order-expiry-hours')?.value);
   if (!bank_info) {
     toast('請輸入匯款帳號', 'error');
     return;
@@ -1089,8 +1092,12 @@ document.getElementById('save-bank-line')?.addEventListener('click', async () =>
     toast('LINE 連結需為 http(s):// 開頭的網址', 'error');
     return;
   }
+  if (!Number.isInteger(expiryHours) || expiryHours < 1 || expiryHours > 720) {
+    toast('付款期限需為 1–720 的整數（小時）', 'error');
+    return;
+  }
   try {
-    await api('/api/admin/settings', { method: 'PATCH', body: { bank_info, line_official_url } });
+    await api('/api/admin/settings', { method: 'PATCH', body: { bank_info, line_official_url, group_order_expiry_hours: expiryHours } });
     toast('收款與 LINE 設定已更新', 'success');
   } catch (e) {
     toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');

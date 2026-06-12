@@ -127,3 +127,8 @@ export function getBookingHourlyCapacity() {
   const n = parseInt(getSetting('booking_hourly_capacity') || '3', 10);
   return Number.isInteger(n) && n >= 1 ? n : 3;
 }
+// 團課訂單付款期限（小時）：建單時的逾期窗口（候補遞補單固定 24h，不受此影響）。非法值退回預設 72。
+export function getGroupOrderExpiryHours() {
+  const n = parseInt(getSetting('group_order_expiry_hours') || '72', 10);
+  return Number.isInteger(n) && n >= 1 ? n : 72;
+}

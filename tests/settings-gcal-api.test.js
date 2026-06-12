@@ -27,6 +27,12 @@ expect('PATCH 寫入成功', () => {
 });
 const pBad = await req('PATCH', '/api/admin/settings', { token, body: { booking_hourly_capacity: 0 } });
 expect('容量 0 → 400', () => assert.equal(pBad.status, 400));
+const e1 = await req('PATCH', '/api/admin/settings', { token, body: { group_order_expiry_hours: 48 } });
+expect('expiry hours 48 寫入', () => { assert.equal(e1.status, 200); assert.equal(e1.data.group_order_expiry_hours, 48); });
+const eBad = await req('PATCH', '/api/admin/settings', { token, body: { group_order_expiry_hours: 0 } });
+expect('expiry hours 0 → 400', () => assert.equal(eBad.status, 400));
+const eBad2 = await req('PATCH', '/api/admin/settings', { token, body: { group_order_expiry_hours: 1000 } });
+expect('expiry hours 1000 → 400', () => assert.equal(eBad2.status, 400));
 // 還原（避免影響其他測試/環境）
-await req('PATCH', '/api/admin/settings', { token, body: { gcal_calendar_id: '', booking_hourly_capacity: 3 } });
+await req('PATCH', '/api/admin/settings', { token, body: { gcal_calendar_id: '', booking_hourly_capacity: 3, group_order_expiry_hours: 72 } });
 console.log('[settings-gcal-api test] done');

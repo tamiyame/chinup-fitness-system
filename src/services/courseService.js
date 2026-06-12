@@ -166,9 +166,7 @@ export function listRegistrationsBySession(sessionId) {
     FROM registrations r
     JOIN users u ON u.id = r.user_id
     WHERE r.session_id = ?
-    ORDER BY
-      CASE r.status WHEN 'confirmed' THEN 0 WHEN 'waitlisted' THEN 1 ELSE 2 END,
-      r.registered_at ASC
+    ORDER BY r.registered_at DESC, r.id DESC
   `).all(sessionId);
 }
 

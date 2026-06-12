@@ -3,10 +3,10 @@ import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
 import { notify, notifyCourseCoach, notifyAdmins } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
-import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl } from './discountService.js';
+import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl, getGroupOrderExpiryHours } from './discountService.js';
 
-const PENDING_TTL_MS = 6 * 60 * 60 * 1000;       // 一般 pending 6h
-const PROMOTED_TTL_MS = 24 * 60 * 60 * 1000;     // 遞補後 24h
+// 一般 pending 訂單的付款期限改由 app_settings 的 group_order_expiry_hours 控制（預設 72h，後台可調）。
+const PROMOTED_TTL_MS = 24 * 60 * 60 * 1000;     // 候補遞補後 24h（固定：遞補名額要快速流轉）
 
 const getSession = db.prepare('SELECT * FROM course_sessions WHERE id = ?');
 const getTemplate = db.prepare('SELECT * FROM course_templates WHERE id = ?');
@@ -92,31 +92,38 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
       total += tpl.price_per_session;
     }
 
-    const orderId = insertOrder.run(
-      user.id, name.trim(), phone, total, offsetLocal(PENDING_TTL_MS)
-    ).lastInsertRowid;
-    const order = db.prepare('SELECT expires_at FROM group_orders WHERE id = ?').get(orderId);
-
-    // 折扣：原價 = total（付款場次加總）。套用在同一 tx 內（防併發超用）。
+    // 純候補（無付款場次）不建訂單：沒有應付款項，不該出現在「待核對匯款」、
+    // 也不該被逾期機制取消。候補名額由 promoteWaitlist 遞補時才開 24h 付款單。
+    const hasPay = paySessionIds.length > 0;
+    let orderId = null, expiresAt = null;
     let originalAmount = total, discountAmount = null, discountCode_ = null, finalTotal = total;
-    const applied = applyDiscountTx({ code: discountCode, phone, subtotal: total, kind: 'group_order', refId: orderId });
-    if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalTotal = applied.finalTotal; }
-    db.prepare('UPDATE group_orders SET original_amount=?, discount_amount=?, discount_code=?, total_amount=? WHERE id=?')
-      .run(originalAmount, discountAmount, discountCode_, finalTotal, orderId);
+    if (hasPay) {
+      orderId = insertOrder.run(
+        user.id, name.trim(), phone, total, offsetLocal(getGroupOrderExpiryHours() * 3600_000)
+      ).lastInsertRowid;
+      expiresAt = db.prepare('SELECT expires_at FROM group_orders WHERE id = ?').get(orderId).expires_at;
 
-    for (const { sid, price, dup } of payRows) {
-      if (dup) reactivateReg.run('pending', orderId, price, dup.id);
-      else insertReg.run(sid, user.id, 'pending', orderId, price);
+      // 折扣：原價 = total（付款場次加總）。套用在同一 tx 內（防併發超用）。
+      const applied = applyDiscountTx({ code: discountCode, phone, subtotal: total, kind: 'group_order', refId: orderId });
+      if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalTotal = applied.finalTotal; }
+      db.prepare('UPDATE group_orders SET original_amount=?, discount_amount=?, discount_code=?, total_amount=? WHERE id=?')
+        .run(originalAmount, discountAmount, discountCode_, finalTotal, orderId);
+
+      for (const { sid, price, dup } of payRows) {
+        if (dup) reactivateReg.run('pending', orderId, price, dup.id);
+        else insertReg.run(sid, user.id, 'pending', orderId, price);
+      }
     }
 
-    // 候補桶（不付款）
+    // 候補桶（不付款；同單若有付款場次則掛同一張訂單，讓後台卡片能列出候補場次。
+    // 逾期/取消只動 status='pending' 的列，候補列掛單不受影響）
     const waitlisted = [];
     for (const sid of waitlistSessionIds) {
       validateSelectable(sid);
       const dup = getAnyReg.get(sid, user.id);
       if (dup && ['pending', 'confirmed', 'waitlisted'].includes(dup.status)) continue;
-      if (dup) reactivateReg.run('waitlisted', null, null, dup.id);
-      else insertReg.run(sid, user.id, 'waitlisted', null, null);
+      if (dup) reactivateReg.run('waitlisted', orderId, null, dup.id);
+      else insertReg.run(sid, user.id, 'waitlisted', orderId, null);
       waitlisted.push(sid);
       // 加掛：通知該場次教練有人候補
       const ws = getSession.get(sid);
@@ -126,7 +133,7 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
     }
 
     const result = { orderId, total: finalTotal, originalAmount, discountAmount, discountCode: discountCode_,
-      bankInfo: getBankInfo(), expiresAt: order.expires_at, waitlisted, memberId: user.id };
+      bankInfo: getBankInfo(), expiresAt, waitlisted, memberId: user.id };
     // 綁定碼只發給一般會員（縱深防禦：Fix A 已擋員工電話，這裡再保險一次）。
     if (user.role === 'user' && !user.line_user_id) result.lineBindCode = generateBindCode(user.id).code;
     result.lineOfficialUrl = getLineOfficialUrl();
@@ -154,11 +161,12 @@ export function listPendingOrders() {
   `).all(now);
   return orders.map((o) => ({
     ...o,
+    // 含候補列（status='waitlisted'）：後台卡片標示「候補」，金額仍只計付款場次
     sessions: db.prepare(`
-      SELECT s.start_at, t.name AS course_name
+      SELECT s.start_at, t.name AS course_name, r.status
       FROM registrations r JOIN course_sessions s ON s.id=r.session_id
       JOIN course_templates t ON t.id=s.template_id
-      WHERE r.order_id=? AND r.status='pending' ORDER BY s.start_at ASC
+      WHERE r.order_id=? AND r.status IN ('pending','waitlisted') ORDER BY s.start_at ASC
     `).all(o.id),
   }));
 }
@@ -173,8 +181,8 @@ export function confirmGroupOrder({ orderId, actorId }) {
     db.prepare("UPDATE group_orders SET status='paid', paid_at=?, paid_by=? WHERE id=?")
       .run(nowLocal(), actorId, orderId);
     db.prepare("UPDATE registrations SET status='confirmed' WHERE order_id=? AND status='pending'").run(orderId);
-    // 通知客人
-    const first = db.prepare('SELECT session_id FROM registrations WHERE order_id=? LIMIT 1').get(orderId);
+    // 通知客人（限已轉正取的付款場次；候補列也掛單，不能拿來當通知對象）
+    const first = db.prepare("SELECT session_id FROM registrations WHERE order_id=? AND status='confirmed' LIMIT 1").get(orderId);
     if (first) {
       const s = getSession.get(first.session_id);
       const tpl = getTemplate.get(s.template_id);
@@ -355,9 +363,12 @@ export function getPublicGroupCourses() {
       ORDER BY start_at ASC
     `).all(t.id, now).map((s) => {
       const occupied = sessionOccupied(s.id);
+      // 額滿徽章顯示目前候補人數用
+      const waitlistCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id=? AND status='waitlisted'").get(s.id).c;
       return {
         ...s, occupied, max_capacity: t.max_capacity,
         is_full: occupied >= t.max_capacity,
+        waitlist_count: waitlistCount,
         price_per_session: t.price_per_session,
       };
     });
