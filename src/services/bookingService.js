@@ -451,10 +451,16 @@ export function createRecurringBookings({ coachId, startAt, name, phone, email =
         continue;
       }
       const r = createBookingCore({ coach, memberId: user.id, startAt: o.startAt, note: null, sessionType, silent: true });
-      // 金額＋折扣：逐堂套用、與單堂語意一致（額度用罄的堂數原價）
+      // 金額＋折扣：逐堂套用、與單堂語意一致。額度用罄（總量/每人上限）→ 該堂回
+      // 原價、不中斷整批（spec）；其餘錯誤（無效碼/停用/過期）照樣拋出讓操作者知道。
       const subtotal = getOneOnOnePriceByType(sessionType);
       let originalAmount = subtotal, discountAmount = null, discountCode_ = null, finalAmount = subtotal;
-      const applied = applyDiscountTx({ code: discountCode, phone, subtotal, kind: 'booking', refId: r.id });
+      let applied = null;
+      try {
+        applied = applyDiscountTx({ code: discountCode, phone, subtotal, kind: 'booking', refId: r.id });
+      } catch (e) {
+        if (!(e instanceof ApiError) || !['code_exhausted', 'per_phone_exhausted'].includes(e.code)) throw e;
+      }
       if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalAmount = applied.finalTotal; }
       db.prepare('UPDATE bookings SET original_amount=?, discount_amount=?, discount_code=?, customer_email=? WHERE id=?')
         .run(originalAmount, discountAmount, discountCode_, (email || null), r.id);

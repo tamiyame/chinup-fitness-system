@@ -93,6 +93,23 @@ expect('摘要 email：一封、收件人正確', () => {
   assert.ok(rows[0].body.includes('共 2 堂') || rows[0].subject.includes('共 2 堂'));
 });
 
+// ── 折扣額度用罄 → 該堂原價、不中斷（per_phone_limit=1）──
+const { createDiscountCode: mkCode } = await import('../src/services/discountService.js');
+mkCode({ code: 'RECUR1X', discount_type: 'fixed', discount_value: 200, per_phone_limit: 1 });
+expect('per_phone_limit=1：第一堂折 200、其餘原價、不炸批次', () => {
+  const r = createRecurringBookings({
+    coachId, startAt: `${day(7)}T14:00:00`, name: '限額客', phone: '0986777888',
+    frequency: 'weekly', count: 3, discountCode: 'RECUR1X', actorId: operator,
+  });
+  // 第二週請假 → 建 2 堂；第一堂 1300、第二堂 1500
+  assert.equal(r.created.length, 2);
+  const amounts = r.created.map(c => c.finalAmount).sort((a, b) => a - b);
+  assert.deepEqual(amounts, [1300, 1500]);
+  assert.equal(r.totalAmount, 2800);
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM discount_redemptions WHERE phone='0986777888'").get().c, 1);
+});
+db.exec("DELETE FROM discount_redemptions WHERE phone='0986777888'; DELETE FROM discount_codes WHERE code='RECUR1X'");
+
 // ── 全衝突 → 409、不建立 ──
 expect('全衝突 → 409 all_conflicted、無新預約', () => {
   const before = db.prepare('SELECT COUNT(*) c FROM bookings').get().c;
