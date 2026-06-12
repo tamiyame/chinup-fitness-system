@@ -226,6 +226,31 @@ export function cancelBookingAdmin({ bookingId, actorId, reason = null }) {
   });
 }
 
+/** admin 取消「已收款」的教練課預約並退款（已核對匯款卡片長按）。
+ *  金流由店家線下退回，系統記錄 refunded_at/by；已取消但已收款者也可單純補退款紀錄。 */
+export function refundBookingAdmin({ bookingId, actorId }) {
+  return tx(() => {
+    const b = getBookingStmt.get(bookingId);
+    if (!b) throw new ApiError(404, 'booking_not_found');
+    if (!b.paid_at) throw new ApiError(409, 'not_paid');
+    if (b.refunded_at) throw new ApiError(409, 'already_refunded');
+    const wasConfirmed = b.status === 'confirmed';
+    if (wasConfirmed) {
+      cancelBookingStmt.run(nowLocal(), actorId, '取消並退款', bookingId);
+      releaseRedemption({ kind: 'booking', refId: bookingId });
+    }
+    db.prepare('UPDATE bookings SET refunded_at=?, refunded_by=? WHERE id=?').run(nowLocal(), actorId, bookingId);
+    const coach = getCoachStmt.get(b.coach_id);
+    if (coach) {
+      const amount = b.original_amount != null ? b.original_amount - (b.discount_amount || 0) : null;
+      notify({ userId: b.member_id, sessionId: null, type: 'booking_refunded',
+        vars: { coach_display_name: coach.display_name, start_at: fmtDateForLine(b.start_at),
+                amount_text: amount != null ? `（NT$${amount}）` : '' } });
+    }
+    return { ok: true, cancelled: wasConfirmed };
+  });
+}
+
 export function listMemberBookings(memberId) {
   return listMemberStmt.all(memberId);
 }
@@ -266,21 +291,22 @@ export function listConfirmedPayments() {
     SELECT 'booking' AS type, b.id, u.name AS customer_name, u.phone AS customer_phone,
            CASE WHEN b.original_amount IS NULL THEN NULL
                 ELSE b.original_amount - COALESCE(b.discount_amount, 0) END AS amount,
-           b.start_at AS detail, b.session_type, b.paid_at, pu.name AS paid_by_name
+           b.start_at AS detail, b.session_type, b.paid_at, b.refunded_at, pu.name AS paid_by_name
     FROM bookings b
     JOIN users u ON u.id = b.member_id
     LEFT JOIN users pu ON pu.id = b.paid_by
     WHERE b.paid_at IS NOT NULL
     ORDER BY b.paid_at DESC LIMIT 50
   `).all();
+  // 團課改以 paid_at 為準（退款後 status 變 cancelled，但對帳清單仍要保留紀錄）
   const orders = db.prepare(`
     SELECT 'group_order' AS type, o.id, o.customer_name, o.customer_phone,
            o.total_amount AS amount,
-           (SELECT COUNT(*) FROM registrations r WHERE r.order_id = o.id AND r.status = 'confirmed') || ' 場次' AS detail,
-           NULL AS session_type, o.paid_at, pu.name AS paid_by_name
+           (SELECT COUNT(*) FROM registrations r WHERE r.order_id = o.id AND r.amount_due IS NOT NULL) || ' 場次' AS detail,
+           NULL AS session_type, o.paid_at, o.refunded_at, pu.name AS paid_by_name
     FROM group_orders o
     LEFT JOIN users pu ON pu.id = o.paid_by
-    WHERE o.status = 'paid'
+    WHERE o.paid_at IS NOT NULL
     ORDER BY o.paid_at DESC LIMIT 50
   `).all();
   return [...bookings, ...orders]

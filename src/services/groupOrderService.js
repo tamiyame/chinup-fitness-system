@@ -224,6 +224,34 @@ export function cancelGroupOrder({ orderId, phone, name }) {
   });
 }
 
+/** admin 取消「已收款」的團課訂單並退款（已核對匯款卡片長按）。
+ *  整單取消：confirmed/pending 列取消並釋名額 → 各場次遞補候補（遞補者產生新的
+ *  待付款訂單，回到「待核對匯款」）；掛單的候補列一併取消（整單退場）。
+ *  金流由店家線下退回，系統記錄 refunded_at/by；訂單保留在已核對清單供對帳。 */
+export function refundGroupOrder({ orderId, actorId }) {
+  return tx(() => {
+    const order = getOrder.get(orderId);
+    if (!order) throw new ApiError(404, 'order_not_found');
+    if (!order.paid_at) throw new ApiError(409, 'not_paid');
+    if (order.refunded_at) throw new ApiError(409, 'already_refunded');
+    const now = nowLocal();
+    // 佔名額的列（confirmed / pending）先記下場次，取消後逐場遞補
+    const occupying = db.prepare(
+      "SELECT session_id FROM registrations WHERE order_id=? AND status IN ('confirmed','pending') AND on_leave = 0"
+    ).all(orderId);
+    db.prepare(
+      "UPDATE registrations SET status='cancelled' WHERE order_id=? AND status IN ('confirmed','pending','waitlisted')"
+    ).run(orderId);
+    db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=?, refunded_at=?, refunded_by=? WHERE id=?")
+      .run(now, now, actorId, orderId);
+    releaseRedemption({ kind: 'group_order', refId: orderId });
+    for (const r of occupying) promoteWaitlist(r.session_id);
+    notify({ userId: order.member_id, sessionId: null, type: 'group_order_refunded',
+      vars: { amount_text: order.total_amount != null ? `（NT$${order.total_amount}）` : '' } });
+    return { ok: true, releasedSessions: occupying.length };
+  });
+}
+
 const countActiveOrderRegsStmt = db.prepare(
   "SELECT COUNT(*) AS c FROM registrations WHERE order_id = ? AND status IN ('pending','confirmed','waitlisted')"
 );

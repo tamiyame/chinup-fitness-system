@@ -34,6 +34,7 @@ import {
   confirmBookingPayment as svcConfirmBookingPayment,
   listConfirmedPayments as svcListConfirmedPayments,
   cancelBookingAdmin as svcCancelBookingAdmin,
+  refundBookingAdmin as svcRefundBookingAdmin,
 } from './services/bookingService.js';
 import {
   createGroupOrder as svcCreateGroupOrder,
@@ -45,6 +46,7 @@ import {
   getPublicGroupCourses as svcPublicCourses,
   getPublicSchedule as svcPublicSchedule,
   listPendingOrders as svcListPendingOrders,
+  refundGroupOrder as svcRefundGroupOrder,
 } from './services/groupOrderService.js';
 import { listActiveCoaches as svcListActive, saveAvatar as svcSaveAvatar } from './services/coachService.js';
 import {
@@ -1024,6 +1026,16 @@ app.post('/api/admin/bookings/:id/cancel', requireAdmin, asyncHandler((req, res)
   const r = svcCancelBookingAdmin({ bookingId: id, actorId: req.user.id, reason: (reason || '').trim() || null });
   syncBookingCancel(id); // commit 後（svc 的 tx 已結束）、不 await
   res.json(r);
+}));
+// 取消並退款（已核對匯款卡片長按）：教練課／團課訂單
+app.post('/api/admin/bookings/:id/refund', requireAdmin, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const r = svcRefundBookingAdmin({ bookingId: id, actorId: req.user.id });
+  if (r.cancelled) syncBookingCancel(id); // 有實際取消才刪日曆事件（不 await）
+  res.json(r);
+}));
+app.post('/api/admin/group-orders/:id/refund', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcRefundGroupOrder({ orderId: Number(req.params.id), actorId: req.user.id }));
 }));
 
 // 手動觸發排程（用於測試 / 管理者按鈕）

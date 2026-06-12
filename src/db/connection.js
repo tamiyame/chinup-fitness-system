@@ -210,6 +210,13 @@ addColumnIfMissing('bookings', 'gcal_event_id', 'TEXT');
 addColumnIfMissing('bookings', 'customer_email', 'TEXT');
 addColumnIfMissing('notifications', 'recipient', 'TEXT');
 
+// ── 2026-06-12 取消並退款（已核對款項的逆向操作）──
+// refunded_at/refunded_by：退款紀錄（金流由店家線下匯回，系統只記錄）。已退款項目保留在「已核對匯款」清單供對帳。
+addColumnIfMissing('bookings', 'refunded_at', 'TEXT');
+addColumnIfMissing('bookings', 'refunded_by', 'INTEGER REFERENCES users(id)');
+addColumnIfMissing('group_orders', 'refunded_at', 'TEXT');
+addColumnIfMissing('group_orders', 'refunded_by', 'INTEGER REFERENCES users(id)');
+
 // ── 2026-06-12 教練課付款狀態流 ──
 // paid_at NULL=待核對、非 NULL=已核對（鏡像 group_orders.paid_at/paid_by；status 不變，佔時段/容量照舊）。
 // 一次性 backfill（偵測訊號=欄位不存在）：上線當下過去場次視為已核對、未來場次留 NULL 進待核對（業主決策）。

@@ -1006,13 +1006,16 @@ async function loadConfirmedPayments() {
       const typeBadge = isBooking
         ? `<span class="badge badge-completed">教練課${x.session_type === '1on2' ? '（1對2）' : ''}</span>`
         : '<span class="badge badge-confirmed">團課</span>';
+      const refundBadge = x.refunded_at ? '<span class="badge badge-cancelled">已退款</span>' : '';
       const detail = isBooking ? fmtDate(x.detail) : x.detail;
       return `
-        <article class="card">
+        <article class="card confirmed-payment-row" data-type="${x.type}" data-id="${x.id}"
+                 data-name="${escapeHtml(x.customer_name)}" data-amount="${x.amount ?? ''}"
+                 data-refunded="${x.refunded_at ? '1' : '0'}">
           <div class="flex items-center justify-between gap-3 flex-wrap">
-            <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-2 flex-wrap"${x.refunded_at ? ' style="opacity:.55"' : ''}>
               <strong>${escapeHtml(x.customer_name)}</strong>
-              ${typeBadge}
+              ${typeBadge}${refundBadge}
               <span class="subtle text-sm">${escapeHtml(detail || '')}</span>
               <span class="subtle text-sm">💰 ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}</span>
             </div>
@@ -1020,9 +1023,45 @@ async function loadConfirmedPayments() {
           </div>
         </article>`;
     }).join('');
+    bindConfirmedPaymentLongPress(container);
   } catch (e) {
     container.innerHTML = `<div class="p-4 text-red-500">${escapeHtml(e.message)}</div>`;
   }
+}
+
+// 長按已核對款項卡片（手機 touch / 桌機滑鼠按住 0.5 秒）→ 取消預約並退款。
+// 教練課：取消預約、釋出時段、刪日曆事件；團課：整單取消、釋名額並遞補候補
+// （遞補者會出現在上方「待核對匯款」）。金流由店家線下退回，系統記錄退款時間與經手人。
+function bindConfirmedPaymentLongPress(container) {
+  container.querySelectorAll('.confirmed-payment-row').forEach(card => {
+    let timer = null;
+    const start = () => {
+      timer = setTimeout(() => {
+        timer = null;
+        if (card.dataset.refunded === '1') { toast('此筆已退款過', 'error'); return; }
+        const label = card.dataset.type === 'booking' ? '教練課預約' : '團課訂單';
+        const amt = card.dataset.amount ? `NT$${Number(card.dataset.amount).toLocaleString()}` : '款項';
+        const extra = card.dataset.type === 'group_order' ? '\n名額將釋出，候補者會遞補為新的待核對訂單。' : '\n時段將釋出。';
+        if (!confirm(`取消「${card.dataset.name}」的${label}並退款 ${amt}？${extra}\n（會以 LINE/系統通知顧客；實際退款請自行匯回）`)) return;
+        const url = card.dataset.type === 'booking'
+          ? `/api/admin/bookings/${card.dataset.id}/refund`
+          : `/api/admin/group-orders/${card.dataset.id}/refund`;
+        api(url, { method: 'POST' })
+          .then(() => { toast('已取消並標記退款，已通知顧客', 'success'); loadPendingOrders(); loadConfirmedPayments(); })
+          .catch(e => {
+            const msgs = { not_paid: '此筆尚未核對收款', already_refunded: '此筆已退款過', booking_not_found: '找不到預約', order_not_found: '找不到訂單' };
+            toast(msgs[e.data?.error] || `退款失敗：${e.message}`, 'error');
+          });
+      }, 500);
+    };
+    const cancelT = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    card.addEventListener('touchstart', start, { passive: true });
+    card.addEventListener('touchend', cancelT);
+    card.addEventListener('touchmove', cancelT);
+    card.addEventListener('mousedown', start);
+    card.addEventListener('mouseup', cancelT);
+    card.addEventListener('mouseleave', cancelT);
+  });
 }
 
 document.getElementById('btn-reload-orders')?.addEventListener('click', () => { loadPendingOrders(); loadConfirmedPayments(); });
