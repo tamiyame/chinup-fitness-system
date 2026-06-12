@@ -43,7 +43,7 @@ const getCoachStmt = db.prepare('SELECT * FROM coaches WHERE id = ?');
 const getUserNameStmt = db.prepare('SELECT name FROM users WHERE id = ?');
 
 const listPendingPaymentStmt = db.prepare(`
-  SELECT b.id, b.start_at, b.session_type, b.created_at,
+  SELECT b.id, b.start_at, b.session_type, b.created_at, b.recurring_group_id,
          b.original_amount, b.discount_amount, b.discount_code,
          u.name AS member_name, u.phone AS member_phone,
          c.display_name AS coach_display_name
@@ -259,12 +259,33 @@ export function listCoachBookings(coachId) {
   return listCoachStmt.all(coachId);
 }
 
-/** 後台「待核對匯款」：未核對的教練課預約（含應收金額）。 */
+/** 後台「待核對匯款」：未核對的教練課預約（含應收金額）。
+ *  循環預約（recurring_group_id 非空）同一次送出的集中成一個 group 項目（一張卡）。 */
 export function listPendingPaymentBookings() {
-  return listPendingPaymentStmt.all().map((b) => ({
+  const rows = listPendingPaymentStmt.all().map((b) => ({
     ...b,
     final_amount: b.original_amount != null ? b.original_amount - (b.discount_amount || 0) : null,
   }));
+  const out = [];
+  const groups = new Map(); // group_id → group 項目（保持首見位置 = created_at 新→舊）
+  for (const b of rows) {
+    if (!b.recurring_group_id) { out.push(b); continue; }
+    let g = groups.get(b.recurring_group_id);
+    if (!g) {
+      g = {
+        group: true, group_id: b.recurring_group_id, created_at: b.created_at,
+        member_name: b.member_name, member_phone: b.member_phone,
+        coach_display_name: b.coach_display_name, session_type: b.session_type,
+        sessions: [], total_amount: 0, discount_code: b.discount_code,
+      };
+      groups.set(b.recurring_group_id, g);
+      out.push(g);
+    }
+    g.sessions.push({ id: b.id, start_at: b.start_at, final_amount: b.final_amount });
+    if (b.final_amount != null) g.total_amount += b.final_amount;
+  }
+  for (const g of groups.values()) g.sessions.sort((a, b2) => (a.start_at < b2.start_at ? -1 : 1));
+  return out;
 }
 
 /** admin 核對教練課款項：寫 paid_at/paid_by，通知會員（LINE＋email）。 */
@@ -287,8 +308,8 @@ export function confirmBookingPayment({ bookingId, actorId }) {
 
 /** 後台「已核對匯款」：教練課＋團課訂單合併，paid_at 新→舊，最多 50 筆。 */
 export function listConfirmedPayments() {
-  const bookings = db.prepare(`
-    SELECT 'booking' AS type, b.id, u.name AS customer_name, u.phone AS customer_phone,
+  const bookingRows = db.prepare(`
+    SELECT 'booking' AS type, b.id, b.recurring_group_id, u.name AS customer_name, u.phone AS customer_phone,
            CASE WHEN b.original_amount IS NULL THEN NULL
                 ELSE b.original_amount - COALESCE(b.discount_amount, 0) END AS amount,
            b.start_at AS detail, b.session_type, b.paid_at, b.refunded_at, pu.name AS paid_by_name
@@ -296,8 +317,33 @@ export function listConfirmedPayments() {
     JOIN users u ON u.id = b.member_id
     LEFT JOIN users pu ON pu.id = b.paid_by
     WHERE b.paid_at IS NOT NULL
-    ORDER BY b.paid_at DESC LIMIT 50
+    ORDER BY b.paid_at DESC LIMIT 200
   `).all();
+  // 循環預約同 group 合併一列（金額加總、退款狀態彙整；部分退款另標示）
+  const bookings = [];
+  const bGroups = new Map();
+  for (const r of bookingRows) {
+    if (!r.recurring_group_id) { bookings.push(r); continue; }
+    let g = bGroups.get(r.recurring_group_id);
+    if (!g) {
+      g = { type: 'booking_group', id: r.recurring_group_id, customer_name: r.customer_name,
+            customer_phone: r.customer_phone, amount: 0, session_type: r.session_type,
+            count: 0, refunded_count: 0, first_at: r.detail, detail: '',
+            paid_at: r.paid_at, paid_by_name: r.paid_by_name, refunded_at: null };
+      bGroups.set(r.recurring_group_id, g);
+      bookings.push(g);
+    }
+    g.count += 1;
+    if (r.amount != null) g.amount += r.amount;
+    if (r.refunded_at) g.refunded_count += 1;
+    if (r.detail < g.first_at) g.first_at = r.detail;
+    if (r.paid_at > g.paid_at) g.paid_at = r.paid_at;
+  }
+  for (const g of bGroups.values()) {
+    g.detail = `${g.count} 堂（首堂 ${g.first_at.slice(5, 16).replace('T', ' ').replace('-', '/')}）`;
+    if (g.refunded_count === g.count) g.refunded_at = g.paid_at; // 全退款 → 標已退款
+    g.partial_refund = g.refunded_count > 0 && g.refunded_count < g.count;
+  }
   // 團課改以 paid_at 為準（退款後 status 變 cancelled，但對帳清單仍要保留紀錄）
   const orders = db.prepare(`
     SELECT 'group_order' AS type, o.id, o.customer_name, o.customer_phone,
@@ -497,5 +543,84 @@ export function createRecurringBookings({ coachId, startAt, name, phone, email =
     if (user.role === 'user' && !user.line_user_id) result.lineBindCode = generateBindCode(user.id).code;
     result.lineOfficialUrl = getLineOfficialUrl();
     return result;
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 循環預約「整批」操作（待核對/已核對卡片以 recurring_group_id 集中一張卡）
+// ─────────────────────────────────────────────────────────────────────
+
+/** 整批核對收款：group 內所有未收款預約 → 已核對；會員 LINE 摘要一則。 */
+export function confirmBookingPaymentGroup({ groupId, actorId }) {
+  return tx(() => {
+    const rows = db.prepare(
+      "SELECT * FROM bookings WHERE recurring_group_id=? AND status='confirmed' AND paid_at IS NULL ORDER BY start_at ASC"
+    ).all(groupId);
+    if (!rows.length) throw new ApiError(409, 'already_paid');
+    const ph = rows.map(() => '?').join(',');
+    db.prepare(`UPDATE bookings SET paid_at=?, paid_by=? WHERE id IN (${ph})`).run(nowLocal(), actorId, ...rows.map(r => r.id));
+    const coach = getCoachStmt.get(rows[0].coach_id);
+    if (coach) {
+      notify({ userId: rows[0].member_id, sessionId: null, type: 'booking_payment_received',
+        vars: { coach_display_name: coach.display_name, start_at: `${fmtDateForLine(rows[0].start_at)} 起共 ${rows.length} 堂` } });
+    }
+    return { ok: true, confirmed: rows.length };
+  });
+}
+
+/** 整批取消（待核對卡片）：只取消「未收款」的預約；已收款的留在已核對卡走退款。 */
+export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
+  return tx(() => {
+    const rows = db.prepare(
+      "SELECT * FROM bookings WHERE recurring_group_id=? AND status='confirmed' AND paid_at IS NULL ORDER BY start_at ASC"
+    ).all(groupId);
+    if (!rows.length) throw new ApiError(409, 'no_pending_bookings');
+    for (const b of rows) {
+      cancelBookingStmt.run(nowLocal(), actorId, reason, b.id);
+      releaseRedemption({ kind: 'booking', refId: b.id });
+    }
+    const coach = getCoachStmt.get(rows[0].coach_id);
+    const memberRow = getUserNameStmt.get(rows[0].member_id);
+    if (coach && memberRow) {
+      const startFmt = `${fmtDateForLine(rows[0].start_at)} 起共 ${rows.length} 堂`;
+      notify({ userId: rows[0].member_id, sessionId: null, type: 'booking_cancelled_by_shop',
+        vars: { coach_display_name: coach.display_name, start_at: startFmt,
+                reason_suffix: reason ? `（原因：${reason}）` : '' } });
+      if (coach.user_id !== actorId) {
+        notify({ userId: coach.user_id, sessionId: null, type: 'booking_cancelled_by_shop_coach',
+          vars: { member_name: memberRow.name, start_at: startFmt } });
+      }
+    }
+    return { ok: true, cancelled: rows.map(r => r.id) };
+  });
+}
+
+/** 整批取消並退款（已核對卡片長按）：group 內已收款未退款者全數退款（必要時取消）。 */
+export function refundBookingGroupAdmin({ groupId, actorId }) {
+  return tx(() => {
+    const rows = db.prepare(
+      "SELECT * FROM bookings WHERE recurring_group_id=? AND paid_at IS NOT NULL AND refunded_at IS NULL ORDER BY start_at ASC"
+    ).all(groupId);
+    if (!rows.length) throw new ApiError(409, 'already_refunded');
+    const now = nowLocal();
+    const cancelled = [];
+    let total = 0;
+    for (const b of rows) {
+      if (b.status === 'confirmed') {
+        cancelBookingStmt.run(now, actorId, '取消並退款', b.id);
+        releaseRedemption({ kind: 'booking', refId: b.id });
+        cancelled.push(b.id);
+      }
+      db.prepare('UPDATE bookings SET refunded_at=?, refunded_by=? WHERE id=?').run(now, actorId, b.id);
+      if (b.original_amount != null) total += b.original_amount - (b.discount_amount || 0);
+    }
+    const coach = getCoachStmt.get(rows[0].coach_id);
+    if (coach) {
+      notify({ userId: rows[0].member_id, sessionId: null, type: 'booking_refunded',
+        vars: { coach_display_name: coach.display_name,
+                start_at: `${fmtDateForLine(rows[0].start_at)} 起共 ${rows.length} 堂`,
+                amount_text: total > 0 ? `（NT$${total}）` : '' } });
+    }
+    return { ok: true, refunded: rows.length, cancelled };
   });
 }

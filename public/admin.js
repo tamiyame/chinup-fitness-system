@@ -850,7 +850,7 @@ async function loadPendingOrders() {
     ]);
     const items = [
       ...orders.map(o => ({ kind: 'order', created_at: o.created_at, o })),
-      ...bookings.map(b => ({ kind: 'booking', created_at: b.created_at, b })),
+      ...bookings.map(b => ({ kind: b.group ? 'booking_group' : 'booking', created_at: b.created_at, b })),
     ].sort((a, c) => (a.created_at < c.created_at ? 1 : -1)); // 新→舊
     if (!items.length) {
       container.innerHTML = `
@@ -860,7 +860,10 @@ async function loadPendingOrders() {
         </div>`;
       return;
     }
-    container.innerHTML = items.map(it => it.kind === 'order' ? orderCardHtml(it.o) : pendingBookingCardHtml(it.b)).join('');
+    container.innerHTML = items.map(it =>
+      it.kind === 'order' ? orderCardHtml(it.o)
+      : it.kind === 'booking_group' ? pendingBookingGroupCardHtml(it.b)
+      : pendingBookingCardHtml(it.b)).join('');
     bindPendingHandlers(container);
   } catch (e) {
     container.innerHTML = `<div class="p-4 text-red-500">${escapeHtml(e.message)}</div>`;
@@ -903,6 +906,35 @@ function orderCardHtml(o) {
         <div class="flex flex-col gap-2 min-w-[110px]">
           <button data-id="${o.id}" class="confirm-order-btn btn btn-primary btn-sm">已收款</button>
           <button data-id="${o.id}" class="cancel-order-btn btn btn-danger btn-sm">取消訂單</button>
+        </div>
+      </div>
+    </article>`;
+}
+
+// 循環教練課：同一次送出的多堂集中一張卡（已收款/取消為整批操作）
+function pendingBookingGroupCardHtml(g) {
+  const label = g.session_type === '1on2' ? '1對2' : '1對1';
+  const rows = g.sessions.map(s =>
+    `<li class="subtle text-xs">${escapeHtml(fmtDate(s.start_at))}${s.final_amount != null ? `　$${Number(s.final_amount).toLocaleString()}` : ''}</li>`).join('');
+  return `
+    <article class="card">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div class="flex-1 min-w-[220px]">
+          <div class="flex items-center gap-2 mb-1">
+            <h3 class="card-title">${escapeHtml(g.member_name)}</h3>
+            <span class="badge badge-completed">教練課 ×${g.sessions.length} 堂</span>
+            <span class="badge badge-waitlisted">待核對</span>
+          </div>
+          <div class="meta mb-2">
+            <span class="meta-item">📞 ${escapeHtml(g.member_phone || '')}</span>
+            <span class="meta-item">💰 合計 NT$${Number(g.total_amount).toLocaleString()}${g.discount_code ? `（折扣碼 ${escapeHtml(g.discount_code)}）` : ''}</span>
+            <span class="meta-item">🏋️ ${escapeHtml(g.coach_display_name)}（${label}）</span>
+          </div>
+          <ul class="list-disc list-inside space-y-0.5">${rows}</ul>
+        </div>
+        <div class="flex flex-col gap-2 min-w-[110px]">
+          <button data-group="${g.group_id}" class="confirm-booking-group-btn btn btn-primary btn-sm">已收款</button>
+          <button data-group="${g.group_id}" class="cancel-booking-group-btn btn btn-danger btn-sm">取消預約</button>
         </div>
       </div>
     </article>`;
@@ -983,6 +1015,39 @@ function bindPendingHandlers(container) {
       }
     });
   });
+  container.querySelectorAll('.confirm-booking-group-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.closest('article').querySelector('.card-title').textContent;
+      if (!confirm(`確認已收到「${name}」整批教練課款項？（卡片上所有堂數一次核對）`)) return;
+      btn.disabled = true;
+      try {
+        const r = await api(`/api/admin/bookings/group/${btn.dataset.group}/confirm-payment`, { method: 'POST' });
+        toast(`已確認收款 ${r.confirmed} 堂，已通知會員`, 'success');
+        loadPendingOrders(); loadConfirmedPayments();
+      } catch (e) {
+        const msgs = { already_paid: '此批已全數核對過' };
+        toast(msgs[e.data?.error] || `確認失敗：${e.message}`, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
+  container.querySelectorAll('.cancel-booking-group-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.closest('article').querySelector('.card-title').textContent;
+      const reason = prompt(`取消「${name}」整批教練課預約？\n會釋出所有時段並以 LINE/系統通知顧客與教練。\n取消原因（可留空）：`);
+      if (reason === null) return;
+      btn.disabled = true;
+      try {
+        const r = await api(`/api/admin/bookings/group/${btn.dataset.group}/cancel`, { method: 'POST', body: { reason: reason.trim() } });
+        toast(`已取消 ${r.cancelled.length} 堂並通知顧客`, 'success');
+        loadPendingOrders(); loadConfirmedPayments();
+      } catch (e) {
+        const msgs = { no_pending_bookings: '此批沒有可取消的未收款預約' };
+        toast(msgs[e.data?.error] || `取消失敗：${e.message}`, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
   container.querySelectorAll('.cancel-booking-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const name = btn.closest('article').querySelector('.card-title').textContent;
@@ -1016,10 +1081,15 @@ async function loadConfirmedPayments() {
     }
     container.innerHTML = list.map(x => {
       const isBooking = x.type === 'booking';
-      const typeBadge = isBooking
-        ? `<span class="badge badge-completed">教練課${x.session_type === '1on2' ? '（1對2）' : ''}</span>`
-        : '<span class="badge badge-confirmed">團課</span>';
-      const refundBadge = x.refunded_at ? '<span class="badge badge-cancelled">已退款</span>' : '';
+      const isBookingGroup = x.type === 'booking_group';
+      const typeBadge = isBookingGroup
+        ? `<span class="badge badge-completed">教練課 ×${x.count} 堂${x.session_type === '1on2' ? '（1對2）' : ''}</span>`
+        : isBooking
+          ? `<span class="badge badge-completed">教練課${x.session_type === '1on2' ? '（1對2）' : ''}</span>`
+          : '<span class="badge badge-confirmed">團課</span>';
+      const refundBadge = x.refunded_at
+        ? '<span class="badge badge-cancelled">已退款</span>'
+        : (x.partial_refund ? '<span class="badge badge-cancelled">部分退款</span>' : '');
       const detail = isBooking ? fmtDate(x.detail) : x.detail;
       return `
         <article class="card confirmed-payment-row" data-type="${x.type}" data-id="${x.id}"
@@ -1052,12 +1122,13 @@ function bindConfirmedPaymentLongPress(container) {
       timer = setTimeout(() => {
         timer = null;
         if (card.dataset.refunded === '1') { toast('此筆已退款過', 'error'); return; }
-        const label = card.dataset.type === 'booking' ? '教練課預約' : '團課訂單';
+        const t = card.dataset.type;
+        const label = t === 'booking' ? '教練課預約' : t === 'booking_group' ? '整批教練課預約' : '團課訂單';
         const amt = card.dataset.amount ? `NT$${Number(card.dataset.amount).toLocaleString()}` : '款項';
-        const extra = card.dataset.type === 'group_order' ? '\n名額將釋出，候補者會遞補為新的待核對訂單。' : '\n時段將釋出。';
+        const extra = t === 'group_order' ? '\n名額將釋出，候補者會遞補為新的待核對訂單。' : '\n時段將釋出。';
         if (!confirm(`取消「${card.dataset.name}」的${label}並退款 ${amt}？${extra}\n（會以 LINE/系統通知顧客；實際退款請自行匯回）`)) return;
-        const url = card.dataset.type === 'booking'
-          ? `/api/admin/bookings/${card.dataset.id}/refund`
+        const url = t === 'booking' ? `/api/admin/bookings/${card.dataset.id}/refund`
+          : t === 'booking_group' ? `/api/admin/bookings/group/${card.dataset.id}/refund`
           : `/api/admin/group-orders/${card.dataset.id}/refund`;
         api(url, { method: 'POST' })
           .then(() => { toast('已取消並標記退款，已通知顧客', 'success'); loadPendingOrders(); loadConfirmedPayments(); })

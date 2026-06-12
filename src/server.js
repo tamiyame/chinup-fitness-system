@@ -35,6 +35,9 @@ import {
   listConfirmedPayments as svcListConfirmedPayments,
   cancelBookingAdmin as svcCancelBookingAdmin,
   refundBookingAdmin as svcRefundBookingAdmin,
+  confirmBookingPaymentGroup as svcConfirmBookingPaymentGroup,
+  cancelBookingAdminGroup as svcCancelBookingAdminGroup,
+  refundBookingGroupAdmin as svcRefundBookingGroupAdmin,
   recurringOccurrences as svcRecurringOccurrences,
   previewRecurringBookings as svcPreviewRecurring,
   createRecurringBookings as svcCreateRecurring,
@@ -1081,6 +1084,21 @@ app.post('/api/admin/bookings/:id/refund', requireAdmin, asyncHandler((req, res)
 }));
 app.post('/api/admin/group-orders/:id/refund', requireAdmin, asyncHandler((req, res) => {
   res.json(svcRefundGroupOrder({ orderId: Number(req.params.id), actorId: req.user.id }));
+}));
+// 循環教練課「整批」操作（卡片以 recurring_group_id 集中一張）
+app.post('/api/admin/bookings/group/:groupId/confirm-payment', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcConfirmBookingPaymentGroup({ groupId: Number(req.params.groupId), actorId: req.user.id }));
+}));
+app.post('/api/admin/bookings/group/:groupId/cancel', requireAdmin, asyncHandler((req, res) => {
+  const { reason } = req.body || {};
+  const r = svcCancelBookingAdminGroup({ groupId: Number(req.params.groupId), actorId: req.user.id, reason: (reason || '').trim() || null });
+  for (const id of r.cancelled) syncBookingCancel(id); // 逐堂刪日曆事件（不 await）
+  res.json(r);
+}));
+app.post('/api/admin/bookings/group/:groupId/refund', requireAdmin, asyncHandler((req, res) => {
+  const r = svcRefundBookingGroupAdmin({ groupId: Number(req.params.groupId), actorId: req.user.id });
+  for (const id of r.cancelled) syncBookingCancel(id);
+  res.json(r);
 }));
 
 // 手動觸發排程（用於測試 / 管理者按鈕）
