@@ -78,12 +78,14 @@
 
 <!-- Booking Modal -->
 <div id="booking-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-  <div class="bg-white rounded-xl shadow-xl w-full max-w-sm" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <div class="flex items-center justify-between p-4 border-b">
+  <!-- 限高 + 內容區滾動：循環預約/預覽展開時彈窗不得超出視窗（標題列固定） -->
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-sm" role="dialog" aria-modal="true" aria-labelledby="modal-title"
+       style="max-height:90vh;max-height:90dvh;display:flex;flex-direction:column;">
+    <div class="flex items-center justify-between p-4 border-b" style="flex-shrink:0;">
       <h2 id="modal-title" class="text-lg font-bold">填寫預約資訊</h2>
       <button id="modal-close-btn" class="text-slate-400 hover:text-slate-700 text-xl leading-none" aria-label="關閉">✕</button>
     </div>
-    <div class="p-4">
+    <div class="p-4" style="overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch;">
       <div class="card bg-slate-50 mb-4 text-sm">
         <div class="mb-1"><span class="text-slate-500">教練：</span><strong id="modal-coach-name"></strong></div>
         <div><span class="text-slate-500">時間：</span><strong id="modal-slot-time"></strong></div>
@@ -128,8 +130,8 @@
       <div class="mb-3">
         <span class="text-sm font-medium text-slate-700 block mb-1">課程型態 <span class="text-red-500">*</span></span>
         <div id="modal-session-type" class="grid grid-cols-2 gap-2" role="group" aria-label="課程型態">
-          <button type="button" data-type="1on1" class="session-type-btn border rounded-lg px-3 py-2 text-sm font-medium transition-colors">1對1</button>
-          <button type="button" data-type="1on2" class="session-type-btn border rounded-lg px-3 py-2 text-sm font-medium transition-colors">1對2</button>
+          <button type="button" data-type="1on1" class="session-type-btn border rounded-lg px-3 py-2 text-sm font-medium transition-colors">1對1<span id="price-1on1" class="block text-xs font-normal mt-0.5 opacity-80"></span></button>
+          <button type="button" data-type="1on2" class="session-type-btn border rounded-lg px-3 py-2 text-sm font-medium transition-colors">1對2<span id="price-1on2" class="block text-xs font-normal mt-0.5 opacity-80"></span></button>
         </div>
       </div>
 

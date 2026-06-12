@@ -54,8 +54,11 @@ expect('markPaid → 不進待核對', () => {
   assert.ok(!pending.data.some(x => cr.data.created.some(c => c.id === x.id)));
 });
 const done = await req('GET', '/api/admin/payments/confirmed', { token });
-expect('markPaid → 出現在已核對清單', () => {
-  assert.ok(cr.data.created.every(c => done.data.some(x => x.type === 'booking' && x.id === c.id)));
+expect('markPaid → 已核對清單合併為一列 booking_group（×3 堂、金額加總）', () => {
+  const g = done.data.find(x => x.type === 'booking_group' && x.id === cr.data.groupId);
+  assert.ok(g);
+  assert.equal(g.count, 3);
+  assert.equal(g.amount, 4500);
 });
 
 const av = await req('GET', `/api/coaches/${coachId}/availability?from=${day(5)}&to=${day(5)}`);

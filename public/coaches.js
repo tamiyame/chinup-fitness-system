@@ -473,15 +473,49 @@ const SESSION_TYPE_INACTIVE = ['bg-white', 'text-slate-700', 'border-slate-300',
 
 // 更新單堂價顯示（依目前選的課程型態）。價格載入失敗則隱藏整列。
 function refreshModalPrice() {
+  // 單堂價顯示在 1對1 / 1對2 按鈕下方（兩者並列可比價）
+  const s1 = document.getElementById('price-1on1');
+  const s2 = document.getElementById('price-1on2');
+  if (s1) s1.textContent = priceByType['1on1'] != null ? `單堂 $${priceByType['1on1'].toLocaleString()}` : '';
+  if (s2) s2.textContent = priceByType['1on2'] != null ? `單堂 $${priceByType['1on2'].toLocaleString()}` : '';
+
   const priceRow = $('modal-price-row');
   const priceLabel = $('modal-price-label');
+  const msgEl = $('modal-discount-msg');
   const price = priceByType[modalSessionType];
-  if (price != null) {
-    priceLabel.textContent = `${SESSION_TYPE_LABELS[modalSessionType]} 單堂 $${price.toLocaleString()}`;
-    priceRow.classList.remove('hidden');
-  } else {
+  const recurring = typeof recurringEnabled === 'function' && recurringEnabled();
+  const n = recurring ? (recurringState.previewed ? recurringState.okCount : (Number($('recurring-count').value) || 0)) : 1;
+
+  // 總計列：只在循環模式顯示（單筆模式單堂價已在按鈕下方，折扣金額在訊息列）
+  if (!recurring || price == null || n < 1) {
     priceRow.classList.add('hidden');
+    // 折扣訊息同步回單筆語意
+    if (modalAppliedDiscount) {
+      msgEl.textContent = `折扣套用成功：折後現場應付 $${modalAppliedDiscount.finalTotal.toLocaleString()}`;
+      msgEl.style.color = '#15803d';
+      msgEl.classList.remove('hidden');
+    }
+    return;
   }
+
+  const baseNote = recurringState.previewed ? `${n} 堂` : `${n} 堂，以預覽結果為準`;
+  let total;
+  if (modalAppliedDiscount) {
+    // 折扣逐堂套用：限次數的碼只折得到「剩餘可用次數」堂，其餘原價（混合計算）
+    const remaining = modalAppliedDiscount.remainingUses; // null = 不限次數
+    const dCount = remaining == null ? n : Math.max(0, Math.min(n, remaining));
+    total = modalAppliedDiscount.finalTotal * dCount + price * (n - dCount);
+    const mixNote = dCount < n ? `＝${dCount} 堂折扣＋${n - dCount} 堂原價` : '';
+    priceLabel.textContent = `折後預估總計 $${total.toLocaleString()}（${baseNote}${mixNote}）`;
+    // 折扣訊息金額與預估總計同步
+    msgEl.textContent = `折扣套用成功：折後預估總計 $${total.toLocaleString()}`;
+    msgEl.style.color = '#15803d';
+    msgEl.classList.remove('hidden');
+  } else {
+    total = price * n;
+    priceLabel.textContent = `應付總計 $${total.toLocaleString()}（${baseNote}）`;
+  }
+  priceRow.classList.remove('hidden');
 }
 
 // 套用選取按鈕樣式（active / inactive）。
@@ -514,6 +548,7 @@ function setSessionType(type) {
     msgEl.textContent = '課程型態已變更，請重新套用折扣碼';
     msgEl.style.color = '#b45309';
     msgEl.classList.remove('hidden');
+    refreshModalPrice();
   }
 }
 
@@ -579,6 +614,7 @@ function invalidateRecurringPreview() {
   $('recurring-preview-result').classList.add('hidden');
   $('recurring-preview-result').innerHTML = '';
   refreshRecurringSubmit();
+  refreshModalPrice();
 }
 
 function refreshRecurringSubmit() {
@@ -656,6 +692,7 @@ $('recurring-preview-btn').addEventListener('click', async () => {
     $('recurring-preview-result').classList.remove('hidden');
     recurringState = { previewed: true, okCount };
     refreshRecurringSubmit();
+    refreshModalPrice();
   } catch (e) {
     toast(`預覽失敗：${escapeHtml(e.data?.error || e.message)}`, 'error');
   } finally {
@@ -717,12 +754,11 @@ $('modal-apply-discount').addEventListener('click', async () => {
       method: 'POST',
       body: { kind: 'one_on_one', code, phone: rawPhone, sessionType: modalSessionType },
     });
-    modalAppliedDiscount = { code: code.toUpperCase(), discountAmount: result.discount_amount, finalTotal: result.final_total };
-    msgEl.textContent = `折扣套用成功：折後現場應付 $${result.final_total.toLocaleString()}`;
-    msgEl.style.color = '#15803d';
-    msgEl.classList.remove('hidden');
+    modalAppliedDiscount = { code: code.toUpperCase(), discountAmount: result.discount_amount, finalTotal: result.final_total, remainingUses: result.remaining_uses ?? null };
+    refreshModalPrice(); // 訊息（單筆：折後現場應付／循環：折後預估總計）由此統一寫入
   } catch (err) {
     modalAppliedDiscount = null;
+    refreshModalPrice();
     const errCode = err.data?.error;
     let msg;
     if (errCode === 'invalid_code') {
