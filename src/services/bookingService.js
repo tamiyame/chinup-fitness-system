@@ -200,6 +200,32 @@ export function cancelBookingAnon({ bookingId, phone, name }) {
   });
 }
 
+/** admin 於後台取消教練課預約（待核對匯款卡片的「取消預約」）。
+ *  與顧客/教練取消同語意：釋放折扣、時段釋出；通知會員＋該教練。 */
+export function cancelBookingAdmin({ bookingId, actorId, reason = null }) {
+  return tx(() => {
+    const b = getBookingStmt.get(bookingId);
+    if (!b) throw new ApiError(404, 'booking_not_found');
+    if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
+    cancelBookingStmt.run(nowLocal(), actorId, reason, bookingId);
+    releaseRedemption({ kind: 'booking', refId: bookingId });
+    const coach = getCoachStmt.get(b.coach_id);
+    const memberRow = getUserNameStmt.get(b.member_id);
+    if (coach && memberRow) {
+      const startFmt = fmtDateForLine(b.start_at);
+      notify({ userId: b.member_id, sessionId: null, type: 'booking_cancelled_by_shop',
+        vars: { coach_display_name: coach.display_name, start_at: startFmt,
+                reason_suffix: reason ? `（原因：${reason}）` : '' } });
+      // 不通知取消操作者本人（admin 可能同時就是該教練）
+      if (coach.user_id !== actorId) {
+        notify({ userId: coach.user_id, sessionId: null, type: 'booking_cancelled_by_shop_coach',
+          vars: { member_name: memberRow.name, start_at: startFmt } });
+      }
+    }
+    return { ok: true };
+  });
+}
+
 export function listMemberBookings(memberId) {
   return listMemberStmt.all(memberId);
 }

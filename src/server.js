@@ -33,6 +33,7 @@ import {
   listPendingPaymentBookings as svcListPendingPaymentBookings,
   confirmBookingPayment as svcConfirmBookingPayment,
   listConfirmedPayments as svcListConfirmedPayments,
+  cancelBookingAdmin as svcCancelBookingAdmin,
 } from './services/bookingService.js';
 import {
   createGroupOrder as svcCreateGroupOrder,
@@ -1016,6 +1017,13 @@ app.post('/api/admin/bookings/:id/confirm-payment', requireAdmin, asyncHandler((
 }));
 app.get('/api/admin/payments/confirmed', requireAdmin, asyncHandler((req, res) => {
   res.json(svcListConfirmedPayments());
+}));
+app.post('/api/admin/bookings/:id/cancel', requireAdmin, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const { reason } = req.body || {};
+  const r = svcCancelBookingAdmin({ bookingId: id, actorId: req.user.id, reason: (reason || '').trim() || null });
+  syncBookingCancel(id); // commit 後（svc 的 tx 已結束）、不 await
+  res.json(r);
 }));
 
 // 手動觸發排程（用於測試 / 管理者按鈕）

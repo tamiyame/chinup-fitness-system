@@ -7,7 +7,7 @@ const { confirmBookingPayment, listPendingPaymentBookings, listConfirmedPayments
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 console.log('[booking-payment test] start');
-db.exec("DELETE FROM notifications; DELETE FROM bookings; DELETE FROM group_orders; DELETE FROM coaches; DELETE FROM users WHERE email LIKE 'bp-%'");
+db.exec("DELETE FROM notifications; DELETE FROM bookings; DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM coaches; DELETE FROM users WHERE email LIKE 'bp-%'");
 
 const cuid = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('教練丙','bp-c@x.com','coach')").run().lastInsertRowid);
 const coachId = Number(db.prepare("INSERT INTO coaches (user_id, display_name, is_active) VALUES (?, '教練丙', 1)").run(cuid).lastInsertRowid);
@@ -77,5 +77,5 @@ expect('listConfirmedPayments：教練課＋團課合併、按 paid_at DESC', ()
   assert.equal(b.amount, 1400);
 });
 
-db.exec("DELETE FROM notifications; DELETE FROM bookings; DELETE FROM group_orders; DELETE FROM coaches; DELETE FROM users WHERE email LIKE 'bp-%'");
+db.exec("DELETE FROM notifications; DELETE FROM bookings; DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM coaches; DELETE FROM users WHERE email LIKE 'bp-%'");
 console.log('[booking-payment test] done');
