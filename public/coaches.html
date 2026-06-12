@@ -87,6 +87,42 @@
       <div class="card bg-slate-50 mb-4 text-sm">
         <div class="mb-1"><span class="text-slate-500">教練：</span><strong id="modal-coach-name"></strong></div>
         <div><span class="text-slate-500">時間：</span><strong id="modal-slot-time"></strong></div>
+        <!-- 員工限定：循環預約（登入教練/管理者才顯示；後端 requireCoach 強制） -->
+        <div id="recurring-row" class="hidden mt-2 pt-2" style="border-top:1px solid #e2e8f0;">
+          <label class="flex items-center gap-2 text-sm font-medium text-slate-700" style="cursor:pointer;">
+            <input id="recurring-enabled" type="checkbox" style="accent-color:#0284c7;width:15px;height:15px;flex-shrink:0;">
+            開啟循環預約（員工排課）
+          </label>
+        </div>
+      </div>
+
+      <!-- 循環預約設定（勾選後展開） -->
+      <div id="recurring-fields" class="hidden card mb-4 text-sm" style="background:#f0f9ff;border:1px solid #bae6fd;">
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <label class="block">
+            <span class="text-xs font-medium text-slate-600">重複頻率</span>
+            <select id="recurring-frequency" class="mt-1 w-full border rounded-lg px-2 py-1.5 text-sm bg-white">
+              <option value="weekly" selected>每週</option>
+              <option value="daily">每日</option>
+              <option value="monthly">每月</option>
+              <option value="custom">自訂間隔</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-xs font-medium text-slate-600">共幾次（含本堂）</span>
+            <input id="recurring-count" type="number" min="2" max="52" step="1" value="4" class="mt-1 w-full border rounded-lg px-2 py-1.5 text-sm">
+          </label>
+        </div>
+        <label id="recurring-interval-row" class="block mb-2 hidden">
+          <span class="text-xs font-medium text-slate-600">每幾天重複一次（1–90）</span>
+          <input id="recurring-interval" type="number" min="1" max="90" step="1" value="3" class="mt-1 w-full border rounded-lg px-2 py-1.5 text-sm">
+        </label>
+        <label class="flex items-center gap-2 text-sm text-slate-700 mb-2" style="cursor:pointer;">
+          <input id="recurring-markpaid" type="checkbox" style="accent-color:#16a34a;width:15px;height:15px;flex-shrink:0;">
+          款項已收（包堂/預付，直接標記已核對）
+        </label>
+        <button id="recurring-preview-btn" type="button" class="btn-secondary w-full text-sm">預覽場次</button>
+        <div id="recurring-preview-result" class="mt-2 hidden text-xs" style="max-height:180px;overflow-y:auto;"></div>
       </div>
 
       <div class="mb-3">

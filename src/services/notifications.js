@@ -82,6 +82,14 @@ const TEMPLATES = {
     subject: '訂單取消與退款通知',
     body: '✅ 您的團課訂單{{amount_text}}已取消，款項將退還給您，請留意帳戶；若有疑問請與我們聯繫。',
   },
+  booking_recurring_created: {  // 寄給會員（教練/管理者建立循環預約）
+    subject: '已為您安排 {{count}} 堂課程 - {{coach_display_name}}',
+    body: '✅ 已為您安排 {{count}} 堂 {{coach_display_name}} 教練課（{{freq_text}}），第一堂 {{first_at}}。可至「我的課表」查看全部場次。',
+  },
+  booking_recurring_created_coach: {  // 寄給教練/管理者（中性第三人稱）
+    subject: '循環課程已排定 - {{member_name}}',
+    body: '🏋️ {{member_name}} 的 {{count}} 堂循環課程已排定（{{freq_text}}），第一堂 {{first_at}}。',
+  },
 
   // === new 2 (anon paid-group redesign) ===
   payment_received: {
