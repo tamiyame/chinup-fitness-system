@@ -1,299 +1,196 @@
-# Chin-Up Fitness · 團體課程報名系統
+# CHINUP Performance · 健身房預約管理系統
 
-精簡的團體健身課程報名系統，涵蓋管理者排課、會員報名、滿員候補、截止成班判定、多通道通知。
+小型健身房的一站式預約系統：**一對一教練課**（免註冊預約、循環排課、付款核對、Google 日曆雙向同步）＋**團體課程**（循環排課、匯款訂單、候補遞補）＋ LINE / Email 通知 ＋ 完整管理後台。
+
+## 系統總覽
+
+| 入口 | 對象 | 說明 |
+|---|---|---|
+| `/coaches.html` | 顧客（免登入） | 一對一教練課預約：選教練 → 選時段 → 姓名＋電話送出 |
+| `/group.html`（首頁入口） | 顧客（免登入） | 團體課程報名：勾場次 → 產生匯款訂單 |
+| `/my-schedule` | 顧客（免登入） | 姓名＋電話查課表、取消預約/報名、團課請假 |
+| `/coach.html` | 教練 | 班表管理（每週基底＋請假/加開）、預約清單、LINE 綁定 |
+| `/admin.html` | 管理者 | 分頁籤後台：總覽／課程／報名作業／會員／教練／折扣碼／通知 |
+
+**身分模型**：顧客不需帳號（以「電話」為身分、姓名驗證）。員工角色只有 `user`／`coach` 兩種，**管理者＝帶 `is_admin` 標籤的教練**；員工以 Email＋密碼或 Google 帳號登入。
 
 ## 功能特色
 
-- **排課範本**：管理者設定每週 / 每月 / 每兩個月 / 每季 / 每半年的循環課程，指定星期幾、時間、時長、週期起訖日，系統自動展開所有實際場次。
-- **人數管理**：每場次可設人數下限與上限。未達下限 → 課程取消；已達上限 → 後續報名進入候補。
-- **候補遞補**：正取取消時，候補第一位自動遞補為正取並發通知。
-- **截止判定**：報名截止時間到（預設開課前 24h），系統自動判斷成班 / 取消。
-- **通知**：報名成功、進入候補、遞補成功、課程成立、課程取消、上課前提醒，依會員偏好寄 Email / SMS（本專案以 DB log + console 模擬）。
-- **帳號系統**：Email + 密碼登入（scrypt 雜湊）、token session、角色分級（admin / user）。
-- **管理後台**：儀表板統計、範本 CRUD、場次名單、手動觸發截止與提醒、通知紀錄檢視。
+### 一對一教練課
 
-## 一對一預約模組（Phase 1）
+- **班表引擎**：教練自助設定每週基底班表（可多時段）＋特殊日期（整天/部分時段請假、加開），60 分鐘 slot、2 小時預約緩衝、**預約日期無上限**。
+- **全店容量上限**：以整點切桶，每小時全店（跨教練）最多 N 人（後台可調，預設 3）；1對1 佔 1 名額、1對2 佔 2 名額，非整點預約同時佔兩個桶。
+- **1對1／1對2 方案**：單堂價各自於後台設定，預約時切換。
+- **付款狀態流**：預約成立＝「待確認」→ 出現在後台「待核對匯款」→ 管理者按「已收款」→ 顧客收 LINE/Email 通知、狀態轉「已確認」、紀錄移入「已核對匯款」（含核對時間與經手人）。已核對卡片**長按**可「取消預約並退款」。
+- **循環預約（員工限定）**：教練/管理者在預約彈窗勾「開啟循環預約」——每日/每週/每月/自訂間隔 × 最多 52 次，**預覽逐場狀態後跳過衝突建立**；可勾「款項已收」直接全批標已核對；同一批在待核對/已核對清單**集中一張卡**，支援整批收款/取消/退款。
+- **防撞期**：送出時重新驗證時段合法性（班表/請假/容量/同教練重疊/日曆封鎖），DB 唯一索引＋交易內容量檢查兜底併發。
 
-教練自助管理班表 + 會員瀏覽教練線上預約。
+### 團體課程
 
-### 新角色：coach
+- **排課範本**：每週／每月／每兩月／每季／每半年循環，指定授課教練，自動展開場次；單一場次可手動開放/關閉。
+- **匯款訂單**：免登入勾選多場次 → 產生訂單（顯示匯款資訊與付款期限，**期限後台可調，預設 72 小時**，逾期自動取消釋出名額）；純候補不產生訂單。
+- **候補遞補**：名額釋出（取消/請假/退款/逾期）自動遞補最早候補者 → 產生 24 小時付款單回到「待核對匯款」；**同會員連續遞補自動併單**（一張卡、一次匯款、一則通知）。
+- **成班判定**：報名截止（預設開課前 24h）自動判斷成班／未達最低人數取消並通知（每小時 cron＋後台手動觸發）。
+- **團課請假**：已付款會員可於開課前請假，釋出名額遞補、不退款。
 
-- 介於 `admin` 和 `user` 之間
-- 自助登入後可改 profile、設可預約時段、看自己的預約、緊急取消
-- 不能管其他教練或會員（限 admin 以上）
+### Google 整合（皆為選配，未設定時自動停用）
 
-### 功能流程
+- **Google 日曆雙向同步**（Service Account，零 npm 依賴）：
+  - 預約成立自動建立日曆事件（冪等 ID，取消自動刪除，5 分鐘 reconcile cron 兜底）
+  - 系統事件標記「有空」(transparent) → 你在日曆**手動建立的「忙碌」活動會封鎖可預約時段**（freebusy），手動活動改「有空」即不擋
+- **Gmail 確認信**（OAuth refresh token，後台一鍵授權）：預約確認信（Email 選填）、款項確認信、循環預約摘要信；失敗走通知重試佇列。
 
-1. 註冊時勾選「我是教練」→ 帳號為 coach，待 admin 啟用
-2. Admin 在 `/admin.html` → 「教練管理」啟用、或把現有 user 升為教練
-3. 教練在 `/coach.html` 設可預約時段（每週基底 + 例外覆寫）
-4. 會員在 `/coaches.html` 瀏覽教練 → 點開詳細 → 選 60 分鐘時段 → 預約
-5. 會員 / 教練在 `/my-bookings.html` / `/coach.html` 看到預約並可取消
+### 通知
 
-### 設定預設值（Phase 1 寫死於程式碼）
+- **LINE Messaging API**：預約/取消/款項/遞補/成班等近 30 種模板；顧客以 6 位數綁定碼綁定官方帳號；員工後台自助綁定。失敗自動退避重試（5/15/45 分鐘，3 次後標永久失敗）。
+- **Email**（Gmail API）：與 LINE 共用通知重試機制。
+- 未綁定/未設定 → console 紀錄 fallback，通知一律落 `notifications` 表可後台檢視。
 
-| 設定 | 值 |
-|---|---|
-| Slot 長度 | 60 分鐘 |
-| Buffer | 預約時不能選 < 2 小時後的時段 |
-| Window | 預約只能往後 30 天 |
-| 點數 | Phase 1 不接，Phase 2 再加 |
-| 取消 | 隨時可取消，policy 是無條件退點（Phase 1 純取消，無退點動作） |
+### 折扣碼
 
-### 設計 / 計畫文件
+百分比／定額兩種，支援啟用區間、總量上限、每人上限、最低消費；適用團課訂單與教練課（含循環預約**逐堂套用**，額度用罄自動回原價，前端顯示「X 堂折扣＋Y 堂原價」混合估價）。
 
-- `docs/superpowers/specs/2026-05-11-one-on-one-booking-design.md`
-- `docs/superpowers/plans/2026-05-11-one-on-one-booking.md`
+### 管理後台（分頁籤）
 
-## 點數系統（Phase 2）
-
-點數作為預約的「貨幣」，admin 手動加點、會員預約扣點、取消退點。
-
-### 兩個池子（獨立）
-
-- **一對一池子**：扣減於一對一預約 / 退於一對一取消
-- **團體池子**：扣減於團體報名（含候補）/ 退於團體取消、不成班自動退
-
-### 模型
-
-單一 `point_transactions` 表，每筆加減點是一個有號 row。當前餘額 = `SUM(amount) WHERE member_id = ? AND pool = ?`。所有寫入用 `tx() BEGIN IMMEDIATE`，post-insert 餘額 < 0 → rollback。
-
-### Admin 操作
-
-`/admin.html` 會員管理 section：
-- 看每人 PT/團體 餘額
-- 「加點」按鈕：pool 選一對一 / 團體、金額（可負）、必填備註
-- 「歷史」按鈕：看該會員最近 100 筆交易（含 source、actor、note）
-
-### 會員體驗
-
-- Navbar 右上角膠囊：`[PT N · 團 M]`，0 點時紅字
-- 預約 / 報名頁：餘額 0 → 確認鈕 disabled，提示「請聯絡管理員儲值」
-- 取消預約 / 報名 → 自動退點，無條件、無時限
-
-### 設計 / 計畫文件
-
-- `docs/superpowers/specs/2026-05-12-points-system-design.md`
-- `docs/superpowers/plans/2026-05-12-points-system.md`
-
-### Phase 2 部署 SOP（**一次性、僅限本次 dev 階段**）
-
-```bash
-# 在 Railway shell 跑
-rm -f data/app.db && node src/db/migrate.js && node src/db/seed-demo.js
-```
-
-下次 schema 變動必須走真正的 migration，**不能再清 DB**。
+- **總覽**：營運統計
+- **課程**：範本 CRUD、場次名單（依報名時間新→舊）、單場開關
+- **報名作業**：待核對匯款（團課訂單＋教練課合併清單、課程名稱分組）、已核對匯款（長按退款）、系統操作（手動截止/提醒，附「?」說明）
+- **會員**：即時搜尋（姓名/電話）、長按編輯（含角色/管理者標籤變更）、軟刪除封存（同電話再預約自動還原）
+- **教練**：啟用/停用、資料編輯、降為一般用戶
+- **折扣碼**：CRUD＋使用統計；**營運設定**：單堂價、匯款帳號、官方 LINE 連結、團課付款期限、Google 日曆 ID、每小時容量、Gmail 授權
+- **通知**：發送紀錄
 
 ## 技術棧
 
 | 層 | 技術 |
 |---|---|
-| 後端 | Node.js 24 (ESM) · Express · `node:sqlite` (內建) · node-cron |
-| 資料庫 | SQLite（WAL mode、手動 transaction） |
-| 密碼 | Node 內建 `crypto.scrypt` + 32-byte session token |
-| 前端 | Vanilla JS (ES module) · 自建 CSS design system · Tailwind CDN（輔助 layout）|
-| 字型 | Inter + Noto Sans TC |
+| 後端 | Node.js ≥ 24（ESM）· Express 4 · `node:sqlite`（內建）· node-cron |
+| 資料庫 | SQLite（WAL、`BEGIN IMMEDIATE` 交易、開機冪等遷移） |
+| 外部 API | LINE Messaging API、Google Calendar v3、Gmail v1 —— **全部零 npm 依賴**（native fetch ＋ `node:crypto` RS256/HMAC） |
+| 密碼/Session | `crypto.scrypt` ＋ 32-byte token |
+| 前端 | Vanilla JS（ES module）· 自建 CSS design system · Tailwind CDN 輔助 |
+
+唯二的 npm 依賴：`express`、`node-cron`。
 
 ## 快速開始
 
 ```bash
-# 安裝依賴
 npm install
-
-# 初始化資料庫（schema + 示範資料）
-npm run migrate
-node src/db/seed-demo.js    # 或 npm run seed 只建立帳號
-
-# 啟動 server
+npm run seed                # 建立 schema + 初始管理者
+node src/db/seed-demo.js    # （選用）示範課程/教練/預約資料
 npm start                   # http://localhost:3000
 ```
 
-### 測試帳號
+### 測試帳號（本地預設）
 
 | 角色 | 帳號 | 密碼 |
 |---|---|---|
 | 管理者 | `admin@chinup.local` | `admin1234` |
-| 會員 | `user{1..12}@chinup.local` | `pass1234` |
+
+顧客端免帳號：任何姓名＋電話即可預約/報名，`/my-schedule` 以同組姓名電話查詢。
 
 ### 測試
 
 ```bash
-node tests/flow.test.js          # 團體課核心流程單元測試
-node tests/booking-flow.test.js  # 一對一 + 點數系統單元測試
-node tests/api.test.js           # 既有 HTTP API 整合測試（需 server 先啟動）
-node tests/booking-api.test.js   # 一對一 + 點數 HTTP 整合測試（同上）
+# 單元測試（離線；會清掉本地 data/app.db 的 demo 資料，跑完請重新 seed）
+npm test
+
+# API 整合測試（需先以 mock 環境啟動 server）
+LINE_MOCK=1 GCAL_MOCK=1 GMAIL_MOCK=1 GOOGLE_CLIENT_ID=test-client-id PORT=3100 node src/server.js &
+BASE=http://localhost:3100 npm run test:api
 ```
+
+## 環境變數
+
+| 變數 | 必要性 | 說明 |
+|---|---|---|
+| `PORT` | 選 | 預設 3000（Railway 自動注入） |
+| `DB_PATH` | 部署必須 | SQLite 路徑；Railway 掛 Volume 後設 `/app/data/app.db` |
+| `TZ` | 部署必須 | `Asia/Taipei`（Dockerfile 已內建，平台再設一次保險） |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | 建議 | 開機建立初始管理者；未設則建預設帳號並印警告 |
+| `PUBLIC_URL` | 建議 | 對外網址（OAuth redirect、信件連結用） |
+| `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_CHANNEL_SECRET` | LINE 功能 | LINE Messaging API 憑證 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google 功能 | OAuth 用戶端（員工 Google 登入＋Gmail 授權共用） |
+| `GCAL_SERVICE_ACCOUNT_JSON` | 日曆同步 | Service Account JSON 金鑰（原始 JSON 或 base64） |
+| `GMAIL_REFRESH_TOKEN` | 寄信 | 後台「Gmail 寄信授權」取得後貼入 |
+| `GMAIL_FROM` | 選 | 寄件顯示名稱，如 `CHINUP Performance <you@gmail.com>` |
+| `LINE_MOCK` / `GCAL_MOCK` / `GMAIL_MOCK` | 測試 | `1`=模擬成功、`fail`=模擬失敗（離線測試用） |
+
+## Google 整合設定（一次性）
+
+1. GCP 專案啟用 **Calendar API** 與 **Gmail API**。
+2. **日曆同步**：建 Service Account → 下載 JSON 金鑰 → 設 `GCAL_SERVICE_ACCOUNT_JSON`；店家 Google 日曆「設定與共用」把 SA email 加為「**進行變更**」；後台營運設定填入日曆 ID（留空＝關閉同步）。啟用後 5 分鐘內既有未來預約自動補建事件。
+3. **Gmail 寄信**：OAuth 用戶端加 redirect URI `{PUBLIC_URL}/api/admin/gmail-auth/callback`；同意畫面**發布為正式版**（測試模式 refresh token 7 天過期）；後台按「Gmail 寄信授權」→ 將顯示的 refresh token 貼到 `GMAIL_REFRESH_TOKEN`。
+
+## LINE 設定（一次性）
+
+1. [LINE Developers](https://developers.line.biz/) 建 Messaging API channel，取得 access token 與 channel secret 設入環境變數。
+2. Webhook URL 設 `https://<domain>/api/line/webhook`、開啟 Use webhook、關閉自動回覆與加好友歡迎訊息。
+3. 後台營運設定填「官方 LINE 加入連結」；顧客預約成功頁會拿到 6 位數綁定碼，加好友後貼上即完成綁定。
+
+## 排程（node-cron，`src/scheduler.js`）
+
+| 排程 | 頻率 | 工作 |
+|---|---|---|
+| 截止判定 | 每小時 | 成班/未達人數取消＋通知 |
+| 上課提醒 | 每日 09:00 | 24 小時內場次提醒 |
+| 訂單逾期 | 每 10 分鐘 | 逾期未付訂單取消、釋名額遞補 |
+| 通知重試 | 每 5 分鐘 | LINE/Email 失敗退避重試 |
+| 日曆 reconcile | 每 5 分鐘 | 補建/補刪 Google 日曆事件 |
+| 備份 | 每週日 03:00 | `VACUUM INTO` 快照至 `data/backups/` |
 
 ## 架構
 
 ```
 src/
-  server.js                 # Express app + auth middleware + 路由
-  scheduler.js              # node-cron: 每小時截止、每日 09:00 提醒
+  server.js                # Express app、auth middleware、全部路由
+  scheduler.js             # node-cron 排程
   db/
-    connection.js           # SQLite + tx() helper + nowLocal()
-    migrate.js              # schema 建立
-    seed.js / seed-demo.js  # 基本/示範資料
+    connection.js          # SQLite + 開機冪等遷移 + tx()/nowLocal()
+    schema.js  seed.js  seed-demo.js
   services/
-    auth.js                 # scrypt 雜湊 + session 管理
-    courseService.js        # 範本 CRUD、場次展開、截止判定、提醒
-    registration.js         # 報名、取消、候補遞補（transaction-safe）
-    schedule.js             # 純函式：依 recurrence 展開場次
-    notifications.js        # 通知模板 + 扇出（email/sms）
+    auth.js                # scrypt + session + Google 登入 + 初始管理者
+    availabilityService.js # 班表/請假/加開、slot 計算、容量桶、預約守門
+    bookingService.js      # 一對一預約/取消/付款核對/退款/循環預約/整批操作
+    courseService.js       # 團課範本/場次展開/截止判定/提醒
+    groupOrderService.js   # 團課訂單/候補遞補/逾期/退款/公開課表
+    registration.js        # 登入會員報名（legacy 路徑）+ ApiError
+    discountService.js     # 折扣碼 + app_settings 存取
+    notifications.js       # 通知模板/分流/重試
+    lineClient.js  lineBindingService.js
+    googleAuth.js  gcalClient.js  gcalSync.js   # Google 日曆（零依賴）
+    gmailClient.js  emailService.js              # Gmail 寄信（零依賴）
+    userService.js  coachService.js  backupService.js
 public/
-  login.html / index.html / my.html / admin.html
-  app.js                    # auth helpers + bootAuth + API client
-  courses.js / admin.js
-  style.css                 # 設計系統 (design tokens + components)
-tests/
-  flow.test.js api.test.js
+  index.html  group.js          # 團課報名
+  coaches.html  coaches.js      # 一對一預約（含循環預約）
+  my-schedule.html  my-schedule.js
+  coach.html  coach.js          # 教練後台
+  admin.html  admin.js          # 管理後台
+  login.html  app.js  style.css
+tests/                          # 30+ 測試檔（npm test / npm run test:api）
+docs/superpowers/specs|plans/   # 各功能設計與實作計畫文件
 ```
 
-### 資料模型
+### 資料模型（核心表）
 
-- **users** — id, name, email (unique), phone, password_hash, role, notification_preference
-- **auth_sessions** — token (PK), user_id, expires_at
-- **course_templates** — 課程範本（人數、星期、時間、週期）
-- **course_sessions** — 展開後的實際場次（含 status、人數快取）
-- **registrations** — 報名紀錄（status: confirmed / waitlisted / cancelled / rejected）
-- **notifications** — 通知 log
+- **users** — 顧客（電話身分）與員工（email 登入）；`role` user/coach、`is_admin` 標籤、LINE 綁定欄位、封存
+- **coaches** — 教練檔案（user 1:1）、啟用狀態
+- **coach_availability_rules / _exceptions** — 每週基底班表／請假與加開
+- **bookings** — 一對一預約：時段、方案、折扣、`paid_at/paid_by`（付款核對）、`refunded_at/by`、`gcal_event_id`、`recurring_group_id`（循環批次）
+- **course_templates / course_sessions** — 團課範本與展開場次
+- **group_orders / registrations** — 匯款訂單與報名列（pending/confirmed/waitlisted/cancelled、請假標記）
+- **discount_codes / discount_redemptions** — 折扣碼與兌換紀錄
+- **notifications** — 全通道通知 log（channel: line/email/console、重試欄位）
+- **app_settings** — 營運設定 KV（單堂價、匯款資訊、LINE 連結、日曆 ID、容量、訂單期限）
 
-### 核心流程
+## 部署（Railway）
 
-- **報名**：transaction 內鎖 session，confirmed_count < max → 正取；否則進候補。
-- **取消**：正取取消 → 候補第一位自動轉正取並發通知；候補序號重新整理。
-- **截止（每小時）**：deadline 到 → 若 confirmed ≥ min → 成班通知；否則 cancel session，所有報名者標 rejected + 通知。
-- **提醒（每日 09:00）**：24 小時內的 confirmed 場次 → 寄提醒給正取名單（避免重複）。
-
-## API
-
-### Auth
-- `POST /api/auth/login` `{ email, password }` → `{ token, user }`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-
-### 會員
-- `GET /api/sessions` — 瀏覽可報名場次
-- `POST /api/sessions/:id/register` — 報名
-- `DELETE /api/registrations/:id` — 取消
-- `GET /api/my/registrations` — 我的報名
-
-### 管理者
-- `GET|POST /api/admin/templates` — 範本 CRUD
-- `PATCH /api/admin/templates/:id`
-- `GET /api/admin/templates/:id` — 含所有場次
-- `GET /api/admin/sessions/:id/registrations` — 名單
-- `GET /api/admin/notifications` — 通知紀錄
-- `POST /api/admin/jobs/process-deadlines` — 手動截止判定
-- `POST /api/admin/jobs/send-reminders` — 手動寄提醒
-
-## 部署到 Railway
-
-本專案已備好 `railway.json` 與自動 schema / admin 初始化。步驟：
-
-1. 到 [Railway](https://railway.com) 新建專案 → Deploy from GitHub repo → 選本 repo
-2. **環境變數**（Settings → Variables）：
-   ```
-   ADMIN_EMAIL=你的email
-   ADMIN_PASSWORD=強密碼
-   DB_PATH=/app/data/app.db
-   ```
-3. **Volume**（Settings → Volumes）：掛到 `/app/data`（儲存 SQLite，避免每次重啟遺失）
-4. **Domain**（Settings → Networking → Generate Domain）：拿到 `https://xxx.up.railway.app`
-
-系統啟動時會自動建立 schema 並依環境變數建立管理員；未設定 env 則建立預設 `admin@chinup.local / admin1234` 並印警告。
+1. Deploy from GitHub repo（push `main` 即自動部署）。
+2. Volume 掛載 `/app/data`，環境變數至少設：`DB_PATH=/app/data/app.db`、`TZ=Asia/Taipei`、`ADMIN_EMAIL`、`ADMIN_PASSWORD`。
+3. 其餘整合（LINE／Google）依上方各節逐步啟用——全部都是選配，未設定不影響核心預約功能。
+4. Schema 遷移於開機自動執行（冪等）；每週自動備份，破壞性變更前請先手動備份 Volume 中的 DB。
 
 ## License
 
 MIT
-
-## Phase 3C: LINE 通知設定
-
-通知系統使用 LINE Messaging API 推播。Operator 一次性設定步驟：
-
-### 1. 在 LINE Developers 建立 Channel
-
-1. 登入 https://developers.line.biz/
-2. Create Provider（任意名稱，例：CHINUP Gym）
-3. 在該 Provider 下 Create a new channel → 選 **Messaging API**
-4. 填寫 channel 資訊（icon、display name 都會顯示給綁定的會員看）
-
-### 2. 取得三個值
-
-從 LINE Developers Console 該 channel 頁面取得：
-
-| 值 | 環境變數 |
-|---|---|
-| **Channel access token (long-lived)** ← 在 Messaging API 分頁底部 Issue | `LINE_CHANNEL_ACCESS_TOKEN` |
-| **Channel secret** ← 在 Basic settings 分頁 | `LINE_CHANNEL_SECRET` |
-| **Bot basic ID** (e.g. `@chinup`) ← Messaging API 分頁 | `LINE_OFFICIAL_ACCOUNT_ID` |
-
-### 3. 設定 webhook URL
-
-在 LINE Console 的 Messaging API 分頁：
-
-1. Webhook URL: `https://<your-domain>/api/line/webhook`
-2. 開啟 **Use webhook**
-3. **關閉** Auto-reply messages（避免 bot 自動覆蓋我們的 reply）
-4. **關閉** Greeting messages
-
-### 4. 下載 QR PNG
-
-在 LINE Console 同一分頁可下載 friend-add QR code。存成：
-
-```
-public/line-qr.png
-```
-
-（已加入 `.gitignore`，不會 commit。會員開啟 `/line.html` 時會看到此圖。）
-
-### 5. 設環境變數
-
-**本地 dev** — 建立 `.env`（已 gitignore）：
-
-```bash
-LINE_CHANNEL_ACCESS_TOKEN=...
-LINE_CHANNEL_SECRET=...
-LINE_OFFICIAL_ACCOUNT_ID=@yourbotid
-```
-
-`npm start` 會自動載入（Node 22+ `--env-file-if-exists`）。
-
-**Railway** — 在 dashboard 的 Variables 區設這三個。
-
-### 6. Smoke test
-
-1. `npm start`
-2. 登入會員（如 `user1@chinup.local`）
-3. 開 `/line.html`，照畫面三步驟綁定
-4. 在 `data/app.db` 用 sqlite3 看 `notifications` table，預期 `channel='line'` row 出現
-
-### Dev 環境跳過真實 LINE
-
-設 `LINE_MOCK=1` → `sendMessage` 直接 return success、`verifySignature` 直接 true。可以跑完整 `/line.html` 流程而不需要真實 LINE Channel。
-
-設 `LINE_MOCK=fail` → 永遠 return failure，方便測試 retry / 失敗 UI。
-
-### 失敗 retry 機制
-
-LINE Push 失敗的訊息會以 `status='failed'` 寫入 `notifications` table，retry 排程：
-
-| Attempt | 等待 | 累計時間 |
-|---|---|---|
-| 初次 (status=failed inserted) | — | 0 |
-| 第 1 次 retry | 5 分鐘後 | 5 分 |
-| 第 2 次 retry | 15 分鐘後 | 20 分 |
-| 第 3 次 retry | 45 分鐘後 | 65 分 |
-| 第 4 次（仍失敗）→ `failed_permanent` | 不再試 | — |
-
-由 `scheduler.js` 內 `*/5 * * * *` cron 觸發 `processFailedNotifications()`。
-
-查看 failed 訊息：
-
-```sql
-SELECT id, type, user_id, retry_count, next_retry_at, last_error
-FROM notifications
-WHERE status IN ('failed', 'failed_permanent')
-ORDER BY id DESC LIMIT 50;
-```
