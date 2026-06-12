@@ -97,3 +97,50 @@ export async function sendPaymentConfirmedEmail(bookingId) {
     }
   } catch (e) { console.error('[email] sendPaymentConfirmedEmail threw:', e); }
 }
+
+const getRecurringGroup = db.prepare(`
+  SELECT b.*, c.display_name AS coach_name, u.name AS member_name
+  FROM bookings b JOIN coaches c ON c.id = b.coach_id JOIN users u ON u.id = b.member_id
+  WHERE b.recurring_group_id = ? AND b.status = 'confirmed'
+  ORDER BY b.start_at ASC
+`);
+
+/** 循環預約摘要信（建立後呼叫一次，fire-and-forget）。無 customer_email 自動略過。 */
+export async function sendRecurringConfirmation(groupId) {
+  try {
+    const rows = getRecurringGroup.all(groupId);
+    if (!rows.length || !rows[0].customer_email) return;
+    const b = rows[0];
+    const label = b.session_type === '1on2' ? '1對2' : '1對1';
+    const total = rows.reduce((sum, r) => sum + (r.original_amount != null ? r.original_amount - (r.discount_amount || 0) : 0), 0);
+    const paid = !!b.paid_at;
+    const publicUrl = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+    const DOW = ['日', '一', '二', '三', '四', '五', '六'];
+    const fmtRow = (r) => {
+      const [date, time] = r.start_at.split('T');
+      const dow = DOW[new Date(`${date}T00:00:00Z`).getUTCDay()];
+      return `${date.replace(/-/g, '/')}（週${dow}）${time.slice(0, 5)}`;
+    };
+    const subject = `課程安排確認｜${b.coach_name} 教練 ${label} 共 ${rows.length} 堂`;
+    const html = `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1e293b">
+  <h2 style="color:#0369a1">CHINUP Performance 課程安排確認</h2>
+  <p>${esc(b.member_name)} 您好，已為您安排 <strong>${esc(b.coach_name)}</strong> 教練的 ${label} 課程共 ${rows.length} 堂：</p>
+  <ul style="padding-left:18px;line-height:1.8">${rows.map((r) => `<li>${esc(fmtRow(r))}</li>`).join('')}</ul>
+  <p>合計：<strong>NT$${total.toLocaleString()}</strong>　款項狀態：<strong>${paid ? '已收款' : '待核對（請依匯款資訊完成付款）'}</strong></p>
+  ${paid ? '' : `<p style="color:#64748b;font-size:14px">匯款資訊：${esc(getBankInfo())}</p>`}
+  <p style="color:#64748b;font-size:14px">如需調整單堂時間，請至 <a href="${esc(publicUrl)}/my-schedule">我的課表</a> 取消該堂後與我們重新安排。</p>
+  <p style="color:#94a3b8;font-size:12px">此信由系統自動發送，請勿直接回覆。</p>
+</div>`;
+    if (!isGmailConfigured()) {
+      insertNotif.run(b.member_id, 'booking_recurring_email', 'console', subject, html, 'sent', null, null, b.customer_email);
+      console.log(`[email→console] recurring group=${groupId} to=${b.customer_email} ${subject}`);
+      return;
+    }
+    const r = await sendMail({ to: b.customer_email, subject, html });
+    if (r.ok) {
+      insertNotif.run(b.member_id, 'booking_recurring_email', 'email', subject, html, 'sent', null, null, b.customer_email);
+    } else {
+      insertNotif.run(b.member_id, 'booking_recurring_email', 'email', subject, html, 'failed', offsetLocal(5 * 60_000), r.error, b.customer_email);
+    }
+  } catch (e) { console.error('[email] sendRecurringConfirmation threw:', e); }
+}

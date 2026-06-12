@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   paid_by INTEGER REFERENCES users(id),
   refunded_at TEXT,
   refunded_by INTEGER REFERENCES users(id),
+  recurring_group_id INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK (start_at < end_at)
 );

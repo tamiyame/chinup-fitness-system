@@ -1,4 +1,4 @@
-import { api, fmtDate, dow, toast, bootPublic, escapeHtml } from './app.js';
+import { api, fmtDate, dow, toast, bootPublic, escapeHtml, getUser } from './app.js';
 
 await bootPublic();
 
@@ -465,6 +465,8 @@ let modalSlot = null;
 let modalAppliedDiscount = null;
 // '1on1' | '1on2'，預設 1對1
 let modalSessionType = '1on1';
+// 循環預約（員工限定）：previewed=true 才可送出；參數變更即失效需重新預覽
+let recurringState = { previewed: false, okCount: 0 };
 
 const SESSION_TYPE_ACTIVE = ['bg-sky-500', 'text-white', 'border-sky-500'];
 const SESSION_TYPE_INACTIVE = ['bg-white', 'text-slate-700', 'border-slate-300', 'hover:border-sky-400'];
@@ -504,6 +506,7 @@ function setSessionType(type) {
   modalSessionType = type;
   refreshSessionTypeButtons();
   refreshModalPrice();
+  invalidateRecurringPreview(); // 型態影響名額判定（1對2 佔 2）→ 循環預覽需重跑
   // 型態改變 → 之前算出的折扣金額不再正確，需重新套用
   if (modalAppliedDiscount) {
     modalAppliedDiscount = null;
@@ -550,9 +553,116 @@ function openBookingModal(coach, slot) {
   refreshSessionTypeButtons();
   refreshModalPrice();
 
+  // 循環預約（員工限定）：登入教練/管理者才顯示；每次開窗重置（後端 requireCoach 強制）
+  const u = getUser();
+  const isStaff = !!(u && (u.role === 'coach' || u.is_admin));
+  $('recurring-row').classList.toggle('hidden', !isStaff);
+  $('recurring-enabled').checked = false;
+  $('recurring-fields').classList.add('hidden');
+  $('recurring-preview-result').classList.add('hidden');
+  $('recurring-preview-result').innerHTML = '';
+  $('recurring-markpaid').checked = false;
+  recurringState = { previewed: false, okCount: 0 };
+
   $('booking-modal').classList.remove('hidden');
   $('modal-name').focus();
 }
+
+// ── 循環預約 UI ──────────────────────────────────────────────────────────────
+function recurringEnabled() {
+  return !$('recurring-row').classList.contains('hidden') && $('recurring-enabled').checked;
+}
+
+// 參數變更 → 預覽失效，主按鈕回到「請先預覽」
+function invalidateRecurringPreview() {
+  recurringState = { previewed: false, okCount: 0 };
+  $('recurring-preview-result').classList.add('hidden');
+  $('recurring-preview-result').innerHTML = '';
+  refreshRecurringSubmit();
+}
+
+function refreshRecurringSubmit() {
+  const btn = $('modal-submit-btn');
+  if (!recurringEnabled()) {
+    btn.disabled = false;
+    btn.textContent = '確認預約';
+    return;
+  }
+  if (!recurringState.previewed) {
+    btn.disabled = true;
+    btn.textContent = '請先預覽場次';
+  } else if (recurringState.okCount === 0) {
+    btn.disabled = true;
+    btn.textContent = '無可建立的場次';
+  } else {
+    btn.disabled = false;
+    btn.textContent = `確認建立 ${recurringState.okCount} 堂`;
+  }
+}
+
+function recurringParams() {
+  return {
+    coachId: modalCoach.id,
+    startAt: modalSlot.start,
+    sessionType: modalSessionType,
+    frequency: $('recurring-frequency').value,
+    intervalDays: $('recurring-frequency').value === 'custom' ? Number($('recurring-interval').value) : null,
+    count: Number($('recurring-count').value),
+  };
+}
+
+function validateRecurringInputs() {
+  const count = Number($('recurring-count').value);
+  if (!Number.isInteger(count) || count < 2 || count > 52) {
+    toast('次數需為 2–52 的整數', 'error');
+    return false;
+  }
+  if ($('recurring-frequency').value === 'custom') {
+    const iv = Number($('recurring-interval').value);
+    if (!Number.isInteger(iv) || iv < 1 || iv > 90) {
+      toast('間隔需為 1–90 天的整數', 'error');
+      return false;
+    }
+  }
+  return true;
+}
+
+$('recurring-enabled').addEventListener('change', () => {
+  $('recurring-fields').classList.toggle('hidden', !$('recurring-enabled').checked);
+  invalidateRecurringPreview();
+});
+$('recurring-frequency').addEventListener('change', () => {
+  $('recurring-interval-row').classList.toggle('hidden', $('recurring-frequency').value !== 'custom');
+  invalidateRecurringPreview();
+});
+$('recurring-count').addEventListener('input', invalidateRecurringPreview);
+$('recurring-interval').addEventListener('input', invalidateRecurringPreview);
+
+$('recurring-preview-btn').addEventListener('click', async () => {
+  if (!validateRecurringInputs()) return;
+  const btn = $('recurring-preview-btn');
+  btn.disabled = true;
+  btn.textContent = '預覽中…';
+  try {
+    const r = await api('/api/bookings/recurring/preview', { method: 'POST', body: recurringParams() });
+    const okCount = r.occurrences.filter(o => o.ok).length;
+    const reasonText = { no_date: '當月無此日', unavailable: '不可預約（班表/請假/已被預訂/容量/日曆封鎖）' };
+    $('recurring-preview-result').innerHTML = `
+      <div class="font-medium mb-1" style="color:#0369a1;">可建立 ${okCount} 堂 · 衝突 ${r.occurrences.length - okCount} 堂</div>
+      ${r.occurrences.map(o => o.ok
+        ? `<div style="color:#15803d;">✓ ${escapeHtml(fmtDate(o.startAt))}</div>`
+        : `<div style="color:#b91c1c;">✗ ${escapeHtml(fmtDate(o.startAt))}　${reasonText[o.reason] || o.reason}</div>`).join('')}
+    `;
+    $('recurring-preview-result').classList.remove('hidden');
+    recurringState = { previewed: true, okCount };
+    refreshRecurringSubmit();
+  } catch (e) {
+    toast(`預覽失敗：${escapeHtml(e.data?.error || e.message)}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '預覽場次';
+  }
+});
 
 function closeBookingModal() {
   $('booking-modal').classList.add('hidden');
@@ -672,7 +782,36 @@ $('modal-submit-btn').addEventListener('click', async () => {
 
   const btn = $('modal-submit-btn');
   btn.disabled = true;
+  const btnText = btn.textContent;
   btn.textContent = '送出中…';
+
+  // ── 循環模式：走員工端點（需先預覽）──
+  if (recurringEnabled()) {
+    try {
+      if (!recurringState.previewed || recurringState.okCount === 0) throw new Error('請先預覽場次');
+      const body = {
+        ...recurringParams(),
+        name: nameVal, phone: phoneNormalized,
+        markPaid: $('recurring-markpaid').checked,
+      };
+      if (emailVal) body.email = emailVal;
+      if (modalAppliedDiscount) body.discountCode = modalAppliedDiscount.code;
+      const result = await api('/api/bookings/recurring', { method: 'POST', body });
+      const bookedCoach = modalCoach;
+      closeBookingModal();
+      showRecurringSuccessView(result, bookedCoach);
+      slotCacheByCoach.delete(bookedCoach.id);
+      if (currentCoach && !views.detail.classList.contains('hidden')) loadSlots();
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = btnText;
+      const msgs = { all_conflicted: '所有場次都衝突，請調整起始時段、頻率或次數後重新預覽',
+                     invalid_count: '次數需為 2–52', invalid_interval: '間隔需為 1–90 天',
+                     invalid_frequency: '頻率參數錯誤', invalid_phone: '電話格式不正確' };
+      $('modal-general-err').textContent = msgs[e.data?.error] || `建立失敗：${e.message}`;
+    }
+    return;
+  }
 
   try {
     const bookingBody = { coachId: modalCoach.id, startAt: modalSlot.start, name: nameVal, phone: phoneNormalized, sessionType: modalSessionType };
@@ -747,6 +886,55 @@ function removeSlotFromGrid(slotStart) {
       }
     }
   }
+}
+
+// --- Recurring success view --------------------------------------------------
+
+// 循環預約建立結果：逐堂清單（建立/跳過）、總額、付款狀態、（未綁定）LINE 綁定碼
+function showRecurringSuccessView(result, coach) {
+  const successEl = $('view-success');
+  const coachName = escapeHtml(coach?.display_name ?? '');
+  const reasonText = { no_date: '當月無此日', unavailable: '不可預約' };
+  const createdRows = result.created.map(c =>
+    `<div style="color:#15803d;">✓ ${escapeHtml(fmtDate(c.startAt))}　$${escapeHtml(String(c.finalAmount ?? ''))}</div>`).join('');
+  const skippedRows = (result.skipped || []).map(o =>
+    `<div style="color:#b91c1c;">✗ ${escapeHtml(fmtDate(o.startAt))}　${reasonText[o.reason] || escapeHtml(o.reason)}（已跳過，可日後手動補建）</div>`).join('');
+
+  let lineHtml = '';
+  if (result.lineBindCode) {
+    const joinBtn = result.lineOfficialUrl
+      ? `<a href="${escapeHtml(result.lineOfficialUrl)}" target="_blank" rel="noopener noreferrer" class="line-join-btn">加入官方 LINE</a>`
+      : '';
+    lineHtml = `
+      <div class="card bg-green-50 border border-green-200 mt-4 p-4 text-sm text-center">
+        <p class="text-green-800">想收上課提醒與通知？加入官方 LINE 並貼入這組綁定碼：</p>
+        ${joinBtn}
+        <p class="text-xl font-bold text-green-700 my-2 tracking-widest">${escapeHtml(result.lineBindCode)}</p>
+        <p class="text-green-600">（15 分鐘內有效）</p>
+      </div>`;
+  }
+
+  successEl.innerHTML = `
+    <div class="text-center py-6">
+      <div class="text-5xl mb-4">✅</div>
+      <h1 class="page-title">已建立 ${result.created.length} 堂循環預約</h1>
+      <div class="card mt-4 mb-2 text-left text-sm">
+        <div class="mb-2"><span class="text-slate-500">教練</span><br><strong>${coachName}</strong></div>
+        <div class="mb-2" style="max-height:220px;overflow-y:auto;">${createdRows}${skippedRows}</div>
+        <div class="mt-2"><span class="text-slate-500">合計</span><br>
+          <strong style="font-size:20px;color:var(--brand-700, #0369a1);">$${escapeHtml(String(result.totalAmount ?? 0))}</strong>
+          <span class="text-slate-500 text-sm">（${result.markPaid ? '已收款' : '待核對款項'}）</span>
+        </div>
+      </div>
+      ${lineHtml}
+      <div class="mt-6 flex flex-col gap-3">
+        <a href="/my-schedule" class="btn-primary text-center block">查我的預約</a>
+        <a href="/" class="btn-secondary text-center block">回首頁</a>
+      </div>
+    </div>
+  `;
+  for (const v of Object.values(views)) v.classList.add('hidden');
+  successEl.classList.remove('hidden');
 }
 
 // --- Success view ----------------------------------------------------------

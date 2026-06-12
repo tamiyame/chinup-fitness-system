@@ -35,6 +35,9 @@ import {
   listConfirmedPayments as svcListConfirmedPayments,
   cancelBookingAdmin as svcCancelBookingAdmin,
   refundBookingAdmin as svcRefundBookingAdmin,
+  recurringOccurrences as svcRecurringOccurrences,
+  previewRecurringBookings as svcPreviewRecurring,
+  createRecurringBookings as svcCreateRecurring,
 } from './services/bookingService.js';
 import {
   createGroupOrder as svcCreateGroupOrder,
@@ -74,7 +77,7 @@ import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours } from './services/discountService.js';
 import { isValidPhone } from './services/userService.js';
-import { getExternalBusySafe, syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
+import { getExternalBusySafe, getExternalBusyChunkedSafe, syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
 import { sendBookingConfirmation } from './services/emailService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -925,6 +928,48 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
   });
   syncBookingCancel(id); // commit 後副作用、不 await（失敗交 reconcile 兜底）
   res.json({ ok: true });
+}));
+
+// ─── 循環預約（教練/管理者限定；spec: 2026-06-12-recurring-bookings-design.md）───
+
+// 計算 occurrence 範圍後分段抓 freebusy（gcal 停用/失敗 → null fail-open）
+async function recurringExternalBusy({ startAt, frequency, intervalDays, count }) {
+  try {
+    const occ = svcRecurringOccurrences({ startAt, frequency, intervalDays, count }).filter((o) => !o.reason);
+    if (!occ.length) return null;
+    const dates = occ.map((o) => o.startAt.slice(0, 10)).sort();
+    return await getExternalBusyChunkedSafe(dates[0], dates[dates.length - 1]);
+  } catch { return null; }
+}
+
+app.post('/api/bookings/recurring/preview', requireCoach, asyncHandler(async (req, res) => {
+  const { coachId, startAt, sessionType, frequency, intervalDays, count } = req.body || {};
+  const params = {
+    coachId: Number(coachId), startAt, sessionType: sessionType || '1on1', frequency,
+    intervalDays: intervalDays != null && intervalDays !== '' ? Number(intervalDays) : null,
+    count: Number(count),
+  };
+  const externalBusy = await recurringExternalBusy(params).catch(() => null);
+  res.json(svcPreviewRecurring({ ...params, externalBusy }));
+}));
+
+app.post('/api/bookings/recurring', requireCoach, asyncHandler(async (req, res) => {
+  const { coachId, startAt, sessionType, frequency, intervalDays, count, name, phone, email, markPaid, discountCode } = req.body || {};
+  if (!isValidPhone(String(phone || ''))) return res.status(400).json({ error: 'invalid_phone', detail: '電話需為 8-15 碼數字' });
+  const params = {
+    coachId: Number(coachId), startAt, sessionType: sessionType || '1on1', frequency,
+    intervalDays: intervalDays != null && intervalDays !== '' ? Number(intervalDays) : null,
+    count: Number(count),
+  };
+  const externalBusy = await recurringExternalBusy(params).catch(() => null);
+  const r = svcCreateRecurring({
+    ...params, name, phone, email: email || null,
+    markPaid: !!markPaid, discountCode: discountCode || null,
+    actorId: req.user.id, externalBusy,
+  });
+  // commit 後副作用：逐堂建日曆事件（不 await；reconcile 兜底）
+  for (const c of r.created) syncBookingCreate(c.id);
+  res.status(201).json(r);
 }));
 
 // ─── Phase 3C · LINE notification endpoints ───

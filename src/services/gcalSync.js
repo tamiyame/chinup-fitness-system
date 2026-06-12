@@ -159,3 +159,22 @@ export async function reconcile() {
     for (const row of selToDelete.all()) await syncBookingCancel(row.id);
   } finally { _reconcileRunning = false; }
 }
+
+/** 長區間（循環預約）用：以 30 天分段查 freebusy 後合併（freebusy 對長區間有限制）。
+ *  停用或任一段失敗 → null（fail-open，與單筆行為一致）。 */
+export async function getExternalBusyChunkedSafe(fromDate, toDate) {
+  if (!isGcalEnabled()) return null;
+  const out = new Map();
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  let cur = new Date(fromDate + 'T00:00:00');
+  const end = new Date(toDate + 'T00:00:00');
+  while (cur <= end) {
+    const chunkEnd = new Date(Math.min(cur.getTime() + 29 * 86400_000, end.getTime()));
+    const m = await getExternalBusySafe(fmt(cur), fmt(chunkEnd));
+    if (m === null) return null;
+    for (const [k, v] of m) out.set(k, (out.get(k) || []).concat(v));
+    cur = new Date(chunkEnd.getTime() + 86400_000);
+  }
+  return out;
+}
