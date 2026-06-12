@@ -65,7 +65,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
 .phone-cap{text-align:center;font-size:11.5px;color:var(--ink-mute);margin-top:10px}
 
 /* mockup 內部元件（重現產品行動版 UI） */
-.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 9px;border:1px solid transparent}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 9px;border:1px solid transparent;white-space:nowrap}
 .badge::before{content:'●';font-size:6px}
 .b-blue{background:var(--sky-100);color:var(--sky-700);border-color:var(--sky-200)}
 .b-amber{background:var(--amber-bg);color:var(--amber);border-color:#fcd34d}
@@ -73,7 +73,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
 .b-red{background:var(--red-bg);color:var(--red);border-color:#fecaca}
 .b-gray{background:#f1f5f9;color:#475569;border-color:#e2e8f0}
 .b-purple{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
-.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;font-weight:700;font-size:12px;padding:8px 14px;border:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;font-weight:700;font-size:12px;padding:8px 14px;border:none;white-space:nowrap}
 .btn-p{background:var(--sky-500);color:#fff}
 .btn-d{background:#ef4444;color:#fff}
 .btn-s{background:#fff;color:var(--ink-soft);border:1px solid var(--line)}
@@ -135,6 +135,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
 .step::before{content:counter(step);position:absolute;left:0;top:16px;width:30px;height:30px;border-radius:50%;background:var(--sky-600);color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;transform:translateX(-50%)}
 .step b{display:block;font-size:14px;margin-bottom:3px}
 .step p{font-size:12.5px;color:var(--ink-soft)}
+.flow .step:last-child{border-left-color:transparent}
 .ladder{display:grid;gap:8px}
 .ladder .lv{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:13px}
 .ladder .lv .dotz{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;flex-shrink:0}
@@ -239,7 +240,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
         <ul class="feature-list">
           <li><div><b>班表引擎</b>：每週基底班表＋特殊日期（請假／加開），預約日期無上限、開課前 2 小時自動關閉。</div></li>
           <li><div><b>全店容量控管</b>：每小時全店上限 3 人（後台可調）；1對2 佔 2 名額，剩 1 名額時段自動擋下 1對2。</div></li>
-          <li><div><b>防撞期</b>：送出當下重新驗證班表、容量、教練重疊與行事曆封鎖，資料庫唯一索引兜底併發。</div></li>
+          <li><div><b>防撞期</b>：送出當下重新驗證班表、容量、教練重疊與行事曆封鎖，資料庫唯一索引擋下併發重複。</div></li>
           <li><div><b>付款兩階段</b>：預約成立先標「待確認」，店家核對款項後顧客自動收到「已確認」通知。</div></li>
         </ul>
       </div>
@@ -316,13 +317,14 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
             <div class="cal">
               <div class="h"></div><div class="h">7/13 一</div><div class="h">7/14 二</div><div class="h">7/15 三</div>
               <div class="t">10:00</div><div class="c"><span class="ev sys">1對1 林沛霖×王語彤</span></div><div class="c"></div><div class="c"><span class="ev sys">1對1 張啟恆×李承遠</span></div>
-              <div class="t">14:00</div><div class="c"></div><div class="c"><span class="ev sys">1對2 林沛霖×郭子晴</span></div><div class="c"><span class="ev busy">器材保養（手動）</span></div>
-              <div class="t">16:00</div><div class="c"></div><div class="c"><span class="ev block">場地外借→封鎖時段</span></div><div class="c"></div>
-              <div class="t">18:00</div><div class="c"><span class="ev sys">1對1 張啟恆×周柏宇</span></div><div class="c"></div><div class="c"></div>
+              <div class="t">14:00</div><div class="c"></div><div class="c"><span class="ev sys">1對2 林沛霖×郭子晴</span></div><div class="c"><span class="ev busy">器材保養</span></div>
+              <div class="t">16:00</div><div class="c"></div><div class="c"><span class="ev block">場地外借</span></div><div class="c"></div>
+              <div class="t">18:00</div><div class="c"><span class="ev sys">1對1 張啟恆×周柏宇</span></div><div class="c"></div><div class="c"><span class="ev sys">1對1 陳曉夏×許芷涵</span></div>
             </div>
             <div class="tiny" style="margin-top:8px;display:grid;gap:4px">
               <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:var(--sky-100);border-left:3px solid var(--sky-500)"></span> 系統自動建立（標記「有空」不誤鎖）</span>
               <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:#e2e8f0;border-left:3px solid #64748b"></span> 手動行程（忙碌＝封鎖網站時段）</span>
+              <span><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:repeating-linear-gradient(45deg,#fee2e2,#fee2e2 2px,#fecaca 2px,#fecaca 4px);border-left:3px solid #ef4444"></span> 該時段已自動從預約頁隱藏</span>
             </div>
             <div class="card" style="margin-top:10px;background:var(--sky-50);border-color:var(--sky-200)">
               <div class="tiny"><b>每 5 分鐘自動核對</b>：補建漏單、補刪已取消，Google 短暫故障也不漏。</div>
@@ -361,7 +363,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
             <div class="tiny" style="font-weight:900;margin-bottom:5px">待核對匯款</div>
             <div class="card" style="margin-bottom:8px">
               <div class="row" style="margin-bottom:3px"><b class="small">李承遠</b><span class="badge b-gray">教練課 ×4 堂</span><span class="badge b-amber">待核對</span></div>
-              <div class="tiny muted">📞 0987-654-321　💰 合計 NT$6,000　🏋️ 張啟恆（1對1）</div>
+              <div class="tiny muted">📞 0987-654-321　💰 合計 NT$6,000<br>🏋️ 張啟恆（1對1）</div>
               <div class="tiny muted">• 7/07 15:00　• 7/14 15:00<br>• 7/21 15:00　• 8/04 15:00</div>
               <div class="row" style="margin-top:7px;flex-wrap:nowrap"><span class="btn btn-p" style="flex:1">已收款</span><span class="btn btn-d" style="flex:1">取消預約</span></div>
             </div>
@@ -407,7 +409,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
           <div class="appbar"><b>⚡ 團體課程報名</b><span class="menu">☰</span></div>
           <div class="screen-body">
             <div class="card" style="margin-bottom:8px">
-              <div class="spread"><div><b class="small">晨間流動瑜伽</b><div class="tiny muted">60 分鐘 · 6–10 人 · 🧑‍🏫 陳曉夏</div></div><span class="badge b-green">$600/堂</span></div>
+              <div class="spread"><div><b class="small">晨間流動瑜伽</b><div class="tiny muted">60 分鐘 · 6–10 人<br>教練 陳曉夏</div></div><span class="badge b-green">$600/堂</span></div>
             </div>
             <div class="card" style="margin-bottom:7px">
               <div class="spread">
@@ -471,7 +473,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
             </div>
             <div style="display:grid;gap:5px;justify-items:start">
               <span class="badge b-green">已達 6 人 → 自動成班通知</span>
-              <span class="badge b-red">未達下限 → 自動停課＋退補處理</span>
+              <span class="badge b-red">未達下限 → 自動停課＋退費處理</span>
             </div>
           </div>
           <div class="homebar"></div>
@@ -508,7 +510,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
               <div class="spread"><div><b class="small">SUMMER10</b><div class="tiny muted">9 折 · 至 8/31 · 每人 1 次</div></div><div style="text-align:right"><span class="badge b-green">啟用中</span><div class="tiny muted">已用 34</div></div></div>
             </div>
             <div class="card" style="margin-bottom:7px">
-              <div class="spread"><div><b class="small">FRIEND300</b><div class="tiny muted">折 $300 · 總量 50 · 低消 $1,500</div></div><div style="text-align:right"><span class="badge b-gray">已用罄</span><div class="tiny muted">已用 50</div></div></div>
+              <div class="spread"><div><b class="small">FRIEND300</b><div class="tiny muted">折 $300 · 總量 50<br>低消 $1,500</div></div><div style="text-align:right"><span class="badge b-gray">已用罄</span><div class="tiny muted">已用 50</div></div></div>
             </div>
             <div class="card" style="margin-bottom:10px">
               <div class="spread"><div><b class="small">VIP85</b><div class="tiny muted">85 折 · 不限期 · 每人 5 次</div></div><div style="text-align:right"><span class="badge b-green">啟用中</span><div class="tiny muted">已用 12</div></div></div>
@@ -651,8 +653,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
         <div class="flow">
           <div class="step"><b>預約完成拿綁定碼</b><p>成功頁自動產生一次性 6 位數代碼。</p></div>
           <div class="step"><b>加入官方帳號</b><p>點按鈕或掃 QR 加 LINE 好友。</p></div>
-          <div class="step"><b>貼上代碼即綁定</b><p>聊天室傳送代碼，系統自動配對電話身分。</p></div>
-          <div class="step"><b>通知即時送達</b><p>預約、款項、提醒、異動……全部進 LINE。員工也能在後台自助綁定。</p></div>
+          <div class="step"><b>貼上代碼即綁定</b><p>聊天室傳送代碼，系統自動配對電話身分。此後預約、款項、提醒、異動通知全部進 LINE；員工也能在後台自助產碼綁定。</p></div>
         </div>
       </div>
     </div>
@@ -677,39 +678,39 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
               <b class="tiny" style="color:var(--sky-700)">1對1 剩 9 堂 · 團體 剩 3 堂</b>
             </div>
             <div class="card" style="margin-bottom:7px">
-              <div class="spread">
-                <div class="row" style="flex-wrap:nowrap">
-                  <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:3px 8px"><b style="color:var(--sky-700)">02</b><div class="tiny muted">07月</div></div>
-                  <div><span class="badge b-blue">一對一</span> <b class="small">林沛霖</b><div class="tiny muted">⏱ 14:00–15:00</div><span class="badge b-green">已確認</span></div>
+              <div class="spread" style="align-items:center">
+                <div class="row" style="flex-wrap:nowrap;flex:1;min-width:0">
+                  <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:3px 8px;flex-shrink:0"><b style="color:var(--sky-700)">02</b><div class="tiny muted">07月</div></div>
+                  <div style="min-width:0"><b class="small">林沛霖</b> <span class="badge b-blue">一對一</span><div class="tiny muted" style="white-space:nowrap">14:00 · <span class="badge b-green">已確認</span></div></div>
                 </div>
-                <span class="btn btn-d" style="padding:5px 11px">取消</span>
+                <span class="btn btn-d" style="padding:5px 10px;flex-shrink:0">取消</span>
               </div>
             </div>
             <div class="card" style="margin-bottom:7px">
-              <div class="spread">
-                <div class="row" style="flex-wrap:nowrap">
-                  <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:3px 8px"><b style="color:var(--sky-700)">09</b><div class="tiny muted">07月</div></div>
-                  <div><span class="badge b-blue">一對一</span> <b class="small">林沛霖</b><div class="tiny muted">⏱ 14:00–15:00</div><span class="badge b-amber">待確認</span></div>
+              <div class="spread" style="align-items:center">
+                <div class="row" style="flex-wrap:nowrap;flex:1;min-width:0">
+                  <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:3px 8px;flex-shrink:0"><b style="color:var(--sky-700)">09</b><div class="tiny muted">07月</div></div>
+                  <div style="min-width:0"><b class="small">林沛霖</b> <span class="badge b-blue">一對一</span><div class="tiny muted" style="white-space:nowrap">14:00 · <span class="badge b-amber">待確認</span></div></div>
                 </div>
-                <span class="btn btn-d" style="padding:5px 11px">取消</span>
+                <span class="btn btn-d" style="padding:5px 10px;flex-shrink:0">取消</span>
               </div>
             </div>
             <div class="card" style="margin-bottom:7px">
-              <div class="spread">
-                <div class="row" style="flex-wrap:nowrap">
-                  <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:3px 8px"><b style="color:var(--sky-700)">15</b><div class="tiny muted">07月</div></div>
-                  <div><span class="badge b-gray">團課</span> <b class="small">晨間流動瑜伽</b><div class="tiny muted">⏱ 09:00–10:00</div><span class="badge b-amber">候補中</span></div>
+              <div class="spread" style="align-items:center">
+                <div class="row" style="flex-wrap:nowrap;flex:1;min-width:0">
+                  <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:3px 8px;flex-shrink:0"><b style="color:var(--sky-700)">15</b><div class="tiny muted">07月</div></div>
+                  <div style="min-width:0"><b class="small">晨間流動瑜伽</b> <span class="badge b-gray">團課</span><div class="tiny muted" style="white-space:nowrap">09:00 · <span class="badge b-amber">候補中</span></div></div>
                 </div>
-                <span class="btn btn-s" style="padding:5px 8px">取消候補</span>
+                <span class="btn btn-s" style="padding:5px 7px;flex-shrink:0">取消候補</span>
               </div>
             </div>
             <div class="card">
-              <div class="spread">
-                <div class="row" style="flex-wrap:nowrap">
-                  <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:3px 8px"><b style="color:var(--sky-700)">22</b><div class="tiny muted">07月</div></div>
-                  <div><span class="badge b-gray">團課</span> <b class="small">晨間流動瑜伽</b><div class="tiny muted">⏱ 09:00–10:00</div><span class="badge b-green">已確認</span></div>
+              <div class="spread" style="align-items:center">
+                <div class="row" style="flex-wrap:nowrap;flex:1;min-width:0">
+                  <div style="text-align:center;background:var(--sky-50);border-radius:9px;padding:3px 8px;flex-shrink:0"><b style="color:var(--sky-700)">22</b><div class="tiny muted">07月</div></div>
+                  <div style="min-width:0"><b class="small">晨間流動瑜伽</b> <span class="badge b-gray">團課</span><div class="tiny muted" style="white-space:nowrap">09:00 · <span class="badge b-green">已確認</span></div></div>
                 </div>
-                <span class="btn btn-s" style="padding:5px 11px">請假</span>
+                <span class="btn btn-s" style="padding:5px 10px;flex-shrink:0">請假</span>
               </div>
             </div>
           </div>
@@ -798,7 +799,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
           <div class="appbar"><b>課程管理後台</b><span class="badge b-blue">管理者 吳薇安</span></div>
           <div class="screen-body">
             <div class="row" style="gap:10px;border-bottom:2px solid var(--line);padding-bottom:6px;margin-bottom:9px;font-size:11px;font-weight:700;color:var(--ink-mute);flex-wrap:nowrap;overflow:hidden">
-              <span>總覽</span><span>課程</span><span>報名作業</span><span style="color:var(--sky-600);border-bottom:2.5px solid var(--sky-500);padding-bottom:6px;margin-bottom:-8px">會員</span><span>教練</span><span>折扣碼</span>
+              <span>總覽</span><span>課程</span><span>報名作業</span><span style="color:var(--sky-600);border-bottom:2.5px solid var(--sky-500);padding-bottom:6px;margin-bottom:-8px">會員</span><span>教練</span><span>折扣碼</span><span>通知</span>
             </div>
             <div class="f"><div class="in ph">🔍 搜尋姓名或電話…</div></div>
             <div class="card" style="padding:0;overflow:hidden;margin-bottom:9px">
@@ -894,7 +895,7 @@ h2{font-size:27px;font-weight:900;letter-spacing:.01em}
   <div class="wrap">
     <h2>技術規格</h2>
     <div class="spec-grid">
-      <div class="card"><b>輕量可靠</b>Node.js 24 ＋ SQLite（WAL），僅兩個外部依賴；交易層防併發，開機自動遷移。<div class="tiny" style="margin-top:6px;color:#bae6fd99">每週自動備份快照</div></div>
+      <div class="card"><b>輕量可靠</b>Node.js 24 ＋ SQLite（WAL），僅兩個外部依賴；交易層防併發，開機自動遷移，每週自動備份快照。</div>
       <div class="card"><b>整合即服務</b>LINE Messaging API、Google Calendar、Gmail——皆以原生實作（零 SDK），未設定時自動降級不影響核心功能。</div>
       <div class="card"><b>行動優先</b>前台與後台全頁面響應式設計，iPhone／Android 瀏覽器即開即用，無需安裝 App。</div>
     </div>
