@@ -476,12 +476,23 @@ function refreshModalPrice() {
   const priceRow = $('modal-price-row');
   const priceLabel = $('modal-price-label');
   const price = priceByType[modalSessionType];
-  if (price != null) {
-    priceLabel.textContent = `${SESSION_TYPE_LABELS[modalSessionType]} 單堂 $${price.toLocaleString()}`;
-    priceRow.classList.remove('hidden');
-  } else {
+  if (price == null) {
     priceRow.classList.add('hidden');
+    return;
   }
+  let text = `${SESSION_TYPE_LABELS[modalSessionType]} 單堂 $${price.toLocaleString()}`;
+  // 循環模式：即時顯示總計（預覽後以可建立堂數為準；折扣為逐堂套用的預估值）
+  if (typeof recurringEnabled === 'function' && recurringEnabled()) {
+    const n = recurringState.previewed ? recurringState.okCount : (Number($('recurring-count').value) || 0);
+    if (n >= 1) {
+      const per = modalAppliedDiscount ? modalAppliedDiscount.finalTotal : price;
+      const label = modalAppliedDiscount ? '折後預估總計' : '應付總計';
+      const note = recurringState.previewed ? `${n} 堂` : `${n} 堂，以預覽結果為準`;
+      text += `　${label} $${(per * n).toLocaleString()}（${note}${modalAppliedDiscount ? '；折扣逐堂套用，依剩餘次數為準' : ''}）`;
+    }
+  }
+  priceLabel.textContent = text;
+  priceRow.classList.remove('hidden');
 }
 
 // 套用選取按鈕樣式（active / inactive）。
@@ -514,6 +525,7 @@ function setSessionType(type) {
     msgEl.textContent = '課程型態已變更，請重新套用折扣碼';
     msgEl.style.color = '#b45309';
     msgEl.classList.remove('hidden');
+    refreshModalPrice();
   }
 }
 
@@ -579,6 +591,7 @@ function invalidateRecurringPreview() {
   $('recurring-preview-result').classList.add('hidden');
   $('recurring-preview-result').innerHTML = '';
   refreshRecurringSubmit();
+  refreshModalPrice();
 }
 
 function refreshRecurringSubmit() {
@@ -656,6 +669,7 @@ $('recurring-preview-btn').addEventListener('click', async () => {
     $('recurring-preview-result').classList.remove('hidden');
     recurringState = { previewed: true, okCount };
     refreshRecurringSubmit();
+    refreshModalPrice();
   } catch (e) {
     toast(`預覽失敗：${escapeHtml(e.data?.error || e.message)}`, 'error');
   } finally {
@@ -718,11 +732,13 @@ $('modal-apply-discount').addEventListener('click', async () => {
       body: { kind: 'one_on_one', code, phone: rawPhone, sessionType: modalSessionType },
     });
     modalAppliedDiscount = { code: code.toUpperCase(), discountAmount: result.discount_amount, finalTotal: result.final_total };
+    refreshModalPrice();
     msgEl.textContent = `折扣套用成功：折後現場應付 $${result.final_total.toLocaleString()}`;
     msgEl.style.color = '#15803d';
     msgEl.classList.remove('hidden');
   } catch (err) {
     modalAppliedDiscount = null;
+    refreshModalPrice();
     const errCode = err.data?.error;
     let msg;
     if (errCode === 'invalid_code') {
