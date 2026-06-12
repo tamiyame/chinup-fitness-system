@@ -231,6 +231,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('bank_info', '合作金�
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('line_official_url', '');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('gcal_calendar_id', '');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('booking_hourly_capacity', '3');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('group_order_expiry_hours', '72');
 
 CREATE TABLE IF NOT EXISTS point_transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

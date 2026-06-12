@@ -70,7 +70,7 @@ import {
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
-import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity } from './services/discountService.js';
+import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours } from './services/discountService.js';
 import { isValidPhone } from './services/userService.js';
 import { getExternalBusySafe, syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
 import { sendBookingConfirmation } from './services/emailService.js';
@@ -1071,6 +1071,7 @@ function settingsPayload() {
     line_official_url: getLineOfficialUrl(),
     gcal_calendar_id: getGcalCalendarId(),
     booking_hourly_capacity: getBookingHourlyCapacity(),
+    group_order_expiry_hours: getGroupOrderExpiryHours(),
   };
 }
 app.get('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
@@ -1108,6 +1109,11 @@ app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
     const n = Number(b.booking_hourly_capacity);
     if (!Number.isInteger(n) || n < 1 || n > 99) return res.status(400).json({ error: 'invalid_capacity' });
     writes.push(['booking_hourly_capacity', String(n)]);
+  }
+  if (b.group_order_expiry_hours !== undefined) {
+    const n = Number(b.group_order_expiry_hours);
+    if (!Number.isInteger(n) || n < 1 || n > 720) return res.status(400).json({ error: 'invalid_expiry_hours' });
+    writes.push(['group_order_expiry_hours', String(n)]);
   }
   tx(() => { for (const [k, v] of writes) setSetting(k, v); });
   res.json(settingsPayload());

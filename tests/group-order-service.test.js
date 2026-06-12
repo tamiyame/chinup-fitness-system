@@ -130,9 +130,11 @@ expect('cancel pending order whole → ok', () => {
   assert.equal(cnt, 2);
 });
 
-// 取消他人 order（用真實但非本人的帳號：甲 試圖取消屬於丙的 o3）→ 403
+// 取消他人 order（用真實但非本人的帳號：甲 試圖取消屬於丙的遞補訂單）→ 403
+// （純候補已不建訂單 o3.orderId=null，改用丙遞補後產生的真實 24h 訂單驗同一意圖）
 expect('cancel order wrong owner → 403', () => {
-  try { cancelGroupOrder({ orderId: o3.orderId, phone: '0997000001', name: '甲' }); assert.fail('no throw'); }
+  const bingOrderId = db.prepare("SELECT order_id FROM registrations WHERE session_id=? AND user_id=(SELECT id FROM users WHERE phone='0997000003')").get(s1).order_id;
+  try { cancelGroupOrder({ orderId: bingOrderId, phone: '0997000001', name: '甲' }); assert.fail('no throw'); }
   catch (e) { assert.equal(e.status, 403); }
 });
 
