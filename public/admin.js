@@ -868,8 +868,21 @@ async function loadPendingOrders() {
 }
 
 function orderCardHtml(o) {
-  const sessionRows = o.sessions.length
-    ? o.sessions.map(s => `<li class="subtle text-xs">${escapeHtml(s.course_name)} @ ${escapeHtml(fmtDate(s.start_at))}${s.status === 'waitlisted' ? ' <span style="color:#a16207;">（候補，遞補後另收款）</span>' : ''}</li>`).join('')
+  // 同名課程分組顯示（API 已按 課程名→日期 排序）：課名一行、底下列各場日期
+  const groups = [];
+  for (const s of o.sessions) {
+    const last = groups[groups.length - 1];
+    if (last && last.name === s.course_name) last.items.push(s);
+    else groups.push({ name: s.course_name, items: [s] });
+  }
+  const sessionRows = groups.length
+    ? groups.map(g => `
+        <li class="subtle text-xs">
+          <span class="font-medium" style="color:var(--ink-soft, #475569);">${escapeHtml(g.name)}</span>
+          <ul class="list-none space-y-0.5" style="padding-left:14px;">
+            ${g.items.map(s => `<li>${escapeHtml(fmtDate(s.start_at))}${s.status === 'waitlisted' ? ' <span style="color:#a16207;">（候補，遞補後另收款）</span>' : ''}</li>`).join('')}
+          </ul>
+        </li>`).join('')
     : '<li class="subtle text-xs">（無場次）</li>';
   return `
     <article class="card">

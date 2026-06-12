@@ -166,7 +166,7 @@ export function listPendingOrders() {
       SELECT s.start_at, t.name AS course_name, r.status
       FROM registrations r JOIN course_sessions s ON s.id=r.session_id
       JOIN course_templates t ON t.id=s.template_id
-      WHERE r.order_id=? AND r.status IN ('pending','waitlisted') ORDER BY s.start_at ASC
+      WHERE r.order_id=? AND r.status IN ('pending','waitlisted') ORDER BY t.name ASC, s.start_at ASC
     `).all(o.id),
   }));
 }
