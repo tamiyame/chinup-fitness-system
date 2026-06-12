@@ -65,4 +65,24 @@ expect('settings default 1500', ()=>assert.equal(getOneOnOnePrice(),1500));
 expect('settings set/get', ()=>{ setSetting('one_on_one_price','1800'); assert.equal(getOneOnOnePrice(),1800); setSetting('one_on_one_price','1500'); });
 console.log('[discount-service] D4 done');
 
+// ── D5: validateDiscount 回傳 remainingUses（循環預約混合估價用）──
+console.log('[discount-service] D5 start');
+expect('remainingUses：取 max_uses 與 per_phone_limit 較小者', ()=>{
+  const c=createDiscountCode({code:'testd_rem',discount_type:'percent',discount_value:10,max_uses:5,per_phone_limit:2});
+  const v=validateDiscount({code:'TESTD_REM',phone:'0994000031',subtotal:1500});
+  assert.equal(v.remainingUses,2);
+});
+expect('remainingUses：用掉一次後遞減', ()=>{
+  tx(()=>applyDiscountTx({code:'TESTD_REM',phone:'0994000031',subtotal:1500,kind:'booking',refId:999031}));
+  const v=validateDiscount({code:'TESTD_REM',phone:'0994000031',subtotal:1500});
+  assert.equal(v.remainingUses,1);
+  releaseRedemption({kind:'booking',refId:999031});
+});
+expect('remainingUses：無上限 → null', ()=>{
+  createDiscountCode({code:'testd_rem2',discount_type:'fixed',discount_value:100});
+  const v=validateDiscount({code:'TESTD_REM2',phone:'0994000032',subtotal:1500});
+  assert.equal(v.remainingUses,null);
+});
+console.log('[discount-service] D5 done');
+
 reset();

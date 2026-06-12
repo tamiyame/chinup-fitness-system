@@ -33,7 +33,12 @@ export function validateDiscount({ code, phone, subtotal }) {
     throw new ApiError(409, 'per_phone_exhausted');
   }
   const { discountAmount, finalTotal } = computeDiscount(c.discount_type, c.discount_value, subtotal);
-  return { codeId: c.id, code: c.code, type: c.discount_type, value: c.discount_value, discountAmount, finalTotal, subtotal };
+  // 剩餘可用次數（取「總量上限」與「每人上限」較小者；null = 不限）。
+  // 循環預約前端用它估算「前 X 堂折扣＋後 Y 堂原價」的總計。
+  const leftGlobal = c.max_uses != null ? c.max_uses - countUsesStmt.get(c.id).c : null;
+  const leftPhone = (c.per_phone_limit != null && phone) ? c.per_phone_limit - countPhoneUsesStmt.get(c.id, phone).c : null;
+  const remainingUses = leftGlobal == null ? leftPhone : (leftPhone == null ? leftGlobal : Math.min(leftGlobal, leftPhone));
+  return { codeId: c.id, code: c.code, type: c.discount_type, value: c.discount_value, discountAmount, finalTotal, subtotal, remainingUses };
 }
 
 const insertRedemption = db.prepare(

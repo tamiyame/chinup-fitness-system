@@ -485,10 +485,17 @@ function refreshModalPrice() {
   if (typeof recurringEnabled === 'function' && recurringEnabled()) {
     const n = recurringState.previewed ? recurringState.okCount : (Number($('recurring-count').value) || 0);
     if (n >= 1) {
-      const per = modalAppliedDiscount ? modalAppliedDiscount.finalTotal : price;
-      const label = modalAppliedDiscount ? '折後預估總計' : '應付總計';
-      const note = recurringState.previewed ? `${n} 堂` : `${n} 堂，以預覽結果為準`;
-      text += `　${label} $${(per * n).toLocaleString()}（${note}${modalAppliedDiscount ? '；折扣逐堂套用，依剩餘次數為準' : ''}）`;
+      const baseNote = recurringState.previewed ? `${n} 堂` : `${n} 堂，以預覽結果為準`;
+      if (modalAppliedDiscount) {
+        // 折扣逐堂套用：限次數的碼只折得到「剩餘可用次數」堂，其餘原價（混合計算）
+        const remaining = modalAppliedDiscount.remainingUses; // null = 不限次數
+        const dCount = remaining == null ? n : Math.max(0, Math.min(n, remaining));
+        const total = modalAppliedDiscount.finalTotal * dCount + price * (n - dCount);
+        const mixNote = dCount < n ? `＝${dCount} 堂折扣＋${n - dCount} 堂原價` : '';
+        text += `　折後預估總計 $${total.toLocaleString()}（${baseNote}${mixNote}）`;
+      } else {
+        text += `　應付總計 $${(price * n).toLocaleString()}（${baseNote}）`;
+      }
     }
   }
   priceLabel.textContent = text;
@@ -731,7 +738,7 @@ $('modal-apply-discount').addEventListener('click', async () => {
       method: 'POST',
       body: { kind: 'one_on_one', code, phone: rawPhone, sessionType: modalSessionType },
     });
-    modalAppliedDiscount = { code: code.toUpperCase(), discountAmount: result.discount_amount, finalTotal: result.final_total };
+    modalAppliedDiscount = { code: code.toUpperCase(), discountAmount: result.discount_amount, finalTotal: result.final_total, remainingUses: result.remaining_uses ?? null };
     refreshModalPrice();
     msgEl.textContent = `折扣套用成功：折後現場應付 $${result.final_total.toLocaleString()}`;
     msgEl.style.color = '#15803d';

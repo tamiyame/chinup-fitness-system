@@ -817,7 +817,7 @@ app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
     }, 0);
   }
   const v = validateDiscount({ code, phone, subtotal });
-  res.json({ valid: true, discount_type: v.type, discount_value: v.value, discount_amount: v.discountAmount, original: v.subtotal, final_total: v.finalTotal });
+  res.json({ valid: true, discount_type: v.type, discount_value: v.value, discount_amount: v.discountAmount, original: v.subtotal, final_total: v.finalTotal, remaining_uses: v.remainingUses });
 }));
 
 app.post('/api/public/bookings', bookingLimiter, asyncHandler(async (req, res) => {
