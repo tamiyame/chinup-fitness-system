@@ -331,18 +331,41 @@ export function promoteWaitlist(sessionId) {
     if (!next) return;
     const u = getUserBasics.get(next.user_id);
     if (!u) return;  // FK guarantees this, but stay defensive
-    const orderId = insertOrder.run(
-      next.user_id,
-      u.name,
-      u.phone || '',
-      tpl.price_per_session,
-      offsetLocal(PROMOTED_TTL_MS)
-    ).lastInsertRowid;
+    // 併單：同會員既有「未逾期 pending」訂單 → 掛同一張（一張卡、一次匯款；多場
+    // 連續遞補不會一場一卡）。金額累加、期限延長到至少 now+24h 保障付款時間。
+    // 無既有訂單才開新 24h 單。
+    const existing = db.prepare(
+      "SELECT id FROM group_orders WHERE member_id=? AND status='pending' AND expires_at >= ? ORDER BY id DESC LIMIT 1"
+    ).get(next.user_id, nowLocal());
+    let orderId;
+    const isNewOrder = !existing;
+    if (existing) {
+      orderId = existing.id;
+      db.prepare(`
+        UPDATE group_orders
+        SET total_amount = total_amount + ?,
+            original_amount = COALESCE(original_amount, 0) + ?,
+            expires_at = MAX(expires_at, ?)
+        WHERE id = ?
+      `).run(tpl.price_per_session, tpl.price_per_session, offsetLocal(PROMOTED_TTL_MS), orderId);
+    } else {
+      orderId = insertOrder.run(
+        next.user_id,
+        u.name,
+        u.phone || '',
+        tpl.price_per_session,
+        offsetLocal(PROMOTED_TTL_MS)
+      ).lastInsertRowid;
+      db.prepare('UPDATE group_orders SET original_amount = ? WHERE id = ?').run(tpl.price_per_session, orderId);
+    }
     db.prepare("UPDATE registrations SET status='pending', order_id=?, amount_due=? WHERE id=?")
       .run(orderId, tpl.price_per_session, next.id);
-    notify({ userId: next.user_id, sessionId, type: 'group_promoted',
-      vars: { course_name: tpl.name, start_at: s.start_at } });
-    // 加掛：通知該場次教練有人遞補
+    // 會員通知只在「開新單」時發一次（連續遞補併單不逐場轟炸；明細看我的課表/後台卡片）
+    if (isNewOrder) {
+      notify({ userId: next.user_id, sessionId, type: 'group_promoted',
+        vars: { course_name: tpl.name, start_at: s.start_at } });
+    }
+    // 教練通知維持逐場（各場教練不同，各自只收自己的場次）
     notifyCourseCoach({ coachId: s.coach_id, sessionId, type: 'course_promoted_coach',
       vars: { member_name: u.name, course_name: tpl.name, start_at: s.start_at } });
   });

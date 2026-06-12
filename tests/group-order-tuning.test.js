@@ -102,6 +102,48 @@ expect('getPublicGroupCourses 場次帶 waitlist_count', () => {
   assert.equal(sess2.waitlist_count, 1);
 });
 
+// 7. 連續遞補併單：上限 1、兩場；A 付款核對占滿、B 候補兩場 → 取消 A 訂單 → B 兩場遞補進「同一張」新單
+const { confirmGroupOrder, refundGroupOrder } = await import('../src/services/groupOrderService.js');
+const tpl2 = Number(db.prepare(`
+  INSERT INTO course_templates (name, min_capacity, max_capacity, day_of_week, start_time, recurrence, cycle_start_date, cycle_end_date, status, price_per_session)
+  VALUES ('併單測試班', 1, 1, 6, '15:00', 'weekly', ?, ?, 'published', 600)
+`).run(day(1), day(60)).lastInsertRowid);
+const mk2 = (d) => Number(db.prepare(`
+  INSERT INTO course_sessions (template_id, session_date, start_at, end_at, registration_deadline)
+  VALUES (?, ?, ?, ?, ?)
+`).run(tpl2, day(d), `${day(d)}T15:00:00`, `${day(d)}T16:00:00`, `${day(d)}T14:00:00`).lastInsertRowid);
+const m1 = mk2(30), m2 = mk2(37);
+const admin = Number(db.prepare("INSERT INTO users (name,email,role,is_admin) VALUES ('併單管理','tu-a@x.com','coach',1)").run().lastInsertRowid);
+// 場次掛教練（notifyCourseCoach 對無教練場次靜默跳過，要驗逐場通知須先掛上）
+const tcu = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('併單教練','tu-c@x.com','coach')").run().lastInsertRowid);
+const tco = Number(db.prepare("INSERT INTO coaches (user_id, display_name) VALUES (?, '併單教練')").run(tcu).lastInsertRowid);
+db.prepare('UPDATE course_sessions SET coach_id=? WHERE id IN (?,?)').run(tco, m1, m2);
+const oA = createGroupOrder({ name: 'tuA', phone: '0991000008', paySessionIds: [m1, m2], waitlistSessionIds: [] });
+confirmGroupOrder({ orderId: oA.orderId, actorId: admin });
+createGroupOrder({ name: 'tuB', phone: '0991000009', paySessionIds: [], waitlistSessionIds: [m1, m2] });
+db.exec("DELETE FROM notifications");
+refundGroupOrder({ orderId: oA.orderId, actorId: admin });
+expect('連續遞補 → 同一張訂單（兩列同 order_id、總額 1200、期限≈+24h）', () => {
+  const regs = db.prepare("SELECT order_id FROM registrations WHERE user_id=(SELECT id FROM users WHERE phone='0991000009') AND status='pending'").all();
+  assert.equal(regs.length, 2);
+  assert.equal(regs[0].order_id, regs[1].order_id);
+  const o = db.prepare('SELECT total_amount, original_amount, expires_at FROM group_orders WHERE id=?').get(regs[0].order_id);
+  assert.equal(o.total_amount, 1200);
+  assert.equal(o.original_amount, 1200);
+  const diffH = (new Date(o.expires_at) - new Date(nowLocal())) / 3600000;
+  assert.ok(diffH > 23 && diffH < 25, `expiry ${diffH}h`);
+  assert.ok(listPendingOrders().filter(x => x.id === regs[0].order_id).length === 1);
+});
+expect('連續遞補只發一則 group_promoted 給會員', () => {
+  const c = db.prepare("SELECT COUNT(*) AS c FROM notifications WHERE type='group_promoted'").get().c;
+  assert.equal(c, 1);
+});
+expect('教練遞補通知維持逐場（2 則）', () => {
+  const c = db.prepare("SELECT COUNT(*) AS c FROM notifications WHERE type='course_promoted_coach'").get().c;
+  assert.equal(c, 2);
+});
+db.exec("DELETE FROM notifications; DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM course_sessions WHERE template_id=" + tpl2 + "; DELETE FROM course_templates WHERE id=" + tpl2 + "; DELETE FROM coaches WHERE id=" + tco + "; DELETE FROM users WHERE email IN ('tu-a@x.com','tu-c@x.com')");
+
 setSetting('group_order_expiry_hours', '72');
 db.exec("DELETE FROM notifications; DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM course_sessions WHERE template_id=" + tplId + "; DELETE FROM course_templates WHERE id=" + tplId + "; DELETE FROM users WHERE phone LIKE '0991%'");
 console.log('[group-order-tuning test] done');
