@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sky-50:#f0f9ff; --sky-100:#e0f2fe; --sky-200:#bae6fd; --sky-300:#7dd3fc;
+  --sky-500:#0ea5e9; --sky-600:#0284c7; --sky-700:#0369a1; --sky-900:#0c4a6e;
+  --ink:#0f172a; --ink-soft:#475569; --ink-mute:#94a3b8; --line:#e2e8f0;
+  --green:#15803d; --green-bg:#f0fdf4; --amber:#a16207; --amber-bg:#fffbeb;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans TC','Inter',sans-serif;color:var(--ink);background:#e2e8f0}
+.card{width:1080px;height:1080px;background:#fff;position:relative;overflow:hidden;display:flex;flex-direction:column}
+
+/* hero */
+.hero{background:linear-gradient(150deg,var(--sky-900) 0%,var(--sky-700) 50%,var(--sky-500) 100%);color:#fff;padding:50px 64px 40px;position:relative;overflow:hidden}
+.hero::after{content:'';position:absolute;right:-90px;top:-110px;width:340px;height:340px;border-radius:50%;background:rgba(255,255,255,.07)}
+.hero .kicker{display:inline-block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:6px 18px;font-size:16px;font-weight:700;letter-spacing:.16em;margin-bottom:16px}
+.hero h1{font-size:46px;font-weight:900;line-height:1.25}
+.hero .period{margin-top:12px;font-size:21px;color:var(--sky-100);font-weight:500;position:relative;z-index:1}
+.hero .herostats{display:flex;gap:14px;margin-top:26px;position:relative;z-index:1}
+.hero .hs{flex:1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.26);border-radius:14px;padding:16px 20px}
+.hero .hs b{display:block;font-size:34px;font-weight:900;line-height:1.1}
+.hero .hs span{font-size:16px;color:var(--sky-100)}
+
+/* body */
+.body{flex:1;padding:34px 64px 0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto;gap:26px 40px;align-content:start}
+.sec-t{font-size:17px;font-weight:900;letter-spacing:.14em;color:var(--sky-600);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.sec-t::before{content:'';width:22px;height:3px;background:#38bdf8;border-radius:2px}
+
+/* 產出 tiles */
+.tiles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.tile{background:var(--sky-50);border:1px solid var(--sky-200);border-radius:13px;padding:14px 12px;text-align:center}
+.tile b{display:block;font-size:30px;font-weight:900;color:var(--sky-700);line-height:1}
+.tile span{font-size:14.5px;color:var(--ink-soft);display:block;margin-top:6px}
+
+/* token rows */
+.trow{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px dashed var(--line);font-size:18px}
+.trow:last-child{border-bottom:none}
+.trow .lab{color:var(--ink-soft);font-weight:500}
+.trow .val{font-weight:900;font-size:22px;color:var(--ink)}
+.trow .val small{font-size:14px;color:var(--ink-mute);font-weight:600}
+
+/* models */
+.mbar{display:grid;grid-template-columns:120px 1fr 64px;align-items:center;gap:12px;margin-bottom:11px;font-size:16.5px}
+.mbar .mn{font-weight:700;color:var(--ink)}
+.mbar .track{height:18px;background:#cbd5e1;border-radius:9px;overflow:hidden}
+.mbar .fill{display:block;height:18px;border-radius:9px;background-color:#0369a1;background-image:linear-gradient(90deg,#0ea5e9,#075985)}
+.mbar .mc{text-align:right;font-weight:800;color:var(--ink-soft);font-size:15px}
+
+/* 協作 chips */
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chip{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 16px;display:flex;align-items:center;gap:13px}
+.chip .ic{width:44px;height:44px;border-radius:12px;background:var(--sky-100);color:var(--sky-700);font-size:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chip b{font-size:25px;font-weight:900;color:var(--ink);line-height:1}
+.chip span{font-size:14.5px;color:var(--ink-soft);display:block;margin-top:3px}
+
+/* 做了什麼 full-width */
+.didrow{grid-column:1 / -1}
+.did{display:flex;flex-wrap:wrap;gap:9px}
+.did .d{background:var(--sky-50);border:1px solid var(--sky-200);border-radius:999px;padding:8px 17px;font-size:16px;color:var(--sky-800,#075985);font-weight:600}
+.did .d b{font-weight:900;color:var(--sky-700)}
+
+/* footer */
+.foot{display:flex;justify-content:space-between;align-items:center;padding:18px 64px 24px;font-size:15px;font-weight:800;letter-spacing:.14em;color:var(--ink-mute)}
+.foot .r{letter-spacing:.06em;font-weight:600}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hero">
+    <span class="kicker">CHINUP PERFORMANCE · SESSION REPORT</span>
+    <h1>本次開發 Session 總結</h1>
+    <div class="period">2026/05/06 – 06/13　·　21 個活躍工作日　·　約 45 小時</div>
+    <div class="herostats">
+      <div class="hs"><b>≈ 8.5M</b><span>產出 Token（含子代理）</span></div>
+      <div class="hs"><b>215</b><span>子代理執行</span></div>
+      <div class="hs"><b>45</b><span>PR 合併（至 #55）</span></div>
+    </div>
+  </div>
+
+  <div class="body">
+    <!-- 產出 -->
+    <div>
+      <div class="sec-t">交付產出</div>
+      <div class="tiles">
+        <div class="tile"><b>175</b><span>commits</span></div>
+        <div class="tile"><b>45</b><span>PR merged</span></div>
+        <div class="tile"><b>55</b><span>測試檔</span></div>
+      </div>
+    </div>
+
+    <!-- Token -->
+    <div>
+      <div class="sec-t">TOKEN 用量</div>
+      <div class="trow"><span class="lab">產出（output）</span><span class="val">≈ 8.49M</span></div>
+      <div class="trow"><span class="lab">輸入（input）</span><span class="val">≈ 2.15M</span></div>
+      <div class="trow"><span class="lab">快取讀取（cache read）</span><span class="val">≈ 2.11B <small>21 億</small></span></div>
+    </div>
+
+    <!-- 模型 -->
+    <div>
+      <div class="sec-t">使用的模型（依訊息數）</div>
+      <div class="mbar"><span class="mn">Opus 4.8</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="mc">4,376</span></div>
+      <div class="mbar"><span class="mn">Haiku 4.5</span><span class="track"><span class="fill" style="width:80%"></span></span><span class="mc">3,512</span></div>
+      <div class="mbar"><span class="mn">Fable 5</span><span class="track"><span class="fill" style="width:51%"></span></span><span class="mc">2,246</span></div>
+      <div class="mbar"><span class="mn">Sonnet 4.6</span><span class="track"><span class="fill" style="width:19%"></span></span><span class="mc">842</span></div>
+      <div class="mbar"><span class="mn">Opus 4.7</span><span class="track"><span class="fill" style="width:12%"></span></span><span class="mc">511</span></div>
+    </div>
+
+    <!-- 協作 -->
+    <div>
+      <div class="sec-t">協作與工具</div>
+      <div class="chips">
+        <div class="chip"><span class="ic">🧩</span><div><b>14</b><span>多代理工作流</span></div></div>
+        <div class="chip"><span class="ic">⚡</span><div><b>12</b><span>Skill 呼叫</span></div></div>
+        <div class="chip"><span class="ic">🛠️</span><div><b>~2,150</b><span>工具呼叫</span></div></div>
+        <div class="chip"><span class="ic">💬</span><div><b>7,125</b><span>對話訊息</span></div></div>
+      </div>
+    </div>
+
+    <!-- 做了什麼 -->
+    <div class="didrow">
+      <div class="sec-t">完成的工作</div>
+      <div class="did">
+        <span class="d"><b>①</b> 預約系統本體（1對1＋團課）</span>
+        <span class="d"><b>②</b> Google 行事曆＋Gmail 整合</span>
+        <span class="d"><b>③</b> 付款核對與退款流</span>
+        <span class="d"><b>④</b> 循環預約</span>
+        <span class="d"><b>⑤</b> 文件 · PDF 簡報 · IG 圖卡</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>CHINUP PERFORMANCE</span>
+    <span class="r">開發 Session 統計 · 2026/06/13</span>
+  </div>
+</div>
+</body>
+</html>
