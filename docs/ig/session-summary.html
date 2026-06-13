@@ -27,15 +27,16 @@ body{font-family:'Noto Sans TC','Inter',sans-serif;color:var(--ink);background:#
 .hero .hs span{font-size:16px;color:var(--sky-100)}
 
 /* body */
-.body{flex:1;padding:34px 64px 0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto;gap:26px 40px;align-content:start}
-.sec-t{font-size:17px;font-weight:900;letter-spacing:.14em;color:var(--sky-600);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.body{flex:1;padding:30px 64px 0;display:flex;flex-direction:column;gap:23px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:23px 40px}
+.sec-t{font-size:17px;font-weight:900;letter-spacing:.14em;color:var(--sky-600);margin-bottom:13px;display:flex;align-items:center;gap:8px}
 .sec-t::before{content:'';width:22px;height:3px;background:#38bdf8;border-radius:2px}
 
-/* 產出 tiles */
-.tiles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-.tile{background:var(--sky-50);border:1px solid var(--sky-200);border-radius:13px;padding:14px 12px;text-align:center}
-.tile b{display:block;font-size:30px;font-weight:900;color:var(--sky-700);line-height:1}
-.tile span{font-size:14.5px;color:var(--ink-soft);display:block;margin-top:6px}
+/* 產出 tiles（整列五格） */
+.tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.tile{background:var(--sky-50);border:1px solid var(--sky-200);border-radius:13px;padding:14px 8px;text-align:center}
+.tile b{display:block;font-size:29px;font-weight:900;color:var(--sky-700);line-height:1}
+.tile span{font-size:14px;color:var(--ink-soft);display:block;margin-top:6px}
 
 /* token rows */
 .trow{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px dashed var(--line);font-size:18px}
@@ -59,9 +60,8 @@ body{font-family:'Noto Sans TC','Inter',sans-serif;color:var(--ink);background:#
 .chip span{font-size:14.5px;color:var(--ink-soft);display:block;margin-top:3px}
 
 /* 做了什麼 full-width */
-.didrow{grid-column:1 / -1}
-.did{display:flex;flex-wrap:wrap;gap:9px}
-.did .d{background:var(--sky-50);border:1px solid var(--sky-200);border-radius:999px;padding:8px 17px;font-size:16px;color:var(--sky-800,#075985);font-weight:600}
+.did{display:flex;flex-direction:column;align-items:flex-start;gap:9px}
+.did .d{background:var(--sky-50);border:1px solid var(--sky-200);border-radius:999px;padding:8px 17px;font-size:15.5px;color:var(--sky-800,#075985);font-weight:600}
 .did .d b{font-weight:900;color:var(--sky-700)}
 
 /* footer */
@@ -83,54 +83,60 @@ body{font-family:'Noto Sans TC','Inter',sans-serif;color:var(--ink);background:#
   </div>
 
   <div class="body">
-    <!-- 產出 -->
+    <!-- 產出（整列五格）-->
     <div>
       <div class="sec-t">交付產出</div>
       <div class="tiles">
+        <div class="tile"><b>≈ 45K</b><span>程式碼行數</span></div>
+        <div class="tile"><b>26</b><span>Bug／問題修復</span></div>
         <div class="tile"><b>175</b><span>commits</span></div>
         <div class="tile"><b>45</b><span>PR merged</span></div>
         <div class="tile"><b>55</b><span>測試檔</span></div>
       </div>
     </div>
 
-    <!-- Token -->
-    <div>
-      <div class="sec-t">TOKEN 用量</div>
-      <div class="trow"><span class="lab">產出（output）</span><span class="val">≈ 8.49M</span></div>
-      <div class="trow"><span class="lab">輸入（input）</span><span class="val">≈ 2.15M</span></div>
-      <div class="trow"><span class="lab">快取讀取（cache read）</span><span class="val">≈ 2.11B <small>21 億</small></span></div>
-    </div>
+    <div class="grid2">
+      <!-- Token -->
+      <div>
+        <div class="sec-t">TOKEN 用量</div>
+        <div class="trow"><span class="lab">產出（output）</span><span class="val">≈ 8.49M</span></div>
+        <div class="trow"><span class="lab">輸入（input）</span><span class="val">≈ 2.15M</span></div>
+        <div class="trow"><span class="lab">快取讀取（cache read）</span><span class="val">≈ 2.11B <small>21 億</small></span></div>
+      </div>
 
-    <!-- 模型 -->
-    <div>
-      <div class="sec-t">使用的模型（依訊息數）</div>
-      <div class="mbar"><span class="mn">Opus 4.8</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="mc">4,376</span></div>
-      <div class="mbar"><span class="mn">Haiku 4.5</span><span class="track"><span class="fill" style="width:80%"></span></span><span class="mc">3,512</span></div>
-      <div class="mbar"><span class="mn">Fable 5</span><span class="track"><span class="fill" style="width:51%"></span></span><span class="mc">2,246</span></div>
-      <div class="mbar"><span class="mn">Sonnet 4.6</span><span class="track"><span class="fill" style="width:19%"></span></span><span class="mc">842</span></div>
-      <div class="mbar"><span class="mn">Opus 4.7</span><span class="track"><span class="fill" style="width:12%"></span></span><span class="mc">511</span></div>
-    </div>
-
-    <!-- 協作 -->
-    <div>
-      <div class="sec-t">協作與工具</div>
-      <div class="chips">
-        <div class="chip"><span class="ic">🧩</span><div><b>14</b><span>多代理工作流</span></div></div>
-        <div class="chip"><span class="ic">⚡</span><div><b>12</b><span>Skill 呼叫</span></div></div>
-        <div class="chip"><span class="ic">🛠️</span><div><b>~2,150</b><span>工具呼叫</span></div></div>
-        <div class="chip"><span class="ic">💬</span><div><b>7,125</b><span>對話訊息</span></div></div>
+      <!-- 協作 -->
+      <div>
+        <div class="sec-t">協作與工具</div>
+        <div class="chips">
+          <div class="chip"><span class="ic">🧩</span><div><b>14</b><span>多代理工作流</span></div></div>
+          <div class="chip"><span class="ic">⚡</span><div><b>12</b><span>Skill 呼叫</span></div></div>
+          <div class="chip"><span class="ic">🛠️</span><div><b>~2,150</b><span>工具呼叫</span></div></div>
+          <div class="chip"><span class="ic">💬</span><div><b>7,125</b><span>對話訊息</span></div></div>
+        </div>
       </div>
     </div>
 
-    <!-- 做了什麼 -->
-    <div class="didrow">
-      <div class="sec-t">完成的工作</div>
-      <div class="did">
-        <span class="d"><b>①</b> 預約系統本體（1對1＋團課）</span>
-        <span class="d"><b>②</b> Google 行事曆＋Gmail 整合</span>
-        <span class="d"><b>③</b> 付款核對與退款流</span>
-        <span class="d"><b>④</b> 循環預約</span>
-        <span class="d"><b>⑤</b> 文件 · PDF 簡報 · IG 圖卡</span>
+    <div class="grid2">
+      <!-- 模型 -->
+      <div>
+        <div class="sec-t">使用的模型（依訊息數）</div>
+        <div class="mbar"><span class="mn">Opus 4.8</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="mc">4,376</span></div>
+        <div class="mbar"><span class="mn">Haiku 4.5</span><span class="track"><span class="fill" style="width:80%"></span></span><span class="mc">3,512</span></div>
+        <div class="mbar"><span class="mn">Fable 5</span><span class="track"><span class="fill" style="width:51%"></span></span><span class="mc">2,246</span></div>
+        <div class="mbar"><span class="mn">Sonnet 4.6</span><span class="track"><span class="fill" style="width:19%"></span></span><span class="mc">842</span></div>
+        <div class="mbar"><span class="mn">Opus 4.7</span><span class="track"><span class="fill" style="width:12%"></span></span><span class="mc">511</span></div>
+      </div>
+
+      <!-- 做了什麼 -->
+      <div>
+        <div class="sec-t">完成的工作</div>
+        <div class="did">
+          <span class="d"><b>①</b> 預約系統本體（1對1＋團課）</span>
+          <span class="d"><b>②</b> Google 行事曆＋Gmail 整合</span>
+          <span class="d"><b>③</b> 付款核對與退款流</span>
+          <span class="d"><b>④</b> 循環預約</span>
+          <span class="d"><b>⑤</b> 文件 · PDF 簡報 · IG 圖卡</span>
+        </div>
       </div>
     </div>
   </div>
