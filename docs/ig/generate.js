@@ -11,52 +11,55 @@ section{background:#fff}
 section.spec{background:var(--sky-900);padding:64px 72px 96px}
 .wrap{justify-content:center}
 
-/* 標題區 */
-.sec-no{font-size:16px;letter-spacing:.22em}
-h2{font-size:37px;line-height:1.35}
-.sec-head{max-width:100%;margin-bottom:6px}
-.sec-head p{font-size:18px;line-height:1.65;margin-top:12px}
+/* 標題區（字級全面放大以利 IG 手機瀏覽） */
+.sec-no{font-size:19px;letter-spacing:.22em}
+h2{font-size:45px;line-height:1.32}
+.sec-head{max-width:100%;margin-bottom:10px}
+.sec-head p{font-size:23px;line-height:1.6;margin-top:14px}
 
-/* 主內容：手機固定左欄、要點右欄 */
-.cols, .cols.r{grid-template-columns:420px 1fr;gap:48px;align-items:center;min-height:0}
+/* 主內容：手機略縮固定左欄、要點右欄加寬 */
+.cols, .cols.r{grid-template-columns:380px 1fr;gap:40px;align-items:center;min-height:0}
 .cols.r .phone-col{order:0}
-.phone-col>div{transform:scale(1.06);transform-origin:top center}
-.phone-cap{font-size:13px;margin-top:12px}
-.feature-list{gap:18px}
-.feature-list li{font-size:17px;line-height:1.6}
-.feature-list li::before{width:26px;height:26px;font-size:15px;border-radius:8px;margin-top:3px}
+.phone-col>div{transform:scale(.98);transform-origin:top center}
+.phone-cap{font-size:15px;margin-top:12px}
+.feature-list{gap:22px}
+.feature-list li{font-size:23px;line-height:1.55;gap:16px}
+.feature-list li::before{width:32px;height:32px;font-size:19px;border-radius:9px;margin-top:3px}
 
 /* 流程與角色階梯 */
-.step b{font-size:16.5px}
-.step p{font-size:14.5px}
-.ladder{gap:12px}
-.ladder .lv{font-size:16px;padding:16px 18px}
-.ladder .lv .dotz{width:46px;height:46px;font-size:21px;border-radius:13px}
-.ladder .lv .tiny{font-size:13px}
+.step{padding:16px 24px 16px 30px}
+.step::before{width:38px;height:38px;font-size:18px;top:18px}
+.step b{font-size:22px;margin-bottom:5px}
+.step p{font-size:19px;line-height:1.5}
+.ladder{gap:16px}
+.ladder .lv{font-size:22px;padding:20px 22px;gap:16px}
+.ladder .lv b{font-size:23px}
+.ladder .lv .dotz{width:54px;height:54px;font-size:25px;border-radius:15px}
+.ladder .lv .tiny{font-size:17px}
 
 /* footer 品牌＋頁碼 */
-section::before{content:'CHINUP PERFORMANCE';position:absolute;left:72px;bottom:42px;font-size:13px;font-weight:800;letter-spacing:.18em;color:var(--ink-mute)}
-section::after{content:counter(card,decimal-leading-zero) ' / 17';position:absolute;right:72px;bottom:42px;font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--ink-mute)}
+section::before{content:'CHINUP PERFORMANCE';position:absolute;left:72px;bottom:42px;font-size:16px;font-weight:800;letter-spacing:.18em;color:var(--ink-mute)}
+section::after{content:counter(card,decimal-leading-zero) ' / 17';position:absolute;right:72px;bottom:42px;font-size:16px;font-weight:800;letter-spacing:.12em;color:var(--ink-mute)}
 section.spec::before, section.spec::after{color:#7dd3fc}
 
 /* 封面 */
 .hero{display:flex;align-items:center}
 .hero .wrap{justify-content:center}
-.hero .kicker{font-size:14px;align-self:flex-start}
-.hero h1{font-size:52px}
-.hero p.lead{font-size:20px;margin-top:20px;max-width:100%}
-.hero .stats{margin-top:38px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.hero .stat{padding:16px 24px}
-.hero .stat b{font-size:27px}
-.hero .stat span{font-size:14px}
-.swipe{margin-top:36px;font-size:16px;font-weight:700;color:#fff;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:11px 26px;display:inline-block;align-self:flex-start}
+.hero .kicker{font-size:17px;align-self:flex-start}
+.hero h1{font-size:60px}
+.hero p.lead{font-size:25px;margin-top:22px;max-width:100%;line-height:1.6}
+.hero .stats{margin-top:42px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.hero .stat{padding:20px 28px}
+.hero .stat b{font-size:32px}
+.hero .stat span{font-size:18px}
+.swipe{margin-top:40px;font-size:20px;font-weight:700;color:#fff;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:14px 30px;display:inline-block;align-self:flex-start}
 
 /* 技術規格＋聲明 */
 .spec .sec-head{margin-bottom:0}
-.spec-grid{grid-template-columns:1fr;gap:20px;margin-top:32px}
-.spec .card{padding:28px 32px;font-size:17px;line-height:1.75}
-.spec .card b{font-size:20px}
-.disclaimer{padding:26px 0 0;text-align:left;font-size:13px;color:#bae6fdaa}
+.spec-grid{grid-template-columns:1fr;gap:22px;margin-top:34px}
+.spec .card{padding:30px 34px;font-size:22px;line-height:1.7}
+.spec .card b{font-size:25px}
+.disclaimer{padding:30px 0 0;text-align:left;font-size:16px;color:#bae6fdaa;line-height:1.6}
 `;
 
 (async () => {
