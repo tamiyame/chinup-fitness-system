@@ -856,23 +856,59 @@ details.session-row summary:hover { background: #f8faf9; }
 .detail-spec { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
 
 /* ============ 日期橫向 rail（詳細頁）============ */
-.dayrail {
+/* 可預約時段標題列：標題＋年月（左）／週次導覽 今天・‹・›（右） */
+.slot-head {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  overflow-x: auto;
+  flex-wrap: wrap;
+}
+.slot-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#slot-yearmonth {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0369a1;
+  background: #e0f2fe;
+  border-radius: 999px;
+  padding: 2px 12px;
+}
+.day-nav-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.day-nav-btn:hover:not(:disabled) { border-color: #38bdf8; background: #f0f9ff; }
+.day-nav-btn:disabled { opacity: .4; cursor: default; }
+.day-nav-arrow { padding: 7px 12px; font-size: 18px; }
+
+.dayrail {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
   padding: 2px 0 10px;
   margin: 0 0 4px;
-  scrollbar-width: none;
 }
-.dayrail::-webkit-scrollbar { display: none; }
 
 .daypill {
-  flex-shrink: 0;
-  width: 54px;
+  min-width: 0;
   border-radius: 14px;
   border: 1px solid var(--line);
   background: #fff;
-  padding: 9px 0;
+  padding: 9px 2px;
   text-align: center;
   cursor: pointer;
   transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
@@ -1105,3 +1141,7 @@ details.session-row summary:hover { background: #f8faf9; }
   flex-shrink: 0;
 }
 .help-btn:hover { background: var(--brand-50); color: #0ea5e9; border-color: #bae6fd; }
+
+/* 補登（過去）時段卡：淡琥珀虛線框，與一般可預約時段區別 */
+.timeslot.slot-past { border-style: dashed; border-color: #fcd34d; background: #fffdf5; }
+.timeslot.slot-past .t-sub { color: #b45309; }

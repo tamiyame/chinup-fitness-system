@@ -452,16 +452,17 @@ export function recurringOccurrences({ startAt, frequency, intervalDays = null, 
   return out;
 }
 
-/** 單一 occurrence 可建立？＝與單筆公開預約相同管線（班表/請假/緩衝/容量/重疊/freebusy）。 */
-function _occurrenceAvailable({ coachId, startAt, units, externalBusy }) {
+/** 單一 occurrence 可建立？＝與單筆公開預約相同管線（班表/請假/緩衝/容量/重疊/freebusy）。
+ *  includePast（限管理者）：放行過去日期的場次（容量/重疊仍照常檢查）。 */
+function _occurrenceAvailable({ coachId, startAt, units, externalBusy, includePast = false }) {
   const date = startAt.slice(0, 10);
-  const slots = computeAvailableSlots({ coachId, fromDate: date, toDate: date, externalBusy });
+  const slots = computeAvailableSlots({ coachId, fromDate: date, toDate: date, externalBusy, includePast });
   const hit = slots.find((s) => s.start === startAt);
   return !!(hit && hit.remain >= units);
 }
 
 /** 預覽：逐場回 { startAt, ok, reason? }，不寫任何東西。 */
-export function previewRecurringBookings({ coachId, startAt, sessionType = '1on1', frequency, intervalDays = null, count, externalBusy = null }) {
+export function previewRecurringBookings({ coachId, startAt, sessionType = '1on1', frequency, intervalDays = null, count, externalBusy = null, includePast = false }) {
   _validateRecurringParams({ startAt, sessionType, frequency, intervalDays, count });
   const coach = getCoachStmt.get(coachId);
   if (!coach) throw new ApiError(404, 'coach_not_found');
@@ -469,7 +470,7 @@ export function previewRecurringBookings({ coachId, startAt, sessionType = '1on1
   const units = sessionType === '1on2' ? 2 : 1;
   const occurrences = recurringOccurrences({ startAt, frequency, intervalDays, count }).map((o) => {
     if (o.reason) return { startAt: o.startAt, ok: false, reason: o.reason };
-    return _occurrenceAvailable({ coachId, startAt: o.startAt, units, externalBusy })
+    return _occurrenceAvailable({ coachId, startAt: o.startAt, units, externalBusy, includePast })
       ? { startAt: o.startAt, ok: true }
       : { startAt: o.startAt, ok: false, reason: 'unavailable' };
   });
@@ -479,7 +480,7 @@ export function previewRecurringBookings({ coachId, startAt, sessionType = '1on1
 /** 建立循環預約：tx 內逐場重驗、跳過衝突、可建立者逐堂建立（silent）＋逐堂折扣；
  *  markPaid → 全部直接標已核對（經手人=操作者）。摘要通知各一則。 */
 export function createRecurringBookings({ coachId, startAt, name, phone, email = null, sessionType = '1on1',
-  frequency, intervalDays = null, count, markPaid = false, discountCode = null, actorId, externalBusy = null }) {
+  frequency, intervalDays = null, count, markPaid = false, discountCode = null, actorId, externalBusy = null, includePast = false }) {
   _validateRecurringParams({ startAt, sessionType, frequency, intervalDays, count });
   if (email != null && email !== '' && !EMAIL_RE.test(email)) throw new ApiError(400, 'invalid_email');
   const coach = getCoachStmt.get(coachId);
@@ -492,7 +493,7 @@ export function createRecurringBookings({ coachId, startAt, name, phone, email =
     const skipped = [];
     for (const o of recurringOccurrences({ startAt, frequency, intervalDays, count })) {
       if (o.reason) { skipped.push({ startAt: o.startAt, reason: o.reason }); continue; }
-      if (!_occurrenceAvailable({ coachId, startAt: o.startAt, units, externalBusy })) {
+      if (!_occurrenceAvailable({ coachId, startAt: o.startAt, units, externalBusy, includePast })) {
         skipped.push({ startAt: o.startAt, reason: 'unavailable' });
         continue;
       }

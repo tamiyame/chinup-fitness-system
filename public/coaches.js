@@ -11,6 +11,7 @@ function show(name) {
 
 let currentCoach = null;
 let weekOffset = 0;
+const isAdmin = !!(getUser()?.is_admin);
 
 // ── 1v1 price（1對1 / 1對2 兩種單堂價）─────────────────────────────────────────
 let priceByType = { '1on1': null, '1on2': null };
@@ -290,27 +291,36 @@ async function openCoach(id) {
 function renderSlotControls() {
   const ctrls = $('slot-controls');
   ctrls.innerHTML = `
-    <button class="btn-secondary" id="prev-week">← 上週</button>
-    <span id="week-label" class="font-medium"></span>
-    <button class="btn-secondary" id="next-week">下週 →</button>
+    <button class="day-nav-btn" id="today-btn" type="button">今天</button>
+    <button class="day-nav-btn day-nav-arrow" id="prev-week" type="button" aria-label="上一週">‹</button>
+    <button class="day-nav-btn day-nav-arrow" id="next-week" type="button" aria-label="下一週">›</button>
   `;
   $('prev-week').addEventListener('click', () => {
-    if (weekOffset > 0) { weekOffset--; updatePrevDisabled(); loadSlots(); }
+    if (isAdmin || weekOffset > 0) { weekOffset--; updatePrevDisabled(); loadSlots(); }
   });
   $('next-week').addEventListener('click', () => {
     weekOffset++; updatePrevDisabled(); loadSlots();
+  });
+  $('today-btn').addEventListener('click', () => {
+    if (weekOffset !== 0) { weekOffset = 0; updatePrevDisabled(); loadSlots(); }
   });
   updatePrevDisabled();
 }
 
 function updatePrevDisabled() {
-  const btn = document.getElementById('prev-week');
-  if (btn) btn.disabled = weekOffset <= 0;
+  const prev = document.getElementById('prev-week');
+  if (prev) prev.disabled = !isAdmin && weekOffset <= 0;
+  const today = document.getElementById('today-btn');
+  if (today) today.disabled = weekOffset === 0;
 }
 
 function weekRange(offset) {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset * 7);
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset * 7);
+  // 對齊到該週「週一」起算（getDay: 0=日,1=一,…,6=六）→ 固定呈現 週一～週日
+  const dow = base.getDay();
+  const toMonday = dow === 0 ? -6 : 1 - dow;
+  const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() + toMonday);
   const end = new Date(start.getTime() + 6 * 86400_000);
   const pad = (n) => String(n).padStart(2, '0');
   const f = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -352,9 +362,11 @@ function renderTimegrid(dateKey) {
     el.setAttribute('tabindex', '0');
     el.dataset.slot = s.start;
     el.dataset.remain = s.remain;
-    el.innerHTML = `<div class="t-main">${escapeHtml(fmtTime(s.start))}</div><div class="t-sub">60 分鐘${s.remain === 1 ? ' · 剩 1 名額' : ''}</div>`;
+    if (s.past) el.classList.add('slot-past');
+    const sub = s.past ? '補登 · 60 分鐘' : `60 分鐘${s.remain === 1 ? ' · 剩 1 名額' : ''}`;
+    el.innerHTML = `<div class="t-main">${escapeHtml(fmtTime(s.start))}</div><div class="t-sub">${sub}</div>`;
     // 點擊時段卡 → 直接開 modal（不停留 sel 狀態，modal 開啟即有 UI 回饋）
-    const trigger = () => openBookingModal(currentCoach, { start: s.start, remain: s.remain });
+    const trigger = () => openBookingModal(currentCoach, { start: s.start, remain: s.remain, past: !!s.past });
     el.addEventListener('click', trigger);
     el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); trigger(); }
@@ -438,7 +450,7 @@ function renderDayRail(from, to, allSlots) {
 
 async function loadSlots() {
   const { from, to } = weekRange(weekOffset);
-  $('week-label').textContent = `${from} ~ ${to}`;
+  $('slot-yearmonth').textContent = `${from.slice(0, 4)}/${from.slice(5, 7)}`;
 
   // 清空舊內容
   const rail = $('day-rail');
@@ -448,7 +460,8 @@ async function loadSlots() {
   grid.innerHTML = '';
   dayHead.style.display = 'none';
 
-  const slots = await api(`/api/coaches/${currentCoach.id}/availability?from=${from}&to=${to}`);
+  const qs = `from=${from}&to=${to}` + (isAdmin ? '&backfill=1' : '');
+  const slots = await api(`/api/coaches/${currentCoach.id}/availability?${qs}`);
 
   // 渲染日期 rail（含 timegrid）
   renderDayRail(from, to, slots);

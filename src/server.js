@@ -841,7 +841,10 @@ app.post('/api/public/bookings', bookingLimiter, asyncHandler(async (req, res) =
   const date = startAt.slice(0, 10);
   const externalBusy = await getExternalBusySafe(date, date);
   const units = type === '1on2' ? 2 : 1;
-  const slots = svcComputeSlots({ coachId: coach.id, fromDate: date, toDate: date, externalBusy });
+  // 管理者可於過去日期預約（校正/補登記）：放行過去時段，容量/重疊仍照常檢查。
+  // 非管理者/匿名 → includePast=false → 過去時段不在清單 → 仍擋下（slot_unavailable）。
+  const includePast = !!userFromToken(getTokenFromReq(req))?.is_admin;
+  const slots = svcComputeSlots({ coachId: coach.id, fromDate: date, toDate: date, externalBusy, includePast });
   const hit = slots.find(s => s.start === startAt);
   if (!hit || hit.remain < units) return res.status(409).json({ error: 'slot_unavailable' });
 
@@ -909,8 +912,11 @@ app.get('/api/coaches/:id/availability', asyncHandler(async (req, res) => {
   if (!coach || !coach.is_active) return res.status(404).json({ error: 'coach_not_found' });
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'missing_range' });
+  // 管理者可帶 backfill=1 看過去時段（補登用）；非管理者一律忽略。
+  const requester = userFromToken(getTokenFromReq(req));
+  const includePast = req.query.backfill === '1' && !!requester?.is_admin;
   const externalBusy = await getExternalBusySafe(from, to);
-  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy }));
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy, includePast }));
 }));
 
 // Kept for coach 緊急取消 (coach has a token; member login is disabled).
@@ -953,7 +959,8 @@ app.post('/api/bookings/recurring/preview', requireCoach, asyncHandler(async (re
     count: Number(count),
   };
   const externalBusy = await recurringExternalBusy(params).catch(() => null);
-  res.json(svcPreviewRecurring({ ...params, externalBusy }));
+  // 管理者可於過去日期排循環（校正/補登記）；容量/重疊仍照常檢查。
+  res.json(svcPreviewRecurring({ ...params, externalBusy, includePast: !!req.user.is_admin }));
 }));
 
 app.post('/api/bookings/recurring', requireCoach, asyncHandler(async (req, res) => {
@@ -968,7 +975,7 @@ app.post('/api/bookings/recurring', requireCoach, asyncHandler(async (req, res) 
   const r = svcCreateRecurring({
     ...params, name, phone, email: email || null,
     markPaid: !!markPaid, discountCode: discountCode || null,
-    actorId: req.user.id, externalBusy,
+    actorId: req.user.id, externalBusy, includePast: !!req.user.is_admin,
   });
   // commit 後副作用：逐堂建日曆事件（不 await；reconcile 兜底）
   for (const c of r.created) syncBookingCreate(c.id);

@@ -61,10 +61,11 @@
     <!-- 教練標頭（頭像 + 名字 + 專長）由 JS 填入 -->
     <div id="coach-detail"></div>
 
-    <!-- 可預約時段區塊 -->
-    <h2 class="section-title mt-6">可預約時段</h2>
-    <!-- 上/下週導覽（由 JS renderSlotControls 填入）-->
-    <div id="slot-controls" class="flex items-center gap-3 mb-3"></div>
+    <!-- 可預約時段：標題 + 年月（yyyy/mm）/ 右側週次導覽（今天・上一週・下一週，由 JS 填入）-->
+    <div class="slot-head mt-6 mb-3">
+      <h2 class="section-title slot-title">可預約時段<span id="slot-yearmonth"></span></h2>
+      <div id="slot-controls" class="flex items-center gap-2"></div>
+    </div>
     <!-- 日期橫向 rail（由 JS 填入）-->
     <div id="day-rail" class="dayrail"></div>
     <!-- 當日時段標題（由 JS 填入）-->
