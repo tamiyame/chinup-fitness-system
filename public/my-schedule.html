@@ -6,7 +6,7 @@
 <title>我的課表 · CHINUP Performance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/colors_and_type.css">
 <link rel="stylesheet" href="/style.css">
@@ -50,24 +50,72 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 0;
-    margin-top: 16px;
-    border-top: 1px solid #e2e8f0;
-    color: #64748b;
-    font-size: 13px;
+    padding: 16px 0 8px;
+    margin-top: 6px;
+    font-family: "Archivo", "Noto Sans TC", sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
     cursor: pointer;
     user-select: none;
   }
+  .past-toggle #past-caret { letter-spacing: 0; font-size: 9px; }
+  .past-toggle::after { content: ""; flex: 1; height: 1px; background: var(--line); }
   .past-list .card,
   .past-card { opacity: 0.72; }
-  .section-label {
-    font-size: 12px;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-    margin: 4px 0 10px;
+  /* 我的課表卡片 · 運動力學壓縮版（日期錨點 / 2 行內容 / 動作鈕右側；無 emoji、無彩條圓角卡） */
+  .sn-list { list-style: none; }
+  .sn-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 46px 1fr auto;
+    column-gap: 13px;
+    align-items: center;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line);
   }
+  .sn-row.is-next { padding-left: 13px; margin-left: -13px; }
+  .sn-row.is-next::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; background: var(--brand-600); }
+  .sn-date { text-align: left; }
+  .sn-dow { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 9.5px; letter-spacing: .14em; color: var(--ink-mute); display: block; line-height: 1; }
+  .sn-dnum { font-family: "Archivo", sans-serif; font-weight: 900; font-size: 26px; line-height: .92; letter-spacing: -.03em; color: var(--ink); font-variant-numeric: tabular-nums; display: block; margin-top: 2px; }
+  .sn-row.is-next .sn-dnum { color: var(--brand-700); }
+  .sn-mon { font-family: "Archivo", sans-serif; font-weight: 600; font-size: 10px; letter-spacing: .08em; color: var(--ink-mute); display: block; margin-top: 1px; font-variant-numeric: tabular-nums; }
+  .sn-body { min-width: 0; }
+  .sn-l1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .sn-kind { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 9.5px; letter-spacing: .1em; color: var(--brand-700); border: 1px solid var(--brand-100); background: var(--brand-50); padding: 2px 6px 1px; line-height: 1; white-space: nowrap; }
+  .sn-next { font-family: "Archivo", sans-serif; font-weight: 800; font-size: 8.5px; letter-spacing: .18em; text-transform: uppercase; color: #fff; background: var(--brand-600); padding: 2px 5px 1px; line-height: 1; }
+  .sn-title { font-weight: 900; font-size: 15.5px; letter-spacing: -.01em; line-height: 1.2; color: var(--ink); }
+  .sn-lead { font-weight: 500; font-size: 12.5px; color: var(--ink-mute); letter-spacing: .04em; margin-right: 1px; }
+  .sn-l2 { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 3px; }
+  .sn-time { font-family: "Archivo", sans-serif; font-weight: 600; font-size: 12.5px; letter-spacing: .02em; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .sn-clock { font-weight: 800; color: var(--ink); }
+  .sn-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; }
+  .sn-dot { width: 6px; height: 6px; flex: none; }
+  .sn-status.ok { color: var(--ok-fg); } .sn-status.ok .sn-dot { background: var(--ok-fg); }
+  .sn-status.warn { color: var(--warn-fg); } .sn-status.warn .sn-dot { background: var(--warn-fg); transform: rotate(45deg); }
+  .sn-status.err { color: var(--err-fg); } .sn-status.err .sn-dot { background: var(--err-fg); }
+  .sn-status.mute { color: var(--ink-mute); } .sn-status.mute .sn-dot { background: var(--ink-mute); }
+  .sn-pay { margin-top: 3px; font-size: 11.5px; font-weight: 500; color: var(--warn-fg); font-variant-numeric: tabular-nums; }
+  /* 動作鈕（沿用 .cancel-btn）：右欄垂直置中、實心紅、俐落直角 */
+  .sn-row .cancel-btn { align-self: center; white-space: nowrap; border: 0; border-radius: 0; background: var(--err-fg); color: #fff; font-weight: 700; font-size: 12.5px; letter-spacing: .06em; min-height: 32px; padding: 0 14px; line-height: 32px; cursor: pointer; }
+  .sn-row.is-past { opacity: .55; }
+  .sn-row.is-past .sn-kind { color: var(--ink-mute); border-color: var(--line); background: transparent; }
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "Archivo", "Noto Sans TC", sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin: 6px 0 4px;
+  }
+  .section-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
   /* Lookup form */
   .lookup-field {
     display: flex;
@@ -138,7 +186,7 @@
 
 <main class="max-w-3xl mx-auto px-6">
   <section class="hero">
-    <span class="hero-eyebrow">📋 Personal</span>
+    <span class="hero-eyebrow">Personal</span>
     <h1>我的課表</h1>
     <p>輸入電話與姓名查詢預約記錄與剩餘堂數。</p>
   </section>
@@ -193,8 +241,8 @@
 
     <!-- Upcoming -->
     <div id="upcoming-section">
-      <div class="section-label">📅 即將到來</div>
-      <div id="upcoming-list" class="grid gap-3"></div>
+      <div class="section-label">Upcoming · 即將到來</div>
+      <div id="upcoming-list" class="sn-list"></div>
       <div id="upcoming-empty" class="empty-state" style="display:none;">
         <span class="empty-state-icon">📭</span>
         <p id="upcoming-empty-msg">尚無預約</p>
@@ -209,9 +257,9 @@
     <div id="past-toggle-wrap" style="display:none;">
       <div class="past-toggle" id="past-toggle">
         <span id="past-caret">▶</span>
-        <span>過去記錄（<span id="past-count">0</span>）</span>
+        <span>Past · 已結束（<span id="past-count">0</span>）</span>
       </div>
-      <div id="past-list" class="past-list grid gap-3" style="display:none;"></div>
+      <div id="past-list" class="past-list sn-list" style="display:none;"></div>
     </div>
 
     <!-- Change account -->

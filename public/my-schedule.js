@@ -105,16 +105,28 @@ function showForm() {
 
 // ── Card rendering ───────────────────────────────────────────────────────────
 
+const DOW_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const DOW_ZH = ['日', '一', '二', '三', '四', '五', '六'];
+
 function dateBlock(start_at) {
   const dt = new Date(start_at);
-  const d  = String(dt.getDate()).padStart(2, '0');
-  const m  = String(dt.getMonth() + 1).padStart(2, '0');
+  const dnum = String(dt.getDate());
+  const mon = `${String(dt.getMonth() + 1).padStart(2, '0')}月`;
   return `
-    <div class="text-center px-3 py-2 rounded-lg" style="background:var(--brand-50);min-width:64px;">
-      <div class="text-2xl font-bold" style="color:var(--brand-700);line-height:1;">${d}</div>
-      <div class="text-xs mt-1" style="color:var(--brand-700)">${dt.getFullYear()}/${m}</div>
+    <div class="sn-date">
+      <span class="sn-dow">${DOW_EN[dt.getDay()]}</span>
+      <span class="sn-dnum">${dnum}</span>
+      <span class="sn-mon">${mon}</span>
     </div>
   `;
+}
+
+// 狀態色調：對應 resolveStatus 的 badge class → 運動力學版的點色
+function statusTone(cls) {
+  if (cls === 'badge-confirmed') return 'ok';
+  if (cls === 'badge-cancelled' || cls === 'badge-rejected') return 'err';
+  if (cls === 'badge-leave' || cls === 'badge-completed') return 'mute';
+  return 'warn'; // waitlisted / pending（待確認/待付款/候補/已遞補待付款）
 }
 
 /**
@@ -184,7 +196,7 @@ function paymentLine(item) {
     parts.push(`請於 ${escapeHtml(fmtDate(item.order_expires_at))} 前匯款`);
   }
   if (parts.length === 0) return '';
-  return `<div class="text-sm text-amber-600 mt-1">${parts.join('　')}</div>`;
+  return `<div class="sn-pay">${parts.join(' · ')}</div>`;
 }
 
 function cancelButton(item) {
@@ -209,7 +221,7 @@ function cancelButton(item) {
     return `<button
       class="cancel-btn btn btn-danger btn-sm"
       data-kind="booking"
-      data-id="${item.id}">取消</button>`;
+      data-id="${item.id}">請假</button>`;
   }
   // confirmed / waitlisted
   return `<button
@@ -218,37 +230,44 @@ function cancelButton(item) {
     data-id="${item.id}">取消</button>`;
 }
 
-function cardHtml(item) {
-  const kindPill = item.kind === 'booking'
-    ? `<span class="pill-kind pill-1on1">🏋️ ${item.session_type === '1on2' ? '一對二' : '一對一'}</span>`
-    : '<span class="pill-kind pill-group">👥 團課</span>';
+function cardHtml(item, isNext = false) {
+  const isBooking = item.kind === 'booking';
+  const kindLabel = isBooking
+    ? (item.session_type === '1on2' ? '一對二' : '一對一')
+    : '團課';
 
-  const title = item.kind === 'booking'
-    ? (item.coach_display_name || '教練')
-    : (item.course_name || '團課');
+  // 一對一／一對二：教練名前綴「教練：」；團課：課程名稱
+  const title = isBooking
+    ? `<span class="sn-lead">教練：</span>${escapeHtml(item.coach_display_name || '—')}`
+    : escapeHtml(item.course_name || '團課');
 
   const { label, cls } = resolveStatus(item);
+  const tone = statusTone(cls);
+  const cancel = cancelButton(item);
+
+  const dt = new Date(item.start_at);
+  const time = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+  const markNext = isNext && !item.is_past;
+
+  const rowCls = 'sn-row' + (item.is_past ? ' is-past' : '') + (markNext ? ' is-next' : '');
 
   return `
-    <article class="card${item.is_past ? ' past-card' : ''}">
-      <div class="flex items-center gap-4">
-        ${dateBlock(item.start_at)}
-        <div class="flex-1 min-w-0">
-          <div class="mb-1">${kindPill}</div>
-          <h3 class="card-title">${escapeHtml(title)}</h3>
-          <div class="meta">
-            <span class="meta-item"><span class="meta-icon">🕐</span> ${escapeHtml(fmtDate(item.start_at))}</span>
-          </div>
-          <div class="flex items-center gap-2 mt-2 flex-wrap">
-            <span class="badge ${escapeHtml(cls)}">${escapeHtml(label)}</span>
-          </div>
-          ${paymentLine(item)}
+    <div class="${rowCls}">
+      ${dateBlock(item.start_at)}
+      <div class="sn-body">
+        <div class="sn-l1">
+          <span class="sn-kind">${kindLabel}</span>
+          ${markNext ? '<span class="sn-next">Next</span>' : ''}
+          <span class="sn-title">${title}</span>
         </div>
-        <div class="flex-shrink-0">
-          ${cancelButton(item)}
+        <div class="sn-l2">
+          <span class="sn-time">週${DOW_ZH[dt.getDay()]} · <span class="sn-clock">${time}</span></span>
+          <span class="sn-status ${tone}"><span class="sn-dot"></span>${escapeHtml(label)}</span>
         </div>
+        ${paymentLine(item)}
       </div>
-    </article>
+      ${cancel || ''}
+    </div>
   `;
 }
 
@@ -266,8 +285,11 @@ function render() {
     `1對1 剩 ${state.one_on_one_remaining} 堂 · 團體 剩 ${state.group_remaining} 堂`;
 
   const filtered = filterItems(state.items, state.filter);
-  const upcoming = filtered.filter(i => !i.is_past);
-  const past     = filtered.filter(i =>  i.is_past);
+  // 即將到來：由近到遠（最早的在最上、標記 Next）；已結束：由新到舊
+  const upcoming = filtered.filter(i => !i.is_past)
+    .sort((a, b) => (a.start_at < b.start_at ? -1 : a.start_at > b.start_at ? 1 : 0));
+  const past = filtered.filter(i => i.is_past)
+    .sort((a, b) => (a.start_at > b.start_at ? -1 : a.start_at < b.start_at ? 1 : 0));
 
   // Upcoming
   const upWrap  = document.getElementById('upcoming-list');
@@ -287,7 +309,7 @@ function render() {
     }
   } else {
     upEmpty.style.display = 'none';
-    upWrap.innerHTML = upcoming.map(cardHtml).join('');
+    upWrap.innerHTML = upcoming.map((it, i) => cardHtml(it, i === 0)).join('');
   }
 
   // Past
@@ -303,8 +325,8 @@ function render() {
     pastCount.textContent = past.length;
     pastCaret.textContent = state.pastOpen ? '▼' : '▶';
     if (state.pastOpen) {
-      pastList.style.display = 'grid';
-      pastList.innerHTML = past.map(cardHtml).join('');
+      pastList.style.display = 'block';
+      pastList.innerHTML = past.map(it => cardHtml(it, false)).join('');
     } else {
       pastList.style.display = 'none';
       pastList.innerHTML = '';
@@ -327,7 +349,9 @@ async function handleCancel(btn) {
 
   const confirmMsg = isLeave
     ? '確定要請假嗎？此堂將標為「請假」、不退費，名額會釋出給候補。'
-    : '確定要取消嗎？';
+    : kind === 'booking'
+      ? '確定要請假嗎？此堂一對一預約將被取消、名額釋出。'
+      : '確定要取消嗎？';
   if (!confirm(confirmMsg)) return;
 
   let url, method = 'DELETE';
@@ -347,7 +371,7 @@ async function handleCancel(btn) {
 
   try {
     await api(url, { method, body: state.creds });
-    toast(isLeave ? '已請假' : '已取消', 'success');
+    toast((isLeave || kind === 'booking') ? '已請假' : '已取消', 'success');
     // Re-run lookup to refresh
     await doLookup(state.creds.phone, state.creds.name);
   } catch (e) {
