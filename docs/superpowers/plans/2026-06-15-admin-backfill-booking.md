@@ -1,5 +1,11 @@
 # 管理者補登過去預約 Implementation Plan
 
+> **⚠️ 已部分過時（2026-06-15 redesign）：** 本計畫描述初版「特製補登路徑」。業主後續改為
+> 「**完全比照正常預約、僅放行過去日期**」，特製路徑（`createBackfillBooking`／`POST /api/admin/bookings/backfill`／
+> 補登彈窗變體／手動金額）已移除。最終設計以 spec 文件為準：
+> `docs/superpowers/specs/2026-06-15-admin-backfill-booking-design.md`。
+> Task 1–5 的解鎖上週／`includePast`／前端骨架仍適用；其餘以最終程式碼為準。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 讓管理者在預約頁解鎖「上週」按鈕、回看過去日期，並對過去時段補登（靜默、預設已核對、可改價）的預約；一般使用者行為完全不變。
