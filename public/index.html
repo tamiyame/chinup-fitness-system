@@ -6,11 +6,216 @@
 <title>CHINUP Performance 報名系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/colors_and_type.css">
 <link rel="stylesheet" href="/style.css">
-<style>body { visibility: hidden; }</style>
+<style>
+body { visibility: hidden; }
+
+/* ============================================================
+   Nike 技術美學 overlay（疊於 style.css 之後，同特異性勝出）
+   只覆寫本頁元件外觀；不改任何 id / 事件 / 連結。
+   ============================================================ */
+
+/* ── Hero ── */
+.hero { padding: 40px 0 30px; }
+.hero-eyebrow {
+  display: flex; align-items: center; gap: 12px;
+  background: none; border: none; padding: 0; border-radius: 0;
+  font-family: "Archivo", sans-serif;
+  font-weight: 700; font-size: 11px;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.hero-eyebrow::after {
+  content: ""; flex: 1; height: 1px; background: var(--line);
+}
+.hero h1 {
+  font-family: "Archivo", "Noto Sans TC", sans-serif;
+  font-weight: 900;
+  font-size: clamp(34px, 8vw, 52px);
+  line-height: .98; letter-spacing: -.025em;
+  margin-top: 20px;
+  text-wrap: balance;
+}
+.hero p {
+  margin-top: 16px; font-size: 15px; font-weight: 500;
+  color: var(--ink-soft); max-width: 36ch; text-wrap: pretty;
+}
+.hero-rule {
+  margin-top: 24px;
+  display: flex; align-items: center; gap: 10px;
+  font-family: "Archivo", sans-serif;
+  font-weight: 700; font-size: 10px;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.hero-rule .bar { width: 26px; height: 3px; background: var(--brand-600); flex: none; }
+.hero-rule b { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 900; }
+
+/* ── Entry cards：俐落直線卡、編號、線框圖示、實心 CTA 箭頭 ── */
+.entry-card {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 22px 20px 18px;
+  box-shadow: none;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.entry-card.group,
+.entry-card.solo {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: none;
+}
+.entry-card:hover { transform: none; }
+.entry-card.group:hover,
+.entry-card.solo:hover {
+  border-color: var(--brand-600);
+  box-shadow: 0 1px 0 0 var(--brand-600);
+}
+/* 左側 sky 細條，hover 浮現 */
+.entry-card::after {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--brand-600);
+  transform: scaleY(0); transform-origin: top;
+  transition: transform .2s ease;
+  z-index: 2;
+}
+.entry-card:hover::after { transform: scaleY(1); }
+
+/* 隱藏舊浮水印；用編號當錨點 */
+.entry-watermark { display: none; }
+
+/* 線框 icon badge（描邊方框，非填色膠囊） */
+.entry-badge {
+  width: 48px; height: 48px;
+  border-radius: 9px;
+  border: 1.5px solid var(--ink);
+  background: none !important;
+  color: var(--ink) !important;
+  margin-bottom: 0;
+}
+.entry-badge svg { width: 26px; height: 26px; }
+
+/* 卡片頂列：badge + 編號 */
+.entry-card::before {
+  position: absolute; top: 24px; right: 20px;
+  font-family: "Archivo", sans-serif;
+  font-weight: 900; font-size: 13px; letter-spacing: .04em;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
+.entry-card.group::before { content: "01 / 02"; }
+.entry-card.solo::before  { content: "02 / 02"; }
+
+/* kicker（大寫小標） + 標題 */
+.entry-title {
+  font-family: "Archivo", "Noto Sans TC", sans-serif;
+  font-size: 24px; font-weight: 900;
+  letter-spacing: -.02em; line-height: 1.05;
+  margin-top: 16px;
+  position: relative;
+}
+.entry-title::before {
+  display: block;
+  font-family: "Archivo", sans-serif;
+  font-weight: 700; font-size: 10.5px;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--brand-700);
+  margin-bottom: 6px;
+}
+.entry-card.group .entry-title::before { content: "Group Class"; }
+.entry-card.solo  .entry-title::before { content: "1 on 1 / 1 on 2"; }
+
+.entry-desc {
+  font-size: 13px; font-weight: 500; margin-top: 9px;
+  line-height: 1.55; color: var(--ink-soft); text-wrap: pretty;
+}
+
+/* CTA：細線分隔 + 文字 + 實心 sky 箭頭方塊 */
+.entry-cta {
+  margin-top: 18px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0;
+  font-family: "Archivo", "Noto Sans TC", sans-serif;
+  font-weight: 800; font-size: 14px; letter-spacing: .01em;
+  color: var(--ink) !important;
+}
+.entry-cta .arr {
+  width: 34px; height: 34px; border-radius: 0;
+  background: var(--brand-600) !important;
+  color: #fff; font-size: 16px; line-height: 1;
+  transition: background .15s ease, transform .15s ease;
+}
+.entry-card:hover .entry-cta .arr {
+  background: var(--brand-700) !important;
+  transform: translateX(2px);
+}
+
+/* ── FAQ：細線分隔、編號、加減號 ── */
+.faq { margin-top: 18px; counter-reset: faq; }
+.faq-item summary::before {
+  counter-increment: faq;
+  content: counter(faq, decimal-leading-zero);
+  font-family: "Archivo", sans-serif;
+  font-weight: 900; font-size: 12px; letter-spacing: .02em;
+  color: var(--brand-700);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.faq-item {
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  margin-bottom: 0;
+  box-shadow: none;
+}
+.faq-item summary {
+  list-style: none;
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 0;
+  min-height: 40px;
+  font-weight: 700; font-size: 15px; color: var(--ink);
+}
+.faq-item summary:hover { background: none; color: var(--brand-700); }
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item[open] summary { color: var(--brand-900); }
+/* flex order：① 編號(::before) → ② 題目文字 → ③ 加減號 */
+.faq-item summary::before { order: 0; }
+.faq-tog { order: 2; }
+/* 加減號（細線十字） */
+.faq-tog {
+  position: relative;
+  width: 14px; height: 14px; flex-shrink: 0;
+  margin-left: auto;
+  text-align: initial; color: transparent; font-size: 0;
+}
+.faq-tog::before {
+  content: ""; position: absolute; left: 0; top: 6px; width: 14px; height: 2px;
+  background: var(--ink-mute);
+  transition: background .2s ease;
+}
+.faq-tog::after {
+  content: ""; position: absolute; left: 6px; top: 0; width: 2px; height: 14px;
+  background: var(--ink-mute);
+  transition: transform .2s ease;
+}
+.faq-item[open] .faq-tog::before { background: var(--brand-600); }
+.faq-item[open] .faq-tog::after { transform: scaleY(0); }
+.faq-a {
+  padding: 0 0 18px 0;
+  color: var(--ink-soft);
+  font-size: 13.5px; font-weight: 500; line-height: 1.65;
+  text-wrap: pretty;
+}
+</style>
 </head>
 <body>
 
@@ -55,9 +260,13 @@
 <main class="max-w-6xl mx-auto px-6">
 
   <section class="hero">
-    <span class="hero-eyebrow">💪 CHINUP Performance</span>
+    <span class="hero-eyebrow">CHIN UP · Performance</span>
     <h1>開始你的訓練之旅</h1>
     <p>選擇適合你的課程類型，線上報名或預約教練。</p>
+    <div class="hero-rule">
+      <span class="bar"></span>
+      <span><b>2</b> 種訓練路徑 · 即刻啟動</span>
+    </div>
   </section>
 
   <section class="entry pb-16">
