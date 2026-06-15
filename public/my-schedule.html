@@ -50,14 +50,19 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 0;
-    margin-top: 16px;
-    border-top: 1px solid #e2e8f0;
-    color: #64748b;
-    font-size: 13px;
+    padding: 16px 0 8px;
+    margin-top: 6px;
+    font-family: "Archivo", "Noto Sans TC", sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
     cursor: pointer;
     user-select: none;
   }
+  .past-toggle #past-caret { letter-spacing: 0; font-size: 9px; }
+  .past-toggle::after { content: ""; flex: 1; height: 1px; background: var(--line); }
   .past-list .card,
   .past-card { opacity: 0.72; }
   /* 我的課表卡片 · 運動力學壓縮版（日期錨點 / 2 行內容 / 動作鈕右側；無 emoji、無彩條圓角卡） */
@@ -99,13 +104,18 @@
   .sn-row.is-past { opacity: .55; }
   .sn-row.is-past .sn-kind { color: var(--ink-mute); border-color: var(--line); background: transparent; }
   .section-label {
-    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "Archivo", "Noto Sans TC", sans-serif;
     font-weight: 700;
-    color: #64748b;
+    font-size: 11px;
+    letter-spacing: .2em;
     text-transform: uppercase;
-    letter-spacing: .04em;
-    margin: 4px 0 10px;
+    color: var(--ink-mute);
+    margin: 6px 0 4px;
   }
+  .section-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
   /* Lookup form */
   .lookup-field {
     display: flex;
@@ -176,7 +186,7 @@
 
 <main class="max-w-3xl mx-auto px-6">
   <section class="hero">
-    <span class="hero-eyebrow">📋 Personal</span>
+    <span class="hero-eyebrow">Personal</span>
     <h1>我的課表</h1>
     <p>輸入電話與姓名查詢預約記錄與剩餘堂數。</p>
   </section>
@@ -231,7 +241,7 @@
 
     <!-- Upcoming -->
     <div id="upcoming-section">
-      <div class="section-label">📅 即將到來</div>
+      <div class="section-label">Upcoming · 即將到來</div>
       <div id="upcoming-list" class="sn-list"></div>
       <div id="upcoming-empty" class="empty-state" style="display:none;">
         <span class="empty-state-icon">📭</span>
@@ -247,7 +257,7 @@
     <div id="past-toggle-wrap" style="display:none;">
       <div class="past-toggle" id="past-toggle">
         <span id="past-caret">▶</span>
-        <span>過去記錄（<span id="past-count">0</span>）</span>
+        <span>Past · 已結束（<span id="past-count">0</span>）</span>
       </div>
       <div id="past-list" class="past-list sn-list" style="display:none;"></div>
     </div>
