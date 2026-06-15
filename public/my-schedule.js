@@ -209,7 +209,7 @@ function cancelButton(item) {
     return `<button
       class="cancel-btn btn btn-danger btn-sm"
       data-kind="booking"
-      data-id="${item.id}">取消</button>`;
+      data-id="${item.id}">請假</button>`;
   }
   // confirmed / waitlisted
   return `<button
@@ -238,12 +238,14 @@ function cardHtml(item) {
         <div class="sched-row1">
           ${kindPill}
           <span class="sched-title">${title}</span>
-          <span class="badge ${escapeHtml(cls)} sched-badge">${escapeHtml(label)}</span>
         </div>
         <div class="sched-time"><span class="meta-icon">🕐</span> ${escapeHtml(fmtDate(item.start_at))}</div>
         ${paymentLine(item)}
       </div>
-      ${cancel ? `<div class="sched-actions">${cancel}</div>` : ''}
+      <div class="sched-side">
+        <span class="badge ${escapeHtml(cls)}">${escapeHtml(label)}</span>
+        ${cancel}
+      </div>
     </article>
   `;
 }
@@ -323,7 +325,9 @@ async function handleCancel(btn) {
 
   const confirmMsg = isLeave
     ? '確定要請假嗎？此堂將標為「請假」、不退費，名額會釋出給候補。'
-    : '確定要取消嗎？';
+    : kind === 'booking'
+      ? '確定要請假嗎？此堂一對一預約將被取消、名額釋出。'
+      : '確定要取消嗎？';
   if (!confirm(confirmMsg)) return;
 
   let url, method = 'DELETE';
@@ -343,7 +347,7 @@ async function handleCancel(btn) {
 
   try {
     await api(url, { method, body: state.creds });
-    toast(isLeave ? '已請假' : '已取消', 'success');
+    toast((isLeave || kind === 'booking') ? '已請假' : '已取消', 'success');
     // Re-run lookup to refresh
     await doLookup(state.creds.phone, state.creds.name);
   } catch (e) {

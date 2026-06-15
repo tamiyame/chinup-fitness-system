@@ -81,9 +81,10 @@
   .sched-row1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .sched-row1 .pill-kind { margin: 0; }
   .sched-title { font-size: 15px; font-weight: 700; color: var(--ink); word-break: break-word; }
-  .sched-badge { margin-left: auto; }
   .sched-time { font-size: 13px; color: var(--ink-soft); margin-top: 3px; }
-  .sched-actions { flex-shrink: 0; }
+  /* 右側欄：狀態徽章（上）＋ 按鈕（下）上下排列 */
+  .sched-side { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .sched-side .badge { white-space: nowrap; }
   .section-label {
     font-size: 12px;
     font-weight: 700;
