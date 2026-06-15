@@ -126,7 +126,7 @@ const listExceptionsForDate = db.prepare(`
  * 手動活動的忙碌區間；null = 無外部封鎖）。與部分請假同一套重疊過濾。
  * bookingWindowDays: null（預設）= 預約日期無上限；傳數值可限縮視窗（測試用）。
  */
-export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindowDays = null, externalBusy = null }) {
+export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindowDays = null, externalBusy = null, includePast = false }) {
   if (!YYYYMMDD.test(fromDate) || !YYYYMMDD.test(toDate)) {
     throw new ApiError(400, 'invalid_date_range');
   }
@@ -172,6 +172,11 @@ export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindow
   const dedupedSlots = [...new Set(rawSlots)];
 
   const nowStr = localWallClock(now);
+
+  // 過去時段（補登用）：僅管理者模式納入；不套緩衝/視窗/容量/重疊過濾，
+  // 但仍沿用 dedupedSlots 既有的班表規則 + 請假 + 外部忙碌過濾。
+  const pastSlots = includePast ? dedupedSlots.filter(s => s <= nowStr) : [];
+
   const afterFilter = dedupedSlots.filter(s => {
     if (s <= nowStr) return false;
     const slotMs = new Date(s).getTime();
@@ -179,24 +184,32 @@ export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindow
     if (slotMs > windowEndMs) return false;
     return true;
   });
-  if (afterFilter.length === 0) return [];
-
-  const rangeStart = afterFilter[0];
-  const rangeEnd = addMinutesLocal(afterFilter[afterFilter.length - 1], SLOT_DURATION_MINUTES);
-  // 同教練：任何重疊即不可約（教練無法同時帶兩堂）
-  const coachIntervals = listCoachOverlapping.all(coachId, rangeEnd, rangeStart);
-  // 全店容量：小時桶人數加總
-  const loads = bucketLoads(listAllOverlapping.all(rangeEnd, rangeStart));
-  const capacity = getBookingHourlyCapacity();
 
   const out = [];
-  for (const s of afterFilter) {
-    const e = addMinutesLocal(s, SLOT_DURATION_MINUTES);
-    if (coachIntervals.some(b => s < b.end_at && e > b.start_at)) continue;
-    let remain = capacity;
-    for (const key of hourBuckets(s, e)) remain = Math.min(remain, capacity - (loads.get(key) || 0));
-    if (remain >= 1) out.push({ start: s, remain });
+
+  // 未來時段：維持原本容量/重疊判定（行為與既有一致，附 past:false）
+  if (afterFilter.length > 0) {
+    const rangeStart = afterFilter[0];
+    const rangeEnd = addMinutesLocal(afterFilter[afterFilter.length - 1], SLOT_DURATION_MINUTES);
+    const coachIntervals = listCoachOverlapping.all(coachId, rangeEnd, rangeStart);
+    const loads = bucketLoads(listAllOverlapping.all(rangeEnd, rangeStart));
+    const capacity = getBookingHourlyCapacity();
+    for (const s of afterFilter) {
+      const e = addMinutesLocal(s, SLOT_DURATION_MINUTES);
+      if (coachIntervals.some(b => s < b.end_at && e > b.start_at)) continue;
+      let remain = capacity;
+      for (const key of hourBuckets(s, e)) remain = Math.min(remain, capacity - (loads.get(key) || 0));
+      if (remain >= 1) out.push({ start: s, remain, past: false });
+    }
   }
+
+  // 過去時段：補登模式，全列、不檢查容量/重疊（remain 設容量值僅供顯示）
+  if (pastSlots.length > 0) {
+    const capacity = getBookingHourlyCapacity();
+    for (const s of pastSlots) out.push({ start: s, remain: capacity, past: true });
+  }
+
+  out.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
   return out;
 }
 
