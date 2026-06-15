@@ -311,7 +311,11 @@ function updatePrevDisabled() {
 
 function weekRange(offset) {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset * 7);
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset * 7);
+  // 對齊到該週「週一」起算（getDay: 0=日,1=一,…,6=六）→ 固定呈現 週一～週日
+  const dow = base.getDay();
+  const toMonday = dow === 0 ? -6 : 1 - dow;
+  const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() + toMonday);
   const end = new Date(start.getTime() + 6 * 86400_000);
   const pad = (n) => String(n).padStart(2, '0');
   const f = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

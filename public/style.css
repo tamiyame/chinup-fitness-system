@@ -857,22 +857,19 @@ details.session-row summary:hover { background: #f8faf9; }
 
 /* ============ 日期橫向 rail（詳細頁）============ */
 .dayrail {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
   padding: 2px 0 10px;
   margin: 0 0 4px;
-  scrollbar-width: none;
 }
-.dayrail::-webkit-scrollbar { display: none; }
 
 .daypill {
-  flex-shrink: 0;
-  width: 54px;
+  min-width: 0;
   border-radius: 14px;
   border: 1px solid var(--line);
   background: #fff;
-  padding: 9px 0;
+  padding: 9px 2px;
   text-align: center;
   cursor: pointer;
   transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
