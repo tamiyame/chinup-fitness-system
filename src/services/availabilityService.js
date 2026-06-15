@@ -120,10 +120,22 @@ const listExceptionsForDate = db.prepare(`
 
 /**
  * Compute available 60-min slots for a coach within [fromDate, toDate] inclusive.
- * Returns [{ start: 'YYYY-MM-DDTHH:MM:SS', remain: number }] sorted ascending.
+ * Returns [{ start: 'YYYY-MM-DDTHH:MM:SS', remain: number, past: boolean }] sorted ascending.
+ *
  * remain = 該時段在全店小時桶容量下還可容納的人數（min over 所佔桶）。
+ *   對於過去時段（past:true），remain 設為容量哨兵值（getBookingHourlyCapacity()），
+ *   僅供前端顯示用；補登模式不檢查容量/重疊，故此值並非真實剩餘人數。
+ *
+ * past: false → 未來時段（套緩衝/視窗/容量/重疊過濾）；
+ *        true  → 過去時段（僅管理者補登用，見 includePast）。
+ *
+ * includePast: （預設 false）為 true 時，亦回傳已過去的時段（past:true），
+ *   供管理者補登歷史預約。過去時段跳過時間/緩衝/視窗過濾及容量/重疊排除，
+ *   但仍沿用班表規則 + 請假 + 外部忙碌過濾。
+ *
  * externalBusy: Map<'YYYY-MM-DD', Array<{start:'HH:MM', end:'HH:MM'}>>（Google 日曆
- * 手動活動的忙碌區間；null = 無外部封鎖）。與部分請假同一套重疊過濾。
+ *   手動活動的忙碌區間；null = 無外部封鎖）。與部分請假同一套重疊過濾。
+ *
  * bookingWindowDays: null（預設）= 預約日期無上限；傳數值可限縮視窗（測試用）。
  */
 export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindowDays = null, externalBusy = null, includePast = false }) {

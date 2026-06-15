@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
 import { addRule, computeAvailableSlots } from '../src/services/availabilityService.js';
-import { createBackfillBooking } from '../src/services/bookingService.js';
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 const pad = (n) => String(n).padStart(2, '0');
