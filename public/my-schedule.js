@@ -110,9 +110,9 @@ function dateBlock(start_at) {
   const d  = String(dt.getDate()).padStart(2, '0');
   const m  = String(dt.getMonth() + 1).padStart(2, '0');
   return `
-    <div class="text-center px-3 py-2 rounded-lg" style="background:var(--brand-50);min-width:64px;">
-      <div class="text-2xl font-bold" style="color:var(--brand-700);line-height:1;">${d}</div>
-      <div class="text-xs mt-1" style="color:var(--brand-700)">${dt.getFullYear()}/${m}</div>
+    <div class="sched-date">
+      <div class="sched-date-d">${d}</div>
+      <div class="sched-date-m">${dt.getFullYear()}/${m}</div>
     </div>
   `;
 }
@@ -223,31 +223,27 @@ function cardHtml(item) {
     ? `<span class="pill-kind pill-1on1">🏋️ ${item.session_type === '1on2' ? '一對二' : '一對一'}</span>`
     : '<span class="pill-kind pill-group">👥 團課</span>';
 
+  // 一對一／一對二：教練名前綴「教練：」；團課：課程名稱
   const title = item.kind === 'booking'
-    ? (item.coach_display_name || '教練')
-    : (item.course_name || '團課');
+    ? `教練：${escapeHtml(item.coach_display_name || '—')}`
+    : escapeHtml(item.course_name || '團課');
 
   const { label, cls } = resolveStatus(item);
+  const cancel = cancelButton(item);
 
   return `
-    <article class="card${item.is_past ? ' past-card' : ''}">
-      <div class="flex items-center gap-4">
-        ${dateBlock(item.start_at)}
-        <div class="flex-1 min-w-0">
-          <div class="mb-1">${kindPill}</div>
-          <h3 class="card-title">${escapeHtml(title)}</h3>
-          <div class="meta">
-            <span class="meta-item"><span class="meta-icon">🕐</span> ${escapeHtml(fmtDate(item.start_at))}</span>
-          </div>
-          <div class="flex items-center gap-2 mt-2 flex-wrap">
-            <span class="badge ${escapeHtml(cls)}">${escapeHtml(label)}</span>
-          </div>
-          ${paymentLine(item)}
+    <article class="card sched-card${item.is_past ? ' past-card' : ''}">
+      ${dateBlock(item.start_at)}
+      <div class="sched-main">
+        <div class="sched-row1">
+          ${kindPill}
+          <span class="sched-title">${title}</span>
+          <span class="badge ${escapeHtml(cls)} sched-badge">${escapeHtml(label)}</span>
         </div>
-        <div class="flex-shrink-0">
-          ${cancelButton(item)}
-        </div>
+        <div class="sched-time"><span class="meta-icon">🕐</span> ${escapeHtml(fmtDate(item.start_at))}</div>
+        ${paymentLine(item)}
       </div>
+      ${cancel ? `<div class="sched-actions">${cancel}</div>` : ''}
     </article>
   `;
 }

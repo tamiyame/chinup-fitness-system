@@ -60,6 +60,30 @@
   }
   .past-list .card,
   .past-card { opacity: 0.72; }
+  /* 我的課表卡片：緊湊版面（多堂課時不需滑太久） */
+  .sched-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+  }
+  .sched-date {
+    flex-shrink: 0;
+    text-align: center;
+    min-width: 50px;
+    background: var(--brand-50);
+    border-radius: 10px;
+    padding: 6px 8px;
+  }
+  .sched-date-d { font-size: 20px; font-weight: 800; line-height: 1; color: var(--brand-700); }
+  .sched-date-m { font-size: 11px; margin-top: 2px; color: var(--brand-700); }
+  .sched-main { flex: 1; min-width: 0; }
+  .sched-row1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .sched-row1 .pill-kind { margin: 0; }
+  .sched-title { font-size: 15px; font-weight: 700; color: var(--ink); word-break: break-word; }
+  .sched-badge { margin-left: auto; }
+  .sched-time { font-size: 13px; color: var(--ink-soft); margin-top: 3px; }
+  .sched-actions { flex-shrink: 0; }
   .section-label {
     font-size: 12px;
     font-weight: 700;
@@ -194,7 +218,7 @@
     <!-- Upcoming -->
     <div id="upcoming-section">
       <div class="section-label">📅 即將到來</div>
-      <div id="upcoming-list" class="grid gap-3"></div>
+      <div id="upcoming-list" class="grid gap-2"></div>
       <div id="upcoming-empty" class="empty-state" style="display:none;">
         <span class="empty-state-icon">📭</span>
         <p id="upcoming-empty-msg">尚無預約</p>
@@ -211,7 +235,7 @@
         <span id="past-caret">▶</span>
         <span>過去記錄（<span id="past-count">0</span>）</span>
       </div>
-      <div id="past-list" class="past-list grid gap-3" style="display:none;"></div>
+      <div id="past-list" class="past-list grid gap-2" style="display:none;"></div>
     </div>
 
     <!-- Change account -->
