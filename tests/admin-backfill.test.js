@@ -47,6 +47,7 @@ expect('未來日期：includePast 不改變結果、皆 past:false', () => {
 
 // ── createBackfillBooking ──
 const pastStart = `${pastDate}T10:00:00`;
+const notifBefore = db.prepare('SELECT COUNT(*) AS c FROM notifications').get().c;
 const r = createBackfillBooking({ coachId: cPast, startAt: pastStart, name: '補登客', phone: '0956000001', sessionType: '1on1', amount: 1500, note: '補登測試', actorId: uPast });
 expect('補登：confirmed + paid_at + paid_by + 金額 + note', () => {
   const row = db.prepare('SELECT * FROM bookings WHERE id=?').get(r.id);
@@ -57,6 +58,10 @@ expect('補登：confirmed + paid_at + paid_by + 金額 + note', () => {
   assert.equal(row.discount_amount, null);
   assert.equal(row.session_type, '1on1');
   assert.equal(row.note, '補登測試');
+});
+expect('補登：不產生任何通知（靜默）', () => {
+  const after = db.prepare('SELECT COUNT(*) AS c FROM notifications').get().c;
+  assert.equal(after, notifBefore);
 });
 expect('補登：未來 startAt → not_past', () => {
   assert.throws(() => createBackfillBooking({ coachId: cPast, startAt: `${futDate}T10:00:00`, name:'x', phone:'0956000002', amount:0, actorId: uPast }), /not_past/);
