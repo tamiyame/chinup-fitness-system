@@ -45,6 +45,20 @@ expect('includePast=true：同教練過去時段已被預約 → 該時段排除
   assert.ok(s.some(x => x.start === `${pastDate}T11:00:00`)); // 相鄰時段仍在
 });
 
+// effective_from 放行：規則生效日 = 今天（晚於過去日期），includePast 仍須顯示過去班表（全開、不受建檔日限制）。
+const uEff = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('ABF EffCoach','abf-e@x.com','coach')").run().lastInsertRowid);
+const cEff = Number(db.prepare("INSERT INTO coaches (user_id, display_name, is_active) VALUES (?, 'ABF-E', 1)").run(uEff).lastInsertRowid);
+addRule({ coachId: cEff, dayOfWeek: past.getDay(), startTime: '09:00', endTime: '12:00', effectiveFrom: fmtDate(new Date()) });
+expect('includePast=true：過去日期早於規則 effective_from 仍顯示（全開過去班表）', () => {
+  const s = computeAvailableSlots({ coachId: cEff, fromDate: pastDate, toDate: pastDate, includePast: true });
+  assert.ok(s.length >= 1);
+  assert.ok(s.some(x => x.start === `${pastDate}T09:00:00`));
+});
+expect('includePast=false：過去日期早於 effective_from → 0（正常路徑不變）', () => {
+  const s = computeAvailableSlots({ coachId: cEff, fromDate: pastDate, toDate: pastDate });
+  assert.equal(s.length, 0);
+});
+
 const fut = new Date(Date.now() + 7*86400000);
 const futDate = fmtDate(fut);
 addRule({ coachId: cFut, dayOfWeek: fut.getDay(), startTime: '09:00', endTime: '12:00', effectiveFrom: '2000-01-01' });
@@ -56,5 +70,5 @@ expect('未來日期：includePast 不改變結果、皆 past:false', () => {
   assert.ok(b.every(x => x.past === false));
 });
 
-db.exec(`DELETE FROM bookings WHERE coach_id IN (${cPast}, ${cFut}); DELETE FROM coaches WHERE id IN (${cPast}, ${cFut}); DELETE FROM users WHERE id IN (${uPast}, ${uFut}) OR email LIKE 'abf-%'`);
+db.exec(`DELETE FROM bookings WHERE coach_id IN (${cPast}, ${cFut}, ${cEff}); DELETE FROM coaches WHERE id IN (${cPast}, ${cFut}, ${cEff}); DELETE FROM users WHERE id IN (${uPast}, ${uFut}, ${uEff}) OR email LIKE 'abf-%'`);
 console.log('[admin-backfill test] done');

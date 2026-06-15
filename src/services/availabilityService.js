@@ -113,6 +113,15 @@ const listRulesForDate = db.prepare(`
     AND (effective_to IS NULL OR effective_to >= ?)
 `);
 
+// 管理者於過去日期預約用：忽略 effective_from（規則「建檔生效日」常晚於課程實際發生日），
+// 讓教練的週班表能投影回任何過去日期；仍尊重 effective_to（規則明確結束日）。
+const listRulesForPastDate = db.prepare(`
+  SELECT * FROM coach_availability_rules
+  WHERE coach_id = ?
+    AND day_of_week = ?
+    AND (effective_to IS NULL OR effective_to >= ?)
+`);
+
 const listExceptionsForDate = db.prepare(`
   SELECT * FROM coach_availability_exceptions
   WHERE coach_id = ? AND exception_date = ?
@@ -125,8 +134,9 @@ const listExceptionsForDate = db.prepare(`
  * past = 該時段是否已過去（start <= now）。
  *
  * includePast: （預設 false）為 true 時（限管理者）一併回傳已過去的時段，供管理者於
- *   過去日期預約（校正/補登記）。過去時段僅略過「過去/緩衝」時間過濾；容量/重疊/班表/
- *   請假/外部忙碌判定與正常時段完全相同（即「比照正常預約、只是放行過去日期」）。
+ *   過去日期預約（校正/補登記）。過去時段略過「過去/緩衝」時間過濾、且對過去日期忽略
+ *   班表規則的 effective_from（讓週班表投影回任何過去日期，不受規則建檔日限制；仍尊重
+ *   effective_to）；容量/重疊/請假/外部忙碌判定與正常時段完全相同。
  *
  * externalBusy: Map<'YYYY-MM-DD', Array<{start:'HH:MM', end:'HH:MM'}>>（Google 日曆
  *   手動活動的忙碌區間；null = 無外部封鎖）。與部分請假同一套重疊過濾。
@@ -139,6 +149,7 @@ export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindow
   }
 
   const now = new Date();
+  const nowDateStr = todayLocal();
   const bufferMs = now.getTime() + BUFFER_HOURS * 3600_000;
   // bookingWindowDays=null → 預約日期無上限（預設）；傳數值可限縮（測試用）
   const windowEndMs = bookingWindowDays == null ? Infinity : now.getTime() + bookingWindowDays * 86400_000;
@@ -153,7 +164,10 @@ export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindow
     const windows = [];
     if (!allDayLeave) {
       const dow = new Date(date + 'T00:00:00').getDay();
-      const rules = listRulesForDate.all(coachId, dow, date, date);
+      // 過去日期 + 管理者 includePast：忽略 effective_from（全開過去班表，不受規則建檔日限制）。
+      const rules = (includePast && date < nowDateStr)
+        ? listRulesForPastDate.all(coachId, dow, date)
+        : listRulesForDate.all(coachId, dow, date, date);
       for (const r of rules) windows.push({ start: r.start_time, end: r.end_time });
       for (const e of exceptions) {
         if (e.type === 'extra') windows.push({ start: e.start_time, end: e.end_time });
