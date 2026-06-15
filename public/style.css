@@ -856,6 +856,45 @@ details.session-row summary:hover { background: #f8faf9; }
 .detail-spec { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
 
 /* ============ 日期橫向 rail（詳細頁）============ */
+/* 可預約時段標題列：標題＋年月（左）／週次導覽 今天・‹・›（右） */
+.slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.slot-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#slot-yearmonth {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0369a1;
+  background: #e0f2fe;
+  border-radius: 999px;
+  padding: 2px 12px;
+}
+.day-nav-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.day-nav-btn:hover:not(:disabled) { border-color: #38bdf8; background: #f0f9ff; }
+.day-nav-btn:disabled { opacity: .4; cursor: default; }
+.day-nav-arrow { padding: 7px 12px; font-size: 18px; }
+
 .dayrail {
   display: grid;
   grid-template-columns: repeat(7, 1fr);

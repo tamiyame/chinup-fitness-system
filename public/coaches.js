@@ -291,9 +291,9 @@ async function openCoach(id) {
 function renderSlotControls() {
   const ctrls = $('slot-controls');
   ctrls.innerHTML = `
-    <button class="btn-secondary" id="prev-week">← 上週</button>
-    <span id="week-label" class="font-medium"></span>
-    <button class="btn-secondary" id="next-week">下週 →</button>
+    <button class="day-nav-btn" id="today-btn" type="button">今天</button>
+    <button class="day-nav-btn day-nav-arrow" id="prev-week" type="button" aria-label="上一週">‹</button>
+    <button class="day-nav-btn day-nav-arrow" id="next-week" type="button" aria-label="下一週">›</button>
   `;
   $('prev-week').addEventListener('click', () => {
     if (isAdmin || weekOffset > 0) { weekOffset--; updatePrevDisabled(); loadSlots(); }
@@ -301,12 +301,17 @@ function renderSlotControls() {
   $('next-week').addEventListener('click', () => {
     weekOffset++; updatePrevDisabled(); loadSlots();
   });
+  $('today-btn').addEventListener('click', () => {
+    if (weekOffset !== 0) { weekOffset = 0; updatePrevDisabled(); loadSlots(); }
+  });
   updatePrevDisabled();
 }
 
 function updatePrevDisabled() {
-  const btn = document.getElementById('prev-week');
-  if (btn) btn.disabled = !isAdmin && weekOffset <= 0;
+  const prev = document.getElementById('prev-week');
+  if (prev) prev.disabled = !isAdmin && weekOffset <= 0;
+  const today = document.getElementById('today-btn');
+  if (today) today.disabled = weekOffset === 0;
 }
 
 function weekRange(offset) {
@@ -445,7 +450,7 @@ function renderDayRail(from, to, allSlots) {
 
 async function loadSlots() {
   const { from, to } = weekRange(weekOffset);
-  $('week-label').textContent = `${from} ~ ${to}`;
+  $('slot-yearmonth').textContent = `${from.slice(0, 4)}/${from.slice(5, 7)}`;
 
   // 清空舊內容
   const rail = $('day-rail');
