@@ -41,6 +41,7 @@ import {
   recurringOccurrences as svcRecurringOccurrences,
   previewRecurringBookings as svcPreviewRecurring,
   createRecurringBookings as svcCreateRecurring,
+  createBackfillBooking as svcCreateBackfillBooking,
 } from './services/bookingService.js';
 import {
   createGroupOrder as svcCreateGroupOrder,
@@ -909,8 +910,28 @@ app.get('/api/coaches/:id/availability', asyncHandler(async (req, res) => {
   if (!coach || !coach.is_active) return res.status(404).json({ error: 'coach_not_found' });
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'missing_range' });
+  // 管理者可帶 backfill=1 看過去時段（補登用）；非管理者一律忽略。
+  const requester = userFromToken(getTokenFromReq(req));
+  const includePast = req.query.backfill === '1' && !!requester?.is_admin;
   const externalBusy = await getExternalBusySafe(from, to);
-  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy }));
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy, includePast }));
+}));
+
+// 管理者補登過去預約（解鎖「上週」後的回填）。靜默、預設已核對、可改價。
+app.post('/api/admin/bookings/backfill', requireAdmin, asyncHandler((req, res) => {
+  const { coachId, startAt, name, phone, sessionType, amount, note } = req.body || {};
+  if (!isValidPhone(phone)) return res.status(400).json({ error: 'invalid_phone', detail: '電話需為 8-15 碼數字' });
+  const r = svcCreateBackfillBooking({
+    coachId: Number(coachId),
+    startAt,
+    name,
+    phone,
+    sessionType: sessionType || '1on1',
+    amount: Number(amount),
+    note: note || null,
+    actorId: req.user.id,
+  });
+  res.status(201).json(r);
 }));
 
 // Kept for coach 緊急取消 (coach has a token; member login is disabled).
