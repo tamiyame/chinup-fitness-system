@@ -51,7 +51,7 @@
 
 - `computeAvailableSlots({ ..., includePast = false })`：
   - `includePast = false`（預設）→ 行為與現狀**完全一致**。
-  - `includePast = true` → **僅略過「過去／緩衝」時間過濾**；容量／重疊／視窗／班表／請假／外部忙碌判定與正常時段**完全相同**（即「比照正常、只是放行過去日期」）。
+  - `includePast = true` → **略過「過去／緩衝」時間過濾**；且對**過去日期**忽略班表規則的 `effective_from`（規則「建檔生效日」常晚於課程實際發生日 → 否則更早的過去日期會產不出時段、外觀像只能回幾週；仍尊重 `effective_to`）。容量／重疊／請假／外部忙碌判定與正常時段**完全相同**（即「比照正常、放行過去日期、過去班表全開」）。
   - 每筆回傳 `past = (start <= now)`（供前端顯示「補登」標籤）；`remain` 為真實剩餘容量。
 - `GET /api/coaches/:id/availability` 加 `backfill=1`：僅當 `userFromToken(...)?.is_admin` 為真才帶 `includePast: true`；非管理者／匿名一律忽略。
 
