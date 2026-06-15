@@ -1105,3 +1105,7 @@ details.session-row summary:hover { background: #f8faf9; }
   flex-shrink: 0;
 }
 .help-btn:hover { background: var(--brand-50); color: #0ea5e9; border-color: #bae6fd; }
+
+/* 補登（過去）時段卡：淡琥珀虛線框，與一般可預約時段區別 */
+.timeslot.slot-past { border-style: dashed; border-color: #fcd34d; background: #fffdf5; }
+.timeslot.slot-past .t-sub { color: #b45309; }
