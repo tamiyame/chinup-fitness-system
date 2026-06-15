@@ -848,7 +848,13 @@ $('modal-submit-btn').addEventListener('click', async () => {
 
   // ── 補登模式：走管理者端點（靜默、預設已付款）──
   if (modalBackfill) {
-    const amount = Number($('modal-backfill-amount').value);
+    const amountRaw = $('modal-backfill-amount').value.trim();
+    if (amountRaw === '') {
+      $('modal-general-err').textContent = '請輸入金額（0 表示贈課）';
+      btn.disabled = false; btn.textContent = btnText;
+      return;
+    }
+    const amount = Number(amountRaw);
     if (!Number.isInteger(amount) || amount < 0) {
       $('modal-general-err').textContent = '金額需為 0 或正整數';
       btn.disabled = false; btn.textContent = btnText;
