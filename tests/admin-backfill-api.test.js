@@ -69,6 +69,10 @@ const bkAdmin = await req('POST', '/api/public/bookings', { token, body: { coach
 expect('管理者預約過去時段 → 201', () => assert.equal(bkAdmin.status, 201));
 const bid = bkAdmin.data?.id;
 
+// 容量/重疊「比照正常」：同教練同一過去時段已被預約 → 管理者再約該時段也擋下（不可超量）
+const bkDup = await req('POST', '/api/public/bookings', { token, body: { coachId, startAt: pastStart, name:'過去客二', phone:'0957000002' } });
+expect('管理者重複預約同一過去時段 → 409（容量/重疊照常）', () => assert.equal(bkDup.status, 409));
+
 // 出現在顧客課表、paid=false（待核對，比照正常）
 const my = await req('POST', '/api/public/my', { body: { phone: '0957000001', name: '過去客' } });
 expect('過去預約出現在課表、paid=false（待核對，比照正常）', () => {
