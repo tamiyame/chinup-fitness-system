@@ -18,7 +18,14 @@ const pad = n => String(n).padStart(2,'0');
 const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
 console.log('[admin-backfill-api test] start');
-db.exec("DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0957%'); DELETE FROM users WHERE email LIKE 'abfa-%' OR phone LIKE '0957%'");
+// FK-safe 清理（notifications → bookings → coaches → users），避免前次中斷殘留造成 FK 失敗
+db.exec(`
+  DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'abfa-%' OR phone LIKE '0957%');
+  DELETE FROM bookings WHERE coach_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'abfa-%'));
+  DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0957%' OR email LIKE 'abfa-%');
+  DELETE FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'abfa-%');
+  DELETE FROM users WHERE email LIKE 'abfa-%' OR phone LIKE '0957%';
+`);
 const uid = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('ABFA Coach','abfa-c@x.com','coach')").run().lastInsertRowid);
 const coachId = Number(db.prepare("INSERT INTO coaches (user_id, display_name, is_active) VALUES (?, 'ABFA', 1)").run(uid).lastInsertRowid);
 
@@ -80,5 +87,10 @@ expect('過去預約出現在課表、paid=false（待核對，比照正常）',
   assert.ok(item); assert.equal(item.paid, false);
 });
 
-db.exec(`DELETE FROM bookings WHERE coach_id = ${coachId}; DELETE FROM coaches WHERE id = ${coachId}; DELETE FROM users WHERE id = ${uid} OR phone LIKE '0957%' OR email LIKE 'abfa-%'`);
+db.exec(`
+  DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'abfa-%' OR phone LIKE '0957%');
+  DELETE FROM bookings WHERE coach_id = ${coachId};
+  DELETE FROM coaches WHERE id = ${coachId};
+  DELETE FROM users WHERE id = ${uid} OR phone LIKE '0957%' OR email LIKE 'abfa-%';
+`);
 console.log('[admin-backfill-api test] done');
