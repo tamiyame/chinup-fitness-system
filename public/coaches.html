@@ -86,9 +86,6 @@
       <button id="modal-close-btn" class="text-slate-400 hover:text-slate-700 text-xl leading-none" aria-label="關閉">✕</button>
     </div>
     <div class="p-4" style="overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch;">
-      <div id="modal-backfill-banner" class="hidden mb-3 rounded-lg px-3 py-2 text-xs" style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;">
-        補登模式：此為已發生的課程，將靜默記錄、不發通知、預設標記已付款。
-      </div>
       <div class="card bg-slate-50 mb-4 text-sm">
         <div class="mb-1"><span class="text-slate-500">教練：</span><strong id="modal-coach-name"></strong></div>
         <div><span class="text-slate-500">時間：</span><strong id="modal-slot-time"></strong></div>
@@ -150,7 +147,7 @@
         <span id="modal-phone-err" class="text-xs text-red-500 mt-1 block"></span>
       </label>
 
-      <label id="modal-email-row" class="block mb-3">
+      <label class="block mb-3">
         <span class="text-sm font-medium text-slate-700">Email（選填，填寫將寄送預約確認信）</span>
         <input id="modal-email" type="email" inputmode="email" class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="example@email.com">
         <span id="modal-email-err" class="text-xs text-red-500 mt-1 block"></span>
@@ -160,7 +157,7 @@
         <span id="modal-price-label"></span>
       </div>
 
-      <div id="modal-discount-row" class="mb-3">
+      <div class="mb-3">
         <div class="flex gap-2">
           <input id="modal-discount-code" type="text" class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="折扣碼（選填）">
           <button id="modal-apply-discount" type="button" class="btn-secondary text-sm px-3">套用</button>
@@ -168,14 +165,6 @@
         <span id="modal-discount-msg" class="text-xs mt-1 block hidden"></span>
       </div>
 
-      <label id="modal-backfill-amount-row" class="block mb-3 hidden">
-        <span class="text-sm font-medium text-slate-700">金額（可修改，0 表示贈課）</span>
-        <input id="modal-backfill-amount" type="number" min="0" step="1" inputmode="numeric" class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="例：1500">
-      </label>
-      <label id="modal-backfill-note-row" class="block mb-3 hidden">
-        <span class="text-sm font-medium text-slate-700">備註（選填）</span>
-        <input id="modal-backfill-note" type="text" class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="例：6/3 已完成課程，補登紀錄">
-      </label>
       <span id="modal-general-err" class="text-sm text-red-600 block mb-3"></span>
 
       <button id="modal-submit-btn" class="btn-primary w-full">確認預約</button>

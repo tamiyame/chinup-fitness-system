@@ -1,4 +1,5 @@
-// 管理者補登端點：availability?backfill=1（admin 限定）+ POST /api/admin/bookings/backfill。
+// 管理者於過去日期預約（校正/補登記）：availability?backfill=1（admin 限定）
+// + 用正常端點 /api/public/bookings 預約過去時段（比照正常：待核對、會發通知）。
 // server 需帶 LINE_MOCK=1 GCAL_MOCK=1 GMAIL_MOCK=1。
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
@@ -25,51 +26,54 @@ const past = new Date(Date.now() - 7*86400000);
 const pastDate = fmtDate(past);
 addRule({ coachId, dayOfWeek: past.getDay(), startTime: '09:00', endTime: '18:00', effectiveFrom: '2000-01-01' });
 const pastStart = `${pastDate}T10:00:00`;
+const pastStart2 = `${pastDate}T14:00:00`;
 
 const login = await req('POST', '/api/auth/login', { body: { email: 'admin@chinup.local', password: 'admin1234' } });
 const token = login.data?.token;
 expect('admin login ok', () => assert.ok(token));
 
-const avNoAuth = await req('GET', `/api/coaches/${coachId}/availability?from=${pastDate}&to=${pastDate}&backfill=1`);
-expect('無 token + backfill=1 → 過去日期空清單', () => {
-  assert.equal(avNoAuth.status, 200);
-  assert.equal(avNoAuth.data.length, 0);
-});
-
+// 管理者帶 backfill=1 → 看到過去 slot（past:true、remain 為數值，容量照常）
 const avAdmin = await req('GET', `/api/coaches/${coachId}/availability?from=${pastDate}&to=${pastDate}&backfill=1`, { token });
-expect('admin + backfill=1 → 過去 slot past:true', () => {
+expect('admin + backfill=1 → 過去 slot past:true、remain 數值', () => {
   assert.equal(avAdmin.status, 200);
-  assert.ok(avAdmin.data.some(s => s.start === pastStart && s.past === true));
+  const hit = avAdmin.data.find(s => s.start === pastStart);
+  assert.ok(hit); assert.equal(hit.past, true); assert.equal(typeof hit.remain, 'number');
 });
 
-// 登入但非管理者（coach、is_admin=0）：backfill 應被忽略；POST 應 403（非 401）
+// 無 token 帶 backfill=1 → 忽略，無過去時段
+const avAnon = await req('GET', `/api/coaches/${coachId}/availability?from=${pastDate}&to=${pastDate}&backfill=1`);
+expect('無 token + backfill=1 → 過去日期空清單', () => { assert.equal(avAnon.status, 200); assert.equal(avAnon.data.length, 0); });
+
+// 登入但非管理者（coach、is_admin=0）：backfill 應被忽略
 const coachUid = Number(db.prepare("INSERT INTO users (name,email,role,is_admin,password_hash) VALUES ('ABFA NonAdmin','abfa-coach@x.com','coach',0,?)").run(hashPassword('coachpass123')).lastInsertRowid);
 const clogin = await req('POST', '/api/auth/login', { body: { email: 'abfa-coach@x.com', password: 'coachpass123' } });
 const ctoken = clogin.data?.token;
 expect('非管理者 coach 登入 ok', () => assert.ok(ctoken));
 const avCoach = await req('GET', `/api/coaches/${coachId}/availability?from=${pastDate}&to=${pastDate}&backfill=1`, { token: ctoken });
 expect('非管理者 + backfill=1 → 過去日期空清單（忽略）', () => { assert.equal(avCoach.status, 200); assert.equal(avCoach.data.length, 0); });
-const bfCoach = await req('POST', '/api/admin/bookings/backfill', { token: ctoken, body: { coachId, startAt: pastStart, name:'x', phone:'0957000009', sessionType:'1on1', amount:1500 } });
-expect('非管理者補登 → 403', () => assert.equal(bfCoach.status, 403));
 
-const bfNoAuth = await req('POST', '/api/admin/bookings/backfill', { body: { coachId, startAt: pastStart, name:'補登客', phone:'0957000001', sessionType:'1on1', amount:1500 } });
-expect('無 token 補登 → 401', () => assert.equal(bfNoAuth.status, 401));
+// 匿名（非管理者）用正常端點預約過去時段 → 擋下（slot_unavailable）
+const bkAnon = await req('POST', '/api/public/bookings', { body: { coachId, startAt: pastStart, name:'過去客', phone:'0957000001' } });
+expect('匿名預約過去時段 → 409 slot_unavailable', () => assert.equal(bkAnon.status, 409));
 
-const futStart = `${fmtDate(new Date(Date.now()+7*86400000))}T10:00:00`;
-const bfFut = await req('POST', '/api/admin/bookings/backfill', { token, body: { coachId, startAt: futStart, name:'未來', phone:'0957000002', sessionType:'1on1', amount:1500 } });
-expect('未來 startAt 補登 → 400 not_past', () => { assert.equal(bfFut.status, 400); assert.equal(bfFut.data.error, 'not_past'); });
+// 管理者循環預覽（過去起始）→ 首堂可建立（過去場次照常驗證、容量正常）
+const rprev = await req('POST', '/api/bookings/recurring/preview', { token, body: { coachId, startAt: pastStart2, sessionType:'1on1', frequency:'weekly', count: 2 } });
+expect('管理者循環預覽（過去起始）→ 首堂 ok', () => {
+  assert.equal(rprev.status, 200);
+  const first = rprev.data.occurrences.find(o => o.startAt === pastStart2);
+  assert.ok(first && first.ok === true);
+});
 
-const bfNeg = await req('POST', '/api/admin/bookings/backfill', { token, body: { coachId, startAt: pastStart, name:'x', phone:'0957000003', sessionType:'1on1', amount:-1 } });
-expect('負數金額 → 400 invalid_amount', () => { assert.equal(bfNeg.status, 400); assert.equal(bfNeg.data.error, 'invalid_amount'); });
+// 管理者用正常端點預約過去時段 → 201（比照正常：建立 confirmed、待核對）
+const bkAdmin = await req('POST', '/api/public/bookings', { token, body: { coachId, startAt: pastStart, name:'過去客', phone:'0957000001' } });
+expect('管理者預約過去時段 → 201', () => assert.equal(bkAdmin.status, 201));
+const bid = bkAdmin.data?.id;
 
-const bfOk = await req('POST', '/api/admin/bookings/backfill', { token, body: { coachId, startAt: pastStart, name:'補登客', phone:'0957000001', sessionType:'1on1', amount:1500, note:'API 補登' } });
-expect('補登成功 201', () => assert.equal(bfOk.status, 201));
-const bid = bfOk.data?.id;
-
-const my = await req('POST', '/api/public/my', { body: { phone: '0957000001', name: '補登客' } });
-expect('補登預約出現在課表且 paid=true', () => {
+// 出現在顧客課表、paid=false（待核對，比照正常）
+const my = await req('POST', '/api/public/my', { body: { phone: '0957000001', name: '過去客' } });
+expect('過去預約出現在課表、paid=false（待核對，比照正常）', () => {
   const item = my.data.items.find(x => x.kind === 'booking' && x.id === bid);
-  assert.ok(item); assert.equal(item.paid, true);
+  assert.ok(item); assert.equal(item.paid, false);
 });
 
 db.exec(`DELETE FROM bookings WHERE coach_id = ${coachId}; DELETE FROM coaches WHERE id = ${coachId}; DELETE FROM users WHERE id = ${uid} OR phone LIKE '0957%' OR email LIKE 'abfa-%'`);

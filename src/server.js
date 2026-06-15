@@ -41,7 +41,6 @@ import {
   recurringOccurrences as svcRecurringOccurrences,
   previewRecurringBookings as svcPreviewRecurring,
   createRecurringBookings as svcCreateRecurring,
-  createBackfillBooking as svcCreateBackfillBooking,
 } from './services/bookingService.js';
 import {
   createGroupOrder as svcCreateGroupOrder,
@@ -842,7 +841,10 @@ app.post('/api/public/bookings', bookingLimiter, asyncHandler(async (req, res) =
   const date = startAt.slice(0, 10);
   const externalBusy = await getExternalBusySafe(date, date);
   const units = type === '1on2' ? 2 : 1;
-  const slots = svcComputeSlots({ coachId: coach.id, fromDate: date, toDate: date, externalBusy });
+  // 管理者可於過去日期預約（校正/補登記）：放行過去時段，容量/重疊仍照常檢查。
+  // 非管理者/匿名 → includePast=false → 過去時段不在清單 → 仍擋下（slot_unavailable）。
+  const includePast = !!userFromToken(getTokenFromReq(req))?.is_admin;
+  const slots = svcComputeSlots({ coachId: coach.id, fromDate: date, toDate: date, externalBusy, includePast });
   const hit = slots.find(s => s.start === startAt);
   if (!hit || hit.remain < units) return res.status(409).json({ error: 'slot_unavailable' });
 
@@ -917,23 +919,6 @@ app.get('/api/coaches/:id/availability', asyncHandler(async (req, res) => {
   res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy, includePast }));
 }));
 
-// 管理者補登過去預約（解鎖「上週」後的回填）。靜默、預設已核對、可改價。
-app.post('/api/admin/bookings/backfill', requireAdmin, asyncHandler((req, res) => {
-  const { coachId, startAt, name, phone, sessionType, amount, note } = req.body || {};
-  if (!isValidPhone(phone)) return res.status(400).json({ error: 'invalid_phone', detail: '電話需為 8-15 碼數字' });
-  const r = svcCreateBackfillBooking({
-    coachId: Number(coachId),
-    startAt,
-    name,
-    phone,
-    sessionType: sessionType || '1on1',
-    amount: Number(amount),
-    note: note || null,
-    actorId: req.user.id,
-  });
-  res.status(201).json(r);
-}));
-
 // Kept for coach 緊急取消 (coach has a token; member login is disabled).
 app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
   const id = Number(req.params.id);
@@ -974,7 +959,8 @@ app.post('/api/bookings/recurring/preview', requireCoach, asyncHandler(async (re
     count: Number(count),
   };
   const externalBusy = await recurringExternalBusy(params).catch(() => null);
-  res.json(svcPreviewRecurring({ ...params, externalBusy }));
+  // 管理者可於過去日期排循環（校正/補登記）；容量/重疊仍照常檢查。
+  res.json(svcPreviewRecurring({ ...params, externalBusy, includePast: !!req.user.is_admin }));
 }));
 
 app.post('/api/bookings/recurring', requireCoach, asyncHandler(async (req, res) => {
@@ -989,7 +975,7 @@ app.post('/api/bookings/recurring', requireCoach, asyncHandler(async (req, res) 
   const r = svcCreateRecurring({
     ...params, name, phone, email: email || null,
     markPaid: !!markPaid, discountCode: discountCode || null,
-    actorId: req.user.id, externalBusy,
+    actorId: req.user.id, externalBusy, includePast: !!req.user.is_admin,
   });
   // commit 後副作用：逐堂建日曆事件（不 await；reconcile 兜底）
   for (const c of r.created) syncBookingCreate(c.id);

@@ -121,17 +121,12 @@ const listExceptionsForDate = db.prepare(`
 /**
  * Compute available 60-min slots for a coach within [fromDate, toDate] inclusive.
  * Returns [{ start: 'YYYY-MM-DDTHH:MM:SS', remain: number, past: boolean }] sorted ascending.
- *
  * remain = 該時段在全店小時桶容量下還可容納的人數（min over 所佔桶）。
- *   對於過去時段（past:true），remain 設為容量哨兵值（getBookingHourlyCapacity()），
- *   僅供前端顯示用；補登模式不檢查容量/重疊，故此值並非真實剩餘人數。
+ * past = 該時段是否已過去（start <= now）。
  *
- * past: false → 未來時段（套緩衝/視窗/容量/重疊過濾）；
- *        true  → 過去時段（僅管理者補登用，見 includePast）。
- *
- * includePast: （預設 false）為 true 時，亦回傳已過去的時段（past:true），
- *   供管理者補登歷史預約。過去時段跳過時間/緩衝/視窗過濾及容量/重疊排除，
- *   但仍沿用班表規則 + 請假 + 外部忙碌過濾。
+ * includePast: （預設 false）為 true 時（限管理者）一併回傳已過去的時段，供管理者於
+ *   過去日期預約（校正/補登記）。過去時段僅略過「過去/緩衝」時間過濾；容量/重疊/班表/
+ *   請假/外部忙碌判定與正常時段完全相同（即「比照正常預約、只是放行過去日期」）。
  *
  * externalBusy: Map<'YYYY-MM-DD', Array<{start:'HH:MM', end:'HH:MM'}>>（Google 日曆
  *   手動活動的忙碌區間；null = 無外部封鎖）。與部分請假同一套重疊過濾。
@@ -185,43 +180,35 @@ export function computeAvailableSlots({ coachId, fromDate, toDate, bookingWindow
 
   const nowStr = localWallClock(now);
 
-  // 過去時段（補登用）：僅管理者模式納入；不套緩衝/視窗/容量/重疊過濾，
-  // 但仍沿用 dedupedSlots 既有的班表規則 + 請假 + 外部忙碌過濾。
-  const pastSlots = includePast ? dedupedSlots.filter(s => s <= nowStr) : [];
-
+  // includePast（限管理者，於過去日期預約：校正/補登記）：僅略過「過去/緩衝」時間
+  // 過濾；容量/重疊/視窗/班表/請假/外部忙碌判定與正常時段完全相同。每筆標記 past。
   const afterFilter = dedupedSlots.filter(s => {
-    if (s <= nowStr) return false;
     const slotMs = new Date(s).getTime();
-    if (slotMs < bufferMs) return false;
+    if (!includePast) {
+      if (s <= nowStr) return false;
+      if (slotMs < bufferMs) return false;
+    }
     if (slotMs > windowEndMs) return false;
     return true;
   });
+  if (afterFilter.length === 0) return [];
+
+  const rangeStart = afterFilter[0];
+  const rangeEnd = addMinutesLocal(afterFilter[afterFilter.length - 1], SLOT_DURATION_MINUTES);
+  // 同教練：任何重疊即不可約（教練無法同時帶兩堂）
+  const coachIntervals = listCoachOverlapping.all(coachId, rangeEnd, rangeStart);
+  // 全店容量：小時桶人數加總
+  const loads = bucketLoads(listAllOverlapping.all(rangeEnd, rangeStart));
+  const capacity = getBookingHourlyCapacity();
 
   const out = [];
-
-  // 未來時段：維持原本容量/重疊判定（行為與既有一致，附 past:false）
-  if (afterFilter.length > 0) {
-    const rangeStart = afterFilter[0];
-    const rangeEnd = addMinutesLocal(afterFilter[afterFilter.length - 1], SLOT_DURATION_MINUTES);
-    const coachIntervals = listCoachOverlapping.all(coachId, rangeEnd, rangeStart);
-    const loads = bucketLoads(listAllOverlapping.all(rangeEnd, rangeStart));
-    const capacity = getBookingHourlyCapacity();
-    for (const s of afterFilter) {
-      const e = addMinutesLocal(s, SLOT_DURATION_MINUTES);
-      if (coachIntervals.some(b => s < b.end_at && e > b.start_at)) continue;
-      let remain = capacity;
-      for (const key of hourBuckets(s, e)) remain = Math.min(remain, capacity - (loads.get(key) || 0));
-      if (remain >= 1) out.push({ start: s, remain, past: false });
-    }
+  for (const s of afterFilter) {
+    const e = addMinutesLocal(s, SLOT_DURATION_MINUTES);
+    if (coachIntervals.some(b => s < b.end_at && e > b.start_at)) continue;
+    let remain = capacity;
+    for (const key of hourBuckets(s, e)) remain = Math.min(remain, capacity - (loads.get(key) || 0));
+    if (remain >= 1) out.push({ start: s, remain, past: s <= nowStr });
   }
-
-  // 過去時段：補登模式，全列、不檢查容量/重疊（remain 設容量值僅供顯示）
-  if (pastSlots.length > 0) {
-    const capacity = getBookingHourlyCapacity();
-    for (const s of pastSlots) out.push({ start: s, remain: capacity, past: true });
-  }
-
-  out.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
   return out;
 }
 

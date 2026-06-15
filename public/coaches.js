@@ -465,7 +465,6 @@ $('back-to-list').addEventListener('click', () => show('list'));
 let modalCoach = null;
 // modalSlot 存 { start, remain } 物件（start 為 ISO datetime 字串）
 let modalSlot = null;
-let modalBackfill = false;
 // Discount state: null or { code, discountAmount, finalTotal }
 let modalAppliedDiscount = null;
 // '1on1' | '1on2'，預設 1對1
@@ -537,7 +536,7 @@ function refreshSessionTypeButtons() {
 function setSessionType(type) {
   if (type !== '1on1' && type !== '1on2') return;
   // 名額守門：剩 1 名額的時段不可選 1對2
-  if (type === '1on2' && !modalBackfill && modalSlot && modalSlot.remain < 2) {
+  if (type === '1on2' && modalSlot && modalSlot.remain < 2) {
     $('modal-general-err').textContent = '此時段僅剩 1 個名額，無法選擇 1對2，請改選其他時段。';
     return;
   }
@@ -545,10 +544,6 @@ function setSessionType(type) {
   modalSessionType = type;
   refreshSessionTypeButtons();
   refreshModalPrice();
-  // 補登模式：金額欄預設帶入該型態標準單價（切換即更新）
-  if (modalBackfill) {
-    $('modal-backfill-amount').value = priceByType[modalSessionType] != null ? priceByType[modalSessionType] : '';
-  }
   invalidateRecurringPreview(); // 型態影響名額判定（1對2 佔 2）→ 循環預覽需重跑
   // 型態改變 → 之前算出的折扣金額不再正確，需重新套用
   if (modalAppliedDiscount) {
@@ -584,12 +579,10 @@ function openBookingModal(coach, slot) {
   $('modal-discount-msg').textContent = '';
   $('modal-discount-msg').classList.add('hidden');
 
-  // 補登模式：依時段 past 旗標切換（不受名額/折扣限制）
-  modalBackfill = !!slot.past;
-  // 名額守門：剩 1 名額的時段不可選 1對2（補登模式略過）
+  // 名額守門：剩 1 名額的時段不可選 1對2
   const btn1on2 = document.querySelector('#modal-session-type .session-type-btn[data-type="1on2"]');
   if (btn1on2) {
-    const disabled = !modalBackfill && slot.remain < 2;
+    const disabled = slot.remain < 2;
     btn1on2.disabled = disabled;
     btn1on2.classList.toggle('opacity-40', disabled);
     btn1on2.title = disabled ? '此時段僅剩 1 個名額' : '';
@@ -599,29 +592,16 @@ function openBookingModal(coach, slot) {
   refreshSessionTypeButtons();
   refreshModalPrice();
 
-  // 循環預約（員工限定）：登入教練/管理者才顯示；補登模式一律隱藏。每次開窗重置。
+  // 循環預約（員工限定）：登入教練/管理者才顯示；每次開窗重置（後端 requireCoach 強制）
   const u = getUser();
   const isStaff = !!(u && (u.role === 'coach' || u.is_admin));
-  $('recurring-row').classList.toggle('hidden', !isStaff || modalBackfill);
+  $('recurring-row').classList.toggle('hidden', !isStaff);
   $('recurring-enabled').checked = false;
   $('recurring-fields').classList.add('hidden');
   $('recurring-preview-result').classList.add('hidden');
   $('recurring-preview-result').innerHTML = '';
   $('recurring-markpaid').checked = false;
   recurringState = { previewed: false, okCount: 0 };
-
-  // 補登模式 UI：橫幅 + 金額/備註欄；隱藏折扣與 Email；改標題與按鈕文字。
-  $('modal-backfill-banner').classList.toggle('hidden', !modalBackfill);
-  $('modal-backfill-amount-row').classList.toggle('hidden', !modalBackfill);
-  $('modal-backfill-note-row').classList.toggle('hidden', !modalBackfill);
-  $('modal-discount-row').classList.toggle('hidden', modalBackfill);
-  $('modal-email-row').classList.toggle('hidden', modalBackfill);
-  $('modal-title').textContent = modalBackfill ? '補登過去預約' : '填寫預約資訊';
-  $('modal-submit-btn').textContent = modalBackfill ? '確認補登' : '確認預約';
-  if (modalBackfill) {
-    $('modal-backfill-note').value = '';
-    $('modal-backfill-amount').value = priceByType[modalSessionType] != null ? priceByType[modalSessionType] : '';
-  }
 
   $('booking-modal').classList.remove('hidden');
   $('modal-name').focus();
@@ -730,7 +710,6 @@ function closeBookingModal() {
   modalCoach = null;
   modalSlot = null;
   modalAppliedDiscount = null;
-  modalBackfill = false;
 }
 
 $('modal-close-btn').addEventListener('click', closeBookingModal);
@@ -845,44 +824,6 @@ $('modal-submit-btn').addEventListener('click', async () => {
   btn.disabled = true;
   const btnText = btn.textContent;
   btn.textContent = '送出中…';
-
-  // ── 補登模式：走管理者端點（靜默、預設已付款）──
-  if (modalBackfill) {
-    const amountRaw = $('modal-backfill-amount').value.trim();
-    if (amountRaw === '') {
-      $('modal-general-err').textContent = '請輸入金額（0 表示贈課）';
-      btn.disabled = false; btn.textContent = btnText;
-      return;
-    }
-    const amount = Number(amountRaw);
-    if (!Number.isInteger(amount) || amount < 0) {
-      $('modal-general-err').textContent = '金額需為 0 或正整數';
-      btn.disabled = false; btn.textContent = btnText;
-      return;
-    }
-    try {
-      const body = { coachId: modalCoach.id, startAt: modalSlot.start, name: nameVal, phone: phoneNormalized, sessionType: modalSessionType, amount };
-      const noteVal = $('modal-backfill-note').value.trim();
-      if (noteVal) body.note = noteVal;
-      await api('/api/admin/bookings/backfill', { method: 'POST', body });
-      const bookedCoach = modalCoach;
-      closeBookingModal();
-      toast('補登成功', 'success');
-      slotCacheByCoach.delete(bookedCoach.id);
-      if (currentCoach && !views.detail.classList.contains('hidden')) loadSlots();
-    } catch (e) {
-      btn.disabled = false; btn.textContent = btnText;
-      const errCode = e.data?.error;
-      if (errCode === 'already_booked') $('modal-general-err').textContent = '此教練該時段已有一筆預約紀錄。';
-      else if (errCode === 'not_past') $('modal-general-err').textContent = '只能補登過去的時段。';
-      else if (errCode === 'invalid_amount') $('modal-general-err').textContent = '金額需為 0 或正整數';
-      else if (errCode === 'invalid_phone') $('modal-phone-err').textContent = e.data?.detail || '電話格式不正確';
-      else if (errCode === 'missing_name') $('modal-name-err').textContent = '請輸入姓名';
-      else if (errCode === 'phone_unavailable') $('modal-phone-err').textContent = '此電話號碼為員工帳號，無法用於補登。';
-      else $('modal-general-err').textContent = `補登失敗：${e.message}`;
-    }
-    return;
-  }
 
   // ── 循環模式：走員工端點（需先預覽）──
   if (recurringEnabled()) {
