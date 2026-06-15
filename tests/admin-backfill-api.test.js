@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
 import { addRule } from '../src/services/availabilityService.js';
+import { hashPassword } from '../src/services/auth.js';
 const BASE = process.env.BASE || 'http://localhost:3000';
 async function req(method, path, { body, token } = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -41,6 +42,16 @@ expect('admin + backfill=1 → 過去 slot past:true', () => {
   assert.ok(avAdmin.data.some(s => s.start === pastStart && s.past === true));
 });
 
+// 登入但非管理者（coach、is_admin=0）：backfill 應被忽略；POST 應 403（非 401）
+const coachUid = Number(db.prepare("INSERT INTO users (name,email,role,is_admin,password_hash) VALUES ('ABFA NonAdmin','abfa-coach@x.com','coach',0,?)").run(hashPassword('coachpass123')).lastInsertRowid);
+const clogin = await req('POST', '/api/auth/login', { body: { email: 'abfa-coach@x.com', password: 'coachpass123' } });
+const ctoken = clogin.data?.token;
+expect('非管理者 coach 登入 ok', () => assert.ok(ctoken));
+const avCoach = await req('GET', `/api/coaches/${coachId}/availability?from=${pastDate}&to=${pastDate}&backfill=1`, { token: ctoken });
+expect('非管理者 + backfill=1 → 過去日期空清單（忽略）', () => { assert.equal(avCoach.status, 200); assert.equal(avCoach.data.length, 0); });
+const bfCoach = await req('POST', '/api/admin/bookings/backfill', { token: ctoken, body: { coachId, startAt: pastStart, name:'x', phone:'0957000009', sessionType:'1on1', amount:1500 } });
+expect('非管理者補登 → 403', () => assert.equal(bfCoach.status, 403));
+
 const bfNoAuth = await req('POST', '/api/admin/bookings/backfill', { body: { coachId, startAt: pastStart, name:'補登客', phone:'0957000001', sessionType:'1on1', amount:1500 } });
 expect('無 token 補登 → 401', () => assert.equal(bfNoAuth.status, 401));
 
@@ -61,5 +72,5 @@ expect('補登預約出現在課表且 paid=true', () => {
   assert.ok(item); assert.equal(item.paid, true);
 });
 
-db.exec(`DELETE FROM bookings WHERE coach_id = ${coachId}; DELETE FROM coaches WHERE id = ${coachId}; DELETE FROM users WHERE id = ${uid} OR phone LIKE '0957%'`);
+db.exec(`DELETE FROM bookings WHERE coach_id = ${coachId}; DELETE FROM coaches WHERE id = ${coachId}; DELETE FROM users WHERE id = ${uid} OR phone LIKE '0957%' OR email LIKE 'abfa-%'`);
 console.log('[admin-backfill-api test] done');
