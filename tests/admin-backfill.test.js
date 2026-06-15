@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
 import { addRule, computeAvailableSlots } from '../src/services/availabilityService.js';
+import { createBackfillBooking } from '../src/services/bookingService.js';
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 const pad = (n) => String(n).padStart(2, '0');
@@ -44,4 +45,36 @@ expect('未來日期：includePast 不改變結果、皆 past:false', () => {
   assert.ok(b.every(x => x.past === false));
 });
 
-console.log('[admin-backfill test] availability section done');
+// ── createBackfillBooking ──
+const pastStart = `${pastDate}T10:00:00`;
+const r = createBackfillBooking({ coachId: cPast, startAt: pastStart, name: '補登客', phone: '0956000001', sessionType: '1on1', amount: 1500, note: '補登測試', actorId: uPast });
+expect('補登：confirmed + paid_at + paid_by + 金額 + note', () => {
+  const row = db.prepare('SELECT * FROM bookings WHERE id=?').get(r.id);
+  assert.equal(row.status, 'confirmed');
+  assert.ok(row.paid_at);
+  assert.equal(row.paid_by, uPast);
+  assert.equal(row.original_amount, 1500);
+  assert.equal(row.discount_amount, null);
+  assert.equal(row.session_type, '1on1');
+  assert.equal(row.note, '補登測試');
+});
+expect('補登：未來 startAt → not_past', () => {
+  assert.throws(() => createBackfillBooking({ coachId: cPast, startAt: `${futDate}T10:00:00`, name:'x', phone:'0956000002', amount:0, actorId: uPast }), /not_past/);
+});
+expect('補登：負數金額 → invalid_amount', () => {
+  assert.throws(() => createBackfillBooking({ coachId: cPast, startAt: `${pastDate}T12:00:00`, name:'x', phone:'0956000003', amount:-5, actorId: uPast }), /invalid_amount/);
+});
+expect('補登：金額 0 合法（贈課）', () => {
+  const r0 = createBackfillBooking({ coachId: cPast, startAt: `${pastDate}T11:00:00`, name:'贈課', phone:'0956000004', amount:0, actorId: uPast });
+  assert.equal(db.prepare('SELECT original_amount FROM bookings WHERE id=?').get(r0.id).original_amount, 0);
+});
+expect('補登：同教練同時段重複 → 409 already_booked', () => {
+  let err;
+  try { createBackfillBooking({ coachId: cPast, startAt: pastStart, name:'重複', phone:'0956000005', amount:1500, actorId: uPast }); }
+  catch (e) { err = e; }
+  assert.ok(err); assert.equal(err.code, 'already_booked');
+});
+
+// 清理本測試資料
+db.exec(`DELETE FROM bookings WHERE coach_id IN (${cPast}, ${cFut}); DELETE FROM coaches WHERE id IN (${cPast}, ${cFut}); DELETE FROM users WHERE id IN (${uPast}, ${uFut}) OR phone LIKE '0956%'`);
+console.log('[admin-backfill test] done');

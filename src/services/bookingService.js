@@ -137,6 +137,37 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
   });
 }
 
+/** 管理者補登「過去」時段的預約：靜默歷史紀錄。
+ *  - 標記已核對（paid_at/paid_by）、記錄金額 amount（original_amount）。
+ *  - 不發 LINE/Email、不建 Google 日曆、不套折扣、不檢查容量/重疊。
+ *  - 強制 startAt < now（避免用此路徑繞過未來容量限制）。
+ *  - 仍受 DB UNIQUE(coach_id, start_at) WHERE confirmed 約束 → 重複回 409 already_booked。 */
+export function createBackfillBooking({ coachId, startAt, name, phone, sessionType = '1on1', amount, note = null, actorId }) {
+  if (!coachId || !startAt) throw new ApiError(400, 'missing_fields');
+  if (sessionType !== '1on1' && sessionType !== '1on2') throw new ApiError(400, 'invalid_session_type');
+  if (typeof startAt !== 'string' || !START_AT_RE.test(startAt)) throw new ApiError(400, 'invalid_start_at');
+  if (!Number.isInteger(amount) || amount < 0) throw new ApiError(400, 'invalid_amount');
+  if (startAt >= nowLocal()) throw new ApiError(400, 'not_past');
+  const coach = getCoachStmt.get(coachId);
+  if (!coach) throw new ApiError(404, 'coach_not_found');
+  if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
+  return tx(() => {
+    const user = findOrCreateUserByPhone({ phone, name });
+    const endAt = addMinutes(startAt, 60);
+    let bookingId;
+    try {
+      const info = insertBookingStmt.run(coach.id, user.id, startAt, endAt, note, sessionType);
+      bookingId = info.lastInsertRowid;
+    } catch (e) {
+      if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'already_booked');
+      throw e;
+    }
+    db.prepare('UPDATE bookings SET paid_at=?, paid_by=?, original_amount=?, discount_amount=NULL WHERE id=?')
+      .run(nowLocal(), actorId, amount, bookingId);
+    return { id: bookingId, startAt, endAt };
+  });
+}
+
 export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason = null }) {
   return tx(() => {
     const b = getBookingStmt.get(bookingId);
