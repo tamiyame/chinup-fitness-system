@@ -94,11 +94,21 @@ function bindLookupForm() {
 function showResults() {
   document.getElementById('lookup-section').style.display = 'none';
   document.getElementById('results-section').style.display = 'block';
+  // 標題改為帶入查詢者姓名的問候語；副標（輸入提示）查詢後隱藏
+  const name = state.creds?.name || '';
+  const titleEl = document.getElementById('ms-title');
+  if (titleEl) titleEl.textContent = name ? `嗨～${name}，歡迎回來` : '我的課表';
+  const ledeEl = document.getElementById('ms-lede');
+  if (ledeEl) ledeEl.style.display = 'none';
 }
 
 function showForm() {
   document.getElementById('results-section').style.display = 'none';
   document.getElementById('lookup-section').style.display = 'block';
+  const titleEl = document.getElementById('ms-title');
+  if (titleEl) titleEl.textContent = '我的課表';
+  const ledeEl = document.getElementById('ms-lede');
+  if (ledeEl) ledeEl.style.display = '';
   state.creds = null;
   state.items = [];
 }
