@@ -38,7 +38,6 @@ import {
   confirmBookingPaymentGroup as svcConfirmBookingPaymentGroup,
   cancelBookingAdminGroup as svcCancelBookingAdminGroup,
   refundBookingGroupAdmin as svcRefundBookingGroupAdmin,
-  recurringOccurrences as svcRecurringOccurrences,
   previewRecurringBookings as svcPreviewRecurring,
   createRecurringBookings as svcCreateRecurring,
 } from './services/bookingService.js';
@@ -80,7 +79,7 @@ import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours } from './services/discountService.js';
 import { isValidPhone } from './services/userService.js';
-import { getExternalBusySafe, getExternalBusyChunkedSafe, syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
+import { syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
 import { sendBookingConfirmation } from './services/emailService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -779,8 +778,8 @@ app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler(async (
   if (!coach) return;
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'missing_range' });
-  const externalBusy = await getExternalBusySafe(from, to);
-  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy }));
+  // 一對一不卡 Google 行事曆忙碌時段：只看教練班表（externalBusy=null）。
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy: null }));
 }));
 
 app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
@@ -836,10 +835,10 @@ app.post('/api/public/bookings', bookingLimiter, asyncHandler(async (req, res) =
   if (typeof startAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/.test(startAt)) {
     return res.status(400).json({ error: 'invalid_start_at' });
   }
-  // 時段合法性（班表/請假/緩衝/視窗 + 容量 + Google freebusy）。
-  // freebusy 失敗 → fail-open（getExternalBusySafe 回 null，退回純 DB 檢查）。
+  // 時段合法性（班表/請假/緩衝/視窗 + 容量）。一對一不卡 Google 行事曆忙碌時段：
+  // 只要教練班表有開放即可預約，externalBusy=null。
   const date = startAt.slice(0, 10);
-  const externalBusy = await getExternalBusySafe(date, date);
+  const externalBusy = null;
   const units = type === '1on2' ? 2 : 1;
   // 管理者可於過去日期預約（校正/補登記）：放行過去時段，容量/重疊仍照常檢查。
   // 非管理者/匿名 → includePast=false → 過去時段不在清單 → 仍擋下（slot_unavailable）。
@@ -915,8 +914,8 @@ app.get('/api/coaches/:id/availability', asyncHandler(async (req, res) => {
   // 管理者可帶 backfill=1 看過去時段（補登用）；非管理者一律忽略。
   const requester = userFromToken(getTokenFromReq(req));
   const includePast = req.query.backfill === '1' && !!requester?.is_admin;
-  const externalBusy = await getExternalBusySafe(from, to);
-  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy, includePast }));
+  // 一對一不卡 Google 行事曆忙碌時段：只看教練班表（externalBusy=null）。
+  res.json(svcComputeSlots({ coachId: coach.id, fromDate: from, toDate: to, externalBusy: null, includePast }));
 }));
 
 // Kept for coach 緊急取消 (coach has a token; member login is disabled).
@@ -941,16 +940,6 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
 
 // ─── 循環預約（教練/管理者限定；spec: 2026-06-12-recurring-bookings-design.md）───
 
-// 計算 occurrence 範圍後分段抓 freebusy（gcal 停用/失敗 → null fail-open）
-async function recurringExternalBusy({ startAt, frequency, intervalDays, count }) {
-  try {
-    const occ = svcRecurringOccurrences({ startAt, frequency, intervalDays, count }).filter((o) => !o.reason);
-    if (!occ.length) return null;
-    const dates = occ.map((o) => o.startAt.slice(0, 10)).sort();
-    return await getExternalBusyChunkedSafe(dates[0], dates[dates.length - 1]);
-  } catch { return null; }
-}
-
 app.post('/api/bookings/recurring/preview', requireCoach, asyncHandler(async (req, res) => {
   const { coachId, startAt, sessionType, frequency, intervalDays, count } = req.body || {};
   const params = {
@@ -958,9 +947,8 @@ app.post('/api/bookings/recurring/preview', requireCoach, asyncHandler(async (re
     intervalDays: intervalDays != null && intervalDays !== '' ? Number(intervalDays) : null,
     count: Number(count),
   };
-  const externalBusy = await recurringExternalBusy(params).catch(() => null);
-  // 管理者可於過去日期排循環（校正/補登記）；容量/重疊仍照常檢查。
-  res.json(svcPreviewRecurring({ ...params, externalBusy, includePast: !!req.user.is_admin }));
+  // 一對一不卡 Google 行事曆忙碌時段（externalBusy=null）；管理者可於過去日期排循環，容量/重疊仍照常檢查。
+  res.json(svcPreviewRecurring({ ...params, externalBusy: null, includePast: !!req.user.is_admin }));
 }));
 
 app.post('/api/bookings/recurring', requireCoach, asyncHandler(async (req, res) => {
@@ -971,11 +959,11 @@ app.post('/api/bookings/recurring', requireCoach, asyncHandler(async (req, res) 
     intervalDays: intervalDays != null && intervalDays !== '' ? Number(intervalDays) : null,
     count: Number(count),
   };
-  const externalBusy = await recurringExternalBusy(params).catch(() => null);
+  // 一對一不卡 Google 行事曆忙碌時段（externalBusy=null）。
   const r = svcCreateRecurring({
     ...params, name, phone, email: email || null,
     markPaid: !!markPaid, discountCode: discountCode || null,
-    actorId: req.user.id, externalBusy, includePast: !!req.user.is_admin,
+    actorId: req.user.id, externalBusy: null, includePast: !!req.user.is_admin,
   });
   // commit 後副作用：逐堂建日曆事件（不 await；reconcile 兜底）
   for (const c of r.created) syncBookingCreate(c.id);
