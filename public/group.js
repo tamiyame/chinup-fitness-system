@@ -219,6 +219,8 @@ function renderSessionRow(s, tpl) {
   const wdStr = `${DOW_EN[dt.getDay()]} 週${DOW_SHORT[dt.getDay()]}`;
   const timeStr = `${formatTime(dt)}–${formatTime(dtEnd)}`;
   const remaining = Math.max(0, s.max_capacity - s.occupied);
+  const capPct = s.max_capacity > 0 ? Math.min(100, Math.round((s.occupied / s.max_capacity) * 100)) : 0;
+  const capLow = remaining <= 2;
 
   if (s.is_full) {
     return `
@@ -253,8 +255,9 @@ function renderSessionRow(s, tpl) {
       <div class="time tnum">${escapeHtml(timeStr)}</div>
     </div>
     <div class="sess-cap">
-      <span class="dot-line ok-t"><span class="dot ok"></span>剩 <span class="left-num">${remaining}</span></span>
-      <span class="sub">名額</span>
+      <span class="dot-line ok-t"><span class="dot ok"></span>剩 <span class="left-num">${remaining}</span> 名額</span>
+      <span class="capbar" aria-hidden="true"><span class="capbar-fill${capLow ? ' low' : ''}" style="width:${capPct}%"></span></span>
+      <span class="cap-meta">${s.occupied}/${s.max_capacity} 已報名</span>
     </div>
   </div>`;
 }

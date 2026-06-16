@@ -6,11 +6,236 @@
 <title>管理後台 - CHINUP Performance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/colors_and_type.css">
 <link rel="stylesheet" href="/style.css">
-<style>body { visibility: hidden; }</style>
+<style>
+body { visibility: hidden; }
+
+/* ============================================================
+   Nike 技術美學 overlay — admin 管理後台
+   疊在 style.css 之後，同特異性勝出；不改 markup 結構 / ID / 事件。
+   DNA：Archivo 粗體 tabular 數字 + Noto Sans TC 內文；單一 sky 強調色；
+   狀態用小圓點 + 色字（非填色膠囊）；實心俐落按鈕；細線分隔；
+   表格細線 + 大寫小標 header + tabular 數字；無 emoji / 無漸層。
+   ============================================================ */
+
+:root{ --nk-acc:#0284c7; --nk-acc-strong:#0369a1; }
+
+/* tabular 數字 + Archivo 工具 class（純視覺，JS 不依賴）*/
+.tnum, .nk-num { font-variant-numeric: tabular-nums; }
+
+/* ---------- Hero：大寫 kicker + 尾線 + Archivo 900 標題 ---------- */
+.hero-eyebrow{
+  font-family:"Archivo",sans-serif; font-weight:800;
+  font-size:11px; letter-spacing:.22em; text-transform:uppercase;
+  color:var(--ink-mute);
+  background:transparent; border:none; border-radius:0;
+  padding:0; gap:10px;
+  display:flex; align-items:center;
+}
+.hero-eyebrow::after{ content:""; width:42px; height:1px; background:var(--line); }
+.hero h1{
+  font-family:"Archivo","Noto Sans TC",sans-serif;
+  font-weight:900; letter-spacing:-.02em;
+}
+
+/* ---------- 分頁列 .tab / .tab-active → Nike 大寫底線 ---------- */
+#admin-tabs{ border-bottom:1px solid var(--line); gap:2px; }
+#admin-tabs .tab{
+  font-family:"Archivo","Noto Sans TC",sans-serif;
+  font-weight:800; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-mute);
+  padding:11px 14px 12px;
+  border-bottom:2px solid transparent;
+  transition:color .15s ease, border-color .15s ease;
+}
+#admin-tabs .tab:hover{ color:var(--ink-soft); }
+#admin-tabs .tab.tab-active{
+  color:var(--nk-acc-strong);
+  border-bottom-color:var(--nk-acc-strong);
+}
+
+/* ---------- 區段小標 .section-title → 大寫小標 + 尾線 ----------
+   尾線用 ::after，但因部分標題與右側按鈕同列（flex justify-between），
+   只在獨佔列時補線；此處統一給大寫質感，尾線交給單獨佔列者。 */
+.section-title{
+  font-family:"Archivo","Noto Sans TC",sans-serif;
+  font-weight:800; font-size:14px; letter-spacing:.04em;
+}
+
+/* ---------- 卡片 .card → 俐落直角小圓角、細線、無位移陰影 ---------- */
+.card{
+  border-radius:10px;
+  border:1px solid var(--line);
+  box-shadow:none;
+}
+.card:hover{ transform:none; box-shadow:none; border-color:var(--ink-mute); }
+.card-title{
+  font-family:"Noto Sans TC",sans-serif;
+  font-weight:900; letter-spacing:-.01em;
+}
+
+/* 總覽 stat 卡：大數字 Archivo 900 tabular、小標大寫 */
+#apanel-overview .grid .card{ padding:16px; }
+#apanel-overview .card .subtle{
+  font-family:"Archivo",sans-serif; font-weight:700;
+  font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--ink-mute);
+}
+#apanel-overview .card .text-3xl{
+  font-family:"Archivo",sans-serif; font-weight:900;
+  font-variant-numeric:tabular-nums; letter-spacing:-.02em;
+  font-size:32px; line-height:1; margin-top:8px;
+}
+
+/* ---------- 後台表格 .data-table → 細線 + 大寫小標 + tabular + 列 hover ---------- */
+.data-table th{
+  font-family:"Archivo","Noto Sans TC",sans-serif;
+  font-weight:800; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-mute); background:#fafbfc;
+  border-bottom:1px solid var(--line);
+}
+.data-table td{ border-bottom:1px solid var(--line); }
+.data-table tr:hover td{ background:var(--brand-50); }
+.data-table .font-medium{ font-weight:700; }
+/* ID / 加入時間等數字欄走 tabular（用 .subtle 標的近似命中數字格）*/
+.data-table td.subtle{ font-variant-numeric:tabular-nums; }
+
+/* 備份 modal 內表格同步 Nike 化 */
+#backup-modal table thead th{
+  font-family:"Archivo","Noto Sans TC",sans-serif;
+  font-weight:800; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-mute);
+}
+#backup-modal .font-mono{ font-variant-numeric:tabular-nums; }
+
+/* ---------- 狀態徽章 .badge → 小圓點 + 色字（非填色膠囊） ----------
+   保留既有 badge-* class（JS 依賴），改為透明底 / 無框 / 色字 + 前置色點。 */
+.badge{
+  background:transparent !important;
+  border-color:transparent !important;
+  border-radius:0;
+  padding:2px 0;
+  font-family:"Archivo","Noto Sans TC",sans-serif;
+  font-weight:800; font-size:11px; letter-spacing:.04em;
+  gap:6px;
+}
+.badge::before{ width:6px; height:6px; opacity:1; border-radius:50%; }
+.badge-open{ color:var(--ok-fg); }
+.badge-confirmed{ color:var(--nk-acc-strong); }
+.badge-cancelled,.badge-rejected{ color:var(--err-fg); }
+.badge-completed{ color:var(--ink-soft); }
+.badge-waitlisted{ color:var(--warn-fg); }
+.badge-pending,.badge-coach{ color:#6d28d9; }
+.badge-closed{ color:var(--ink-mute); }
+.badge-leave{ color:var(--err-fg); }
+/* 候補的小點轉 45° 成菱形（與前台一致的「警示」語彙）*/
+.badge-waitlisted::before{ transform:rotate(45deg); border-radius:0; }
+/* 場次開放/關閉切換鈕：仍是可點互動，但需看得出可按 → 加細框 + padding */
+.session-toggle{
+  border:1px solid var(--line) !important;
+  border-radius:7px;
+  padding:4px 10px !important;
+  background:var(--surface) !important;
+}
+.session-toggle.badge-open{ color:var(--ok-fg); border-color:var(--ok-line) !important; }
+.session-toggle.badge-closed{ color:var(--ink-mute); }
+.session-toggle:hover{ filter:none; background:var(--brand-50) !important; box-shadow:none; }
+
+/* ---------- 按鈕 → 實心俐落、觸控高度 ≥40px、小圓角 ---------- */
+.btn{
+  border-radius:8px;
+  font-family:"Noto Sans TC",sans-serif; font-weight:700;
+  letter-spacing:.01em;
+  min-height:40px;
+  transition:background .15s ease, border-color .15s ease, color .15s ease;
+}
+.btn-sm{ min-height:34px; border-radius:7px; }
+.btn-primary{
+  background:var(--nk-acc); box-shadow:none; border-radius:8px;
+}
+.btn-primary:hover{ background:var(--nk-acc-strong); transform:none; }
+.btn-primary:disabled{ background:#cbd5e1; transform:none; }
+.btn-dark{ background:var(--ink); }
+.btn-dark:hover{ background:#1e293b; transform:none; }
+.btn-ghost{ background:transparent; border-color:var(--line); color:var(--ink-soft); }
+.btn-ghost:hover{ background:var(--brand-50); border-color:var(--nk-acc); color:var(--nk-acc-strong); }
+.btn-danger{ background:var(--err-fg); }
+.btn-danger:hover{ background:#991b1b; transform:none; }
+.btn-secondary:hover{ transform:none; }
+.link{
+  font-family:"Archivo","Noto Sans TC",sans-serif; font-weight:700;
+  font-size:12px; letter-spacing:.04em; color:var(--nk-acc-strong);
+}
+.link:hover{ color:var(--nk-acc); }
+
+/* ---------- 表單 input / select / textarea → 直角小圓角、focus sky ---------- */
+.form-label{
+  font-family:"Archivo","Noto Sans TC",sans-serif;
+  font-weight:700; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-mute);
+}
+.form-input, .form-select, .form-textarea{
+  border-radius:8px;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus{
+  border-color:var(--nk-acc);
+  box-shadow:0 0 0 3px rgba(2,132,199,.14);
+}
+
+/* ---------- Modal / Drawer / dialog → Nike 俐落面板 ---------- */
+.modal-panel{ border-radius:12px; box-shadow:var(--shadow-lg); }
+.drawer-panel{ box-shadow:var(--shadow-lg); }
+#modal-title, #drawer-title{
+  font-family:"Archivo","Noto Sans TC",sans-serif;
+  font-weight:900; letter-spacing:-.01em; font-size:18px;
+}
+#backup-modal{
+  border-radius:12px;
+  box-shadow:var(--shadow-lg);
+}
+#backup-modal h3{
+  font-family:"Archivo","Noto Sans TC",sans-serif; font-weight:900;
+}
+#backup-modal::backdrop{ background:rgba(15,23,42,.45); backdrop-filter:blur(4px); }
+
+/* drawer 內 details 場次列：細線俐落 */
+details.session-row{ border-radius:8px; }
+details.session-row[open]{ box-shadow:none; border-color:var(--ink-mute); }
+details.session-row summary .font-semibold{
+  font-family:"Noto Sans TC",sans-serif; font-weight:900;
+}
+.reg-row .font-medium{ font-weight:700; }
+
+/* ---------- 空狀態：移除大 emoji 圖示位置，改細描邊 + 小標 ---------- */
+.empty-state-icon{
+  font-size:13px; opacity:1; margin-bottom:10px;
+  color:var(--ink-mute);
+}
+.empty-state svg.nk-empty-ico{
+  display:block; margin:0 auto 12px; width:34px; height:34px;
+  color:var(--ink-mute);
+}
+
+/* ---------- meta 列：line-icon 對齊 + 數字 tabular ---------- */
+.meta-item svg.nk-ico{
+  width:14px; height:14px; flex:none; color:var(--ink-mute);
+  margin-right:1px; vertical-align:-2px;
+}
+.meta-item .nk-mlabel{
+  font-family:"Archivo",sans-serif; font-weight:800;
+  font-size:9.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-mute); margin-right:5px;
+}
+
+/* 系統操作備註小字維持 */
+#job-result{ font-variant-numeric:tabular-nums; }
+
+/* nav 微調（不動連結 / id）：active 大寫質感留給 style.css，僅補字距 */
+.nav-link.active{ letter-spacing:.01em; }
+</style>
 </head>
 <body>
 <nav class="navbar sticky top-0 z-20">
@@ -45,7 +270,7 @@
 
 <main class="max-w-6xl mx-auto px-6">
   <section class="hero">
-    <span class="hero-eyebrow">⚙️ Admin Console</span>
+    <span class="hero-eyebrow">Admin · Console</span>
     <h1>課程管理後台</h1>
     <p>建立團體課程範本、檢視每場次報名狀態、並手動處理截止與寄送提醒。</p>
   </section>
@@ -73,7 +298,7 @@
 
   <!-- ops: backup status bar -->
   <section class="card mb-10 flex items-center gap-3">
-    <span class="text-2xl">📦</span>
+    <svg class="nk-ico" style="width:22px;height:22px;flex:none;color:var(--ink-mute);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></svg>
     <div class="flex-1 min-w-0">
       <div id="backup-summary" class="text-sm">資料備份：載入中…</div>
       <div id="backup-summary-error" class="hidden text-xs text-red-700 mt-0.5"></div>
@@ -129,11 +354,11 @@
     <div class="card">
       <div class="flex flex-wrap gap-3 items-center">
         <div class="flex items-center gap-1">
-          <button id="run-deadlines" class="btn btn-dark">⏰ 立即處理截止</button>
+          <button id="run-deadlines" class="btn btn-dark">立即處理截止</button>
           <button type="button" class="help-btn" data-help="deadlines" aria-label="說明">?</button>
         </div>
         <div class="flex items-center gap-1">
-          <button id="run-reminders" class="btn btn-dark">📣 寄送上課提醒</button>
+          <button id="run-reminders" class="btn btn-dark">寄送上課提醒</button>
           <button type="button" class="help-btn" data-help="reminders" aria-label="說明">?</button>
         </div>
         <span id="job-result" class="subtle"></span>

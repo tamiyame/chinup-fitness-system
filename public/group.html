@@ -240,6 +240,11 @@ body { visibility: hidden; }
   font-family: "Archivo", sans-serif; font-weight: 600; font-size: 10px;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mute);
 }
+/* 開放名額容量進度條（Nike：細直角、sky 填色、近滿轉琥珀） */
+.sess-cap .capbar { display: block; width: 76px; height: 4px; background: var(--line); margin-top: 6px; overflow: hidden; }
+.sess-cap .capbar-fill { display: block; height: 4px; background: var(--brand-600); }
+.sess-cap .capbar-fill.low { background: var(--warn-fg); }
+.sess-cap .cap-meta { font-family: "Archivo", sans-serif; font-size: 10px; color: var(--ink-mute); margin-top: 3px; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
 
 /* ---- order summary ---- */
 #order-summary { border-radius: 6px; }

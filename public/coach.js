@@ -96,17 +96,17 @@ async function renderBookings() {
   wrap.innerHTML = '';
   for (const b of list) {
     const card = document.createElement('div');
-    card.className = 'card mb-3';
     const cancelled = b.status === 'cancelled';
-    // 付款狀態 badge：admin 核款後顯示「已確認」，否則「待確認」（已取消不顯示）
+    card.className = `card mb-3 tab-bookings-card${cancelled ? ' is-cancelled' : ''}`;
+    // 付款狀態：admin 核款後「已確認」，否則「待確認」（已取消不顯示）；Nike 用狀態小圓點 + 色字
     const payBadge = cancelled ? '' : (b.paid_at
-      ? ' <span class="text-xs font-medium text-sky-700 bg-sky-100 rounded px-1.5 py-0.5 align-middle">已確認</span>'
-      : ' <span class="text-xs font-medium text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 align-middle">待確認</span>');
+      ? ' <span class="nk-dot ok align-middle">已確認</span>'
+      : ' <span class="nk-dot warn align-middle">待確認</span>');
     card.innerHTML = `
       <div class="flex items-start justify-between gap-3">
         <div>
-          <div class="font-semibold">${escapeHtml(b.member_name)}${b.session_type === '1on2' ? ' <span class="text-xs font-medium text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 align-middle">1對2</span>' : ''}${payBadge}</div>
-          <div class="text-sm text-slate-600">${fmtDate(b.start_at)}</div>
+          <div class="font-semibold flex items-center gap-2 flex-wrap">${escapeHtml(b.member_name)}${b.session_type === '1on2' ? ' <span class="nk-tag">1對2</span>' : ''}${payBadge}</div>
+          <div class="text-sm bk-when">${fmtDate(b.start_at)}</div>
           ${b.note ? `<div class="text-sm text-slate-500 mt-1">備註：${escapeHtml(b.note)}</div>` : ''}
           ${cancelled ? `<div class="text-sm text-red-500 mt-1">已取消${b.cancel_reason ? `（${escapeHtml(b.cancel_reason)}）` : ''}</div>` : ''}
         </div>
@@ -188,8 +188,8 @@ async function renderAvailability() {
   if (rules.length === 0) ruleList.innerHTML = '<p class="text-slate-500 text-sm">還沒設定班表</p>';
   for (const r of rules) {
     const row = document.createElement('div');
-    row.className = 'flex items-center justify-between p-2 border rounded';
-    row.innerHTML = `<span>${DOW_LABELS[r.day_of_week]} ${r.start_time}–${r.end_time}</span>
+    row.className = 'flex items-center justify-between p-2 border rounded av-row';
+    row.innerHTML = `<span class="av-text">${DOW_LABELS[r.day_of_week]} ${r.start_time}–${r.end_time}</span>
       <button data-id="${r.id}" class="text-red-500 text-sm rule-del">刪除</button>`;
     ruleList.appendChild(row);
   }
@@ -222,11 +222,14 @@ async function renderAvailability() {
   if (exceptions.length === 0) exList.innerHTML = '<p class="text-slate-500 text-sm">沒有特殊日期</p>';
   for (const ex of exceptions) {
     const row = document.createElement('div');
+    // 狀態小圓點 + 色字（取代 🟡🟢）：請假=琥珀菱形點、加開=綠色圓點
     const tag = ex.type === 'leave'
-      ? (ex.start_time ? `🟡 請假 ${ex.start_time}–${ex.end_time}` : '🟡 請假（整天）')
-      : `🟢 加開 ${ex.start_time}–${ex.end_time}`;
-    row.className = 'flex items-center justify-between p-2 border rounded';
-    row.innerHTML = `<span>${ex.exception_date} · ${tag}${ex.note ? ` · ${escapeHtml(ex.note)}` : ''}</span>
+      ? (ex.start_time
+          ? `<span class="nk-dot amber">請假 ${ex.start_time}–${ex.end_time}</span>`
+          : '<span class="nk-dot amber">請假（整天）</span>')
+      : `<span class="nk-dot green">加開 ${ex.start_time}–${ex.end_time}</span>`;
+    row.className = 'flex items-center justify-between p-2 border rounded av-row';
+    row.innerHTML = `<span class="av-text flex items-center gap-2 flex-wrap">${ex.exception_date} · ${tag}${ex.note ? ` · ${escapeHtml(ex.note)}` : ''}</span>
       <button data-id="${ex.id}" class="text-red-500 text-sm ex-del">刪除</button>`;
     exList.appendChild(row);
   }
@@ -288,7 +291,7 @@ async function renderProfile() {
         <textarea name="bio" rows="4" class="mt-1 w-full border rounded p-2 text-sm">${escapeHtml(me.bio || '')}</textarea>
       </label>
       <div>
-        <span class="text-sm text-slate-600">頭像</span>
+        <span class="text-sm text-slate-600 profile-field-label">頭像</span>
         <div class="flex items-center gap-3 mt-1">
           <div class="w-16 h-16 rounded-full bg-slate-200 overflow-hidden">
             ${me.avatar_path ? `<img src="/avatars/${me.avatar_path}" class="w-full h-full object-cover">` : ''}
