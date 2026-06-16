@@ -114,9 +114,9 @@ function dateBlock(start_at) {
   const mon = `${String(dt.getMonth() + 1).padStart(2, '0')}月`;
   return `
     <div class="sn-date">
-      <span class="sn-dow">${DOW_EN[dt.getDay()]}</span>
-      <span class="sn-dnum">${dnum}</span>
       <span class="sn-mon">${mon}</span>
+      <span class="sn-dnum">${dnum}</span>
+      <span class="sn-dow">週${DOW_ZH[dt.getDay()]}</span>
     </div>
   `;
 }
@@ -261,7 +261,7 @@ function cardHtml(item, isNext = false) {
           <span class="sn-title">${title}</span>
         </div>
         <div class="sn-l2">
-          <span class="sn-time">週${DOW_ZH[dt.getDay()]} · <span class="sn-clock">${time}</span></span>
+          <span class="sn-time"><span class="sn-clock">${time}</span></span>
           <span class="sn-status ${tone}"><span class="sn-dot"></span>${escapeHtml(label)}</span>
         </div>
         ${paymentLine(item)}

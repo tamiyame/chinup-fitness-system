@@ -5,11 +5,166 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>教練後台 · CHINUP</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/colors_and_type.css">
 <link rel="stylesheet" href="/style.css">
-<style>body { visibility: hidden; }</style>
+<style>
+body { visibility: hidden; }
+
+/* ============================================================
+   Nike 技術美學 overlay — coach 教練後台
+   疊在 style.css 之後，同特異性勝出；不改 markup 結構/ID。
+   DNA：Archivo 粗體 tabular 數字 + Noto Sans TC 內文；單一 sky 強調色；
+   狀態用小圓點 + 色字；實心俐落按鈕；細線分隔；tabular-nums；無 emoji/漸層。
+   注意：所有 JS 取用的 id/class（.tab/.tab-active/.tab-panel/.card/.cancel-btn/
+   .rule-del/.ex-del/#tab-* 等）只改外觀、不更名。
+   ============================================================ */
+
+:root{ --nk-acc:var(--brand-600); --nk-acc-strong:var(--brand-700); }
+
+.tnum{ font-variant-numeric:tabular-nums; }
+
+/* ---------- 頁面標題：Archivo 大寫 kicker + 尾線 + 大標 ---------- */
+.nk-kicker{
+  font-family:"Archivo",sans-serif; font-weight:700; font-size:11px;
+  text-transform:uppercase; letter-spacing:.2em; color:var(--ink-mute);
+  display:flex; align-items:center; gap:10px; margin-bottom:8px;
+}
+.nk-kicker::after{ content:""; flex:1; height:1px; background:var(--line); }
+.page-title{
+  font-family:"Noto Sans TC",sans-serif;
+  font-weight:900; letter-spacing:-.02em;
+}
+
+/* ---------- 待啟用橫幅：誠實邊界、左側琥珀細條、移除圓角彩塊感 ---------- */
+#pending-banner{
+  border-radius:0; border:1px solid var(--warn-line);
+  border-left:3px solid var(--warn-fg);
+  background:#fffdf5; color:var(--warn-fg);
+}
+
+/* ---------- 分頁 Tab（我的預約 / 可預約時段 / 個人資料）---------- */
+.tab{
+  font-family:"Noto Sans TC",sans-serif; font-weight:700;
+  font-size:14px; letter-spacing:.01em;
+  padding:10px 16px; min-height:42px;
+  border-bottom:2px solid transparent; color:var(--ink-mute);
+  transition:color .15s ease, border-color .15s ease;
+}
+.tab:hover{ color:var(--ink-soft); }
+.tab.tab-active{ color:var(--nk-acc-strong); border-bottom-color:var(--nk-acc); font-weight:800; }
+
+/* ---------- 卡片：俐落方框、無懸浮抬升、細線分隔感 ---------- */
+.tab-panel .card{
+  border-radius:10px; box-shadow:none;
+  border:1px solid var(--line); padding:14px 16px;
+}
+.tab-panel .card:hover{ transform:none; box-shadow:none; border-color:var(--ink-mute); }
+
+/* 我的預約卡：左側 sky 細條當作未取消的「即將到來」錨點 */
+.tab-bookings-card{ position:relative; padding-left:16px; }
+.tab-bookings-card::before{
+  content:""; position:absolute; left:0; top:12px; bottom:12px;
+  width:3px; background:var(--nk-acc);
+}
+.tab-bookings-card.is-cancelled::before{ background:var(--line); }
+
+/* 會員名 → Archivo 質感大字 */
+.tab-bookings-card .font-semibold{
+  font-family:"Noto Sans TC",sans-serif; font-weight:900;
+  font-size:15.5px; letter-spacing:-.01em;
+}
+/* 日期時間 → Archivo tabular */
+.bk-when{
+  font-family:"Archivo",sans-serif; font-variant-numeric:tabular-nums;
+  font-weight:600; letter-spacing:.02em; color:var(--ink-soft) !important;
+}
+
+/* ---------- 狀態小圓點 + 色字（取代膠囊填色 / emoji）---------- */
+.nk-dot{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:11.5px; font-weight:700; letter-spacing:.03em;
+  vertical-align:middle; white-space:nowrap;
+}
+.nk-dot::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+.nk-dot.ok{ color:var(--brand-700); }      /* 已確認 */
+.nk-dot.warn{ color:var(--warn-fg); }      /* 待確認 */
+.nk-dot.warn::before{ border-radius:1px; transform:rotate(45deg); } /* 待確認用菱形小點 */
+.nk-dot.green{ color:var(--ok-fg); }       /* 加開 */
+.nk-dot.amber{ color:var(--warn-fg); }     /* 請假 */
+.nk-dot.amber::before{ border-radius:1px; transform:rotate(45deg); }
+/* 1對2 標記 → 大寫小標，非填色膠囊 */
+.nk-tag{
+  font-family:"Archivo",sans-serif; font-weight:800;
+  font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--nk-acc-strong); vertical-align:middle; white-space:nowrap;
+}
+
+/* ---------- 班表 / 例外列：細線分隔、Archivo tabular 時間 ---------- */
+.section-title{
+  font-family:"Noto Sans TC",sans-serif; font-weight:900; letter-spacing:-.01em;
+}
+.tab-availability .card{
+  border-radius:10px; box-shadow:none; border:1px solid var(--line);
+}
+.tab-availability .card:hover{ transform:none; box-shadow:none; border-color:var(--line); }
+/* 規則 / 例外的列（.flex...border rounded）→ 方框、tabular 數字 */
+.av-row{
+  border:1px solid var(--line); border-radius:8px;
+  font-variant-numeric:tabular-nums;
+}
+.av-row .av-text{ font-family:"Archivo",sans-serif; font-weight:600; letter-spacing:.01em; font-variant-numeric:tabular-nums; }
+/* 刪除：實心紅小鈕 hover；保留原 .rule-del/.ex-del 名稱 */
+.av-row .rule-del, .av-row .ex-del{
+  font-family:"Archivo",sans-serif; font-weight:700;
+  font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+}
+
+/* ---------- 表單欄位：直角小圓角、誠實邊界、聚焦 sky 環 ---------- */
+.tab-panel input[type="text"],
+.tab-panel input[type="date"],
+.tab-panel input[type="file"],
+.tab-panel select,
+.tab-panel textarea,
+.tab-panel input[data-time10]{
+  border-radius:8px; border:1px solid var(--line);
+}
+.tab-panel input:focus,
+.tab-panel select:focus,
+.tab-panel textarea:focus{
+  outline:none; border-color:var(--nk-acc);
+  box-shadow:0 0 0 3px rgba(2,132,199,.12);
+}
+/* 表單小標 → 大寫 label 質感 */
+.tab-profile form > label > span:first-child,
+.profile-field-label{
+  font-family:"Archivo",sans-serif; font-weight:700;
+  font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-mute) !important;
+}
+/* 頭像 → 方形描邊（非圓） */
+.tab-profile .rounded-full{ border-radius:8px; border:1px solid var(--line); }
+
+/* ---------- 按鈕：實心俐落、最低觸控高度 40px ---------- */
+.btn-primary{ border-radius:8px; min-height:40px; }
+.btn-secondary{ border-radius:8px; min-height:40px; }
+.tab-bookings-card .cancel-btn{
+  font-family:"Archivo",sans-serif; font-weight:700;
+  font-size:12px; letter-spacing:.06em;
+  min-height:40px;
+}
+
+/* ---------- 自訂時間下拉（已存在於 style.css，這裡微調為俐落方框）---------- */
+.time-dd{ border-radius:8px; }
+
+/* 新增規則 / 標記例外的 details summary → 質感小標 */
+.tab-availability summary.font-semibold{
+  font-family:"Noto Sans TC",sans-serif; font-weight:800;
+  color:var(--nk-acc-strong);
+}
+</style>
 </head>
 <body>
 <nav class="navbar sticky top-0 z-20">
@@ -47,6 +202,7 @@
     您的教練資料尚未啟用，請聯絡管理員啟用後才會顯示給會員。
   </div>
 
+  <div class="nk-kicker">COACH · 教練後台</div>
   <h1 class="page-title">教練後台</h1>
 
   <div class="flex gap-2 border-b mb-4 overflow-x-auto">

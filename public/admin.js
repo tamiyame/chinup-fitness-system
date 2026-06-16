@@ -11,6 +11,23 @@ const RECURRENCE_LABEL = { weekly: '每週', monthly: '每月', bimonthly: '每�
 const SESSION_STATUS_LABEL = { open: '開放', confirmed: '已成班', cancelled: '未開課', completed: '結束' };
 const REG_STATUS_LABEL = { confirmed: '正取', waitlisted: '候補', pending: '待付款', cancelled: '已取消', rejected: '未開課' };
 
+// Nike 描邊 line-icons（純呈現，取代 emoji；非人臉非 emoji；color 繼承 currentColor）
+const _svg = (p) => `<svg class="nk-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const ICO = {
+  calendar: _svg('<rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/>'),
+  clock: _svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+  users: _svg('<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><path d="M16 5.5a3 3 0 0 1 0 5.6M16.5 14.6c2.4.4 4 2.3 4 4.9"/>'),
+  coach: _svg('<circle cx="12" cy="7" r="3.4"/><path d="M5.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/>'),
+  repeat: _svg('<path d="M4 8a6 6 0 0 1 10-2l2 2M20 8V4M20 8h-4"/><path d="M20 16a6 6 0 0 1-10 2l-2-2M4 16v4M4 16h4"/>'),
+  range: _svg('<path d="M4 12h16M14 6l6 6-6 6"/>'),
+  phone: _svg('<path d="M6 3.5h3l1.5 4-2 1.5a11 11 0 0 0 5 5l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A16 16 0 0 1 4 5.7 2 2 0 0 1 6 3.5z"/>'),
+  cash: _svg('<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/>'),
+  dumbbell: _svg('<path d="M3 9v6M6 7.5v9M18 7.5v9M21 9v6M6 12h12"/>'),
+  check: _svg('<path d="M4 12.5l5 5L20 6.5"/>'),
+  tag: _svg('<path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.4"/>'),
+  book: _svg('<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M18 19.5H7a2 2 0 0 0-2 2"/>'),
+};
+
 async function loadTemplates() {
   const container = document.getElementById('templates');
   try {
@@ -33,7 +50,7 @@ async function loadTemplates() {
     if (!tpls.length) {
       container.innerHTML = `
         <div class="empty-state">
-          <span class="empty-state-icon">📚</span>
+          ${ICO.book.replace('nk-ico', 'nk-empty-ico')}
           <p>尚無課程範本</p>
           <p class="subtle mt-1">點「＋ 新增範本」建立第一個循環課程</p>
         </div>`;
@@ -49,12 +66,12 @@ async function loadTemplates() {
             </div>
             <p class="card-desc">${escapeHtml(t.description || '')}</p>
             <div class="meta">
-              <span class="meta-item">📅 ${dow(t.day_of_week)} ${t.start_time}</span>
-              <span class="meta-item">⏱ ${t.duration_minutes} 分</span>
-              <span class="meta-item">👥 ${t.min_capacity}–${t.max_capacity} 人</span>
-              <span class="meta-item">🧑‍🏫 ${escapeHtml(t.coach_name || '未指定')}</span>
-              <span class="meta-item">🔁 ${RECURRENCE_LABEL[t.recurrence]}</span>
-              <span class="meta-item">🗓 ${t.cycle_start_date} ~ ${t.cycle_end_date}</span>
+              <span class="meta-item">${ICO.calendar} ${dow(t.day_of_week)} ${t.start_time}</span>
+              <span class="meta-item">${ICO.clock} ${t.duration_minutes} 分</span>
+              <span class="meta-item">${ICO.users} ${t.min_capacity}–${t.max_capacity} 人</span>
+              <span class="meta-item">${ICO.coach} ${escapeHtml(t.coach_name || '未指定')}</span>
+              <span class="meta-item">${ICO.repeat} ${RECURRENCE_LABEL[t.recurrence]}</span>
+              <span class="meta-item">${ICO.range} ${t.cycle_start_date} ~ ${t.cycle_end_date}</span>
             </div>
           </div>
           <div class="flex gap-2">
@@ -855,7 +872,7 @@ async function loadPendingOrders() {
     if (!items.length) {
       container.innerHTML = `
         <div class="empty-state">
-          <span class="empty-state-icon">✅</span>
+          ${ICO.check.replace('nk-ico', 'nk-empty-ico')}
           <p>目前沒有待核對的匯款</p>
         </div>`;
       return;
@@ -897,9 +914,9 @@ function orderCardHtml(o) {
             <span class="badge badge-waitlisted">待核對</span>
           </div>
           <div class="meta mb-2">
-            <span class="meta-item">📞 ${escapeHtml(o.customer_phone)}</span>
-            <span class="meta-item">💰 NT$${Number(o.total_amount).toLocaleString()}</span>
-            <span class="meta-item">⏰ 到期 ${escapeHtml(fmtDate(o.expires_at))}</span>
+            <span class="meta-item">${ICO.phone} ${escapeHtml(o.customer_phone)}</span>
+            <span class="meta-item">${ICO.cash} NT$${Number(o.total_amount).toLocaleString()}</span>
+            <span class="meta-item">${ICO.clock} 到期 ${escapeHtml(fmtDate(o.expires_at))}</span>
           </div>
           <ul class="list-disc list-inside space-y-0.5">${sessionRows}</ul>
         </div>
@@ -926,9 +943,9 @@ function pendingBookingGroupCardHtml(g) {
             <span class="badge badge-waitlisted">待核對</span>
           </div>
           <div class="meta mb-2">
-            <span class="meta-item">📞 ${escapeHtml(g.member_phone || '')}</span>
-            <span class="meta-item">💰 合計 NT$${Number(g.total_amount).toLocaleString()}${g.discount_code ? `（折扣碼 ${escapeHtml(g.discount_code)}）` : ''}</span>
-            <span class="meta-item">🏋️ ${escapeHtml(g.coach_display_name)}（${label}）</span>
+            <span class="meta-item">${ICO.phone} ${escapeHtml(g.member_phone || '')}</span>
+            <span class="meta-item">${ICO.cash} 合計 NT$${Number(g.total_amount).toLocaleString()}${g.discount_code ? `（折扣碼 ${escapeHtml(g.discount_code)}）` : ''}</span>
+            <span class="meta-item">${ICO.dumbbell} ${escapeHtml(g.coach_display_name)}（${label}）</span>
           </div>
           <ul class="list-disc list-inside space-y-0.5">${rows}</ul>
         </div>
@@ -955,10 +972,10 @@ function pendingBookingCardHtml(b) {
             <span class="badge badge-waitlisted">待核對</span>
           </div>
           <div class="meta mb-2">
-            <span class="meta-item">📞 ${escapeHtml(b.member_phone || '')}</span>
-            <span class="meta-item">💰 ${amount}</span>
-            <span class="meta-item">🏋️ ${escapeHtml(b.coach_display_name)}（${label}）</span>
-            <span class="meta-item">🕐 ${escapeHtml(fmtDate(b.start_at))}</span>
+            <span class="meta-item">${ICO.phone} ${escapeHtml(b.member_phone || '')}</span>
+            <span class="meta-item">${ICO.cash} ${amount}</span>
+            <span class="meta-item">${ICO.dumbbell} ${escapeHtml(b.coach_display_name)}（${label}）</span>
+            <span class="meta-item">${ICO.clock} ${escapeHtml(fmtDate(b.start_at))}</span>
           </div>
         </div>
         <div class="flex flex-col gap-2 min-w-[110px]">
@@ -1100,7 +1117,7 @@ async function loadConfirmedPayments() {
               <strong>${escapeHtml(x.customer_name)}</strong>
               ${typeBadge}${refundBadge}
               <span class="subtle text-sm">${escapeHtml(detail || '')}</span>
-              <span class="subtle text-sm">💰 ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}</span>
+              <span class="subtle text-sm" style="display:inline-flex;align-items:center;gap:5px;">${ICO.cash.replace('class="nk-ico"', 'style="width:14px;height:14px;flex:none;"')} ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}</span>
             </div>
             <div class="subtle text-xs">核對 ${escapeHtml(fmtDate(x.paid_at))} · 經手 ${escapeHtml(x.paid_by_name || '—')}</div>
           </div>
@@ -1262,7 +1279,7 @@ async function loadDiscountCodes() {
     if (!codes.length) {
       container.innerHTML = `
         <div class="empty-state">
-          <span class="empty-state-icon">🏷️</span>
+          ${ICO.tag.replace('nk-ico', 'nk-empty-ico')}
           <p>尚無折扣碼</p>
           <p class="subtle mt-1">使用上方表單建立第一個折扣碼</p>
         </div>`;
