@@ -699,7 +699,7 @@ $('recurring-preview-btn').addEventListener('click', async () => {
     const okCount = r.occurrences.filter(o => o.ok).length;
     const reasonText = { no_date: '當月無此日', unavailable: '不可預約（班表/請假/已被預訂/容量/日曆封鎖）' };
     $('recurring-preview-result').innerHTML = `
-      <div class="font-medium mb-1" style="color:#0369a1;">可建立 ${okCount} 堂 · 衝突 ${r.occurrences.length - okCount} 堂</div>
+      <div class="font-medium mb-1" style="color:var(--brand-700);">可建立 ${okCount} 堂 · 衝突 ${r.occurrences.length - okCount} 堂</div>
       ${r.occurrences.map(o => o.ok
         ? `<div style="color:#15803d;">✓ ${escapeHtml(fmtDate(o.startAt))}</div>`
         : `<div style="color:#b91c1c;">✗ ${escapeHtml(fmtDate(o.startAt))}　${reasonText[o.reason] || o.reason}</div>`).join('')}
