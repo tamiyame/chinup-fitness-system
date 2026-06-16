@@ -5,7 +5,6 @@ bootPublic();
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 const DOW_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
-const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function formatTime(dt) {
   return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
@@ -180,18 +179,6 @@ function renderTemplate(tpl) {
     </label>
   ` : '';
 
-  // abstract stroke line-icons (no emoji): clock / people / coach-tag
-  const icoClock = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>`;
-  const icoPeople = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 19v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path><circle cx="9.5" cy="7" r="3"></circle><path d="M21 19v-2a4 4 0 0 0-3-3.87"></path></svg>`;
-  const icoCoach = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-1a5 5 0 0 1 5-5h2"></path><circle cx="10" cy="8" r="3.5"></circle><path d="M15 13l2.5 2.5L22 11"></path></svg>`;
-
-  const metaHtml = `
-        <p class="course-meta">
-          <span class="cm-item">${icoClock}<span class="tnum">${tpl.duration_minutes}</span> 分鐘</span>
-          <span class="cm-item">${icoPeople}<span class="tnum">${tpl.min_capacity}–${tpl.max_capacity}</span> 人</span>
-          ${tpl.coach_name ? `<span class="cm-item">${icoCoach}教練 ${escapeHtml(tpl.coach_name)}</span>` : ''}
-        </p>`;
-
   return `
   <details class="day-group">
     <summary>
@@ -201,7 +188,7 @@ function renderTemplate(tpl) {
           <span class="badge badge-open" style="font-size:11px;margin-left:6px;">${escapeHtml(priceLabel)}</span>
         </h3>
         <p>${escapeHtml(tpl.description || '')}</p>
-        ${metaHtml}
+        <p class="course-meta">⏱ ${tpl.duration_minutes} 分鐘・👥 ${tpl.min_capacity}–${tpl.max_capacity} 人${tpl.coach_name ? `・🧑‍🏫 教練 ${escapeHtml(tpl.coach_name)}` : ''}</p>
       </div>
       ${chevron}
     </summary>
@@ -215,29 +202,23 @@ function renderTemplate(tpl) {
 function renderSessionRow(s, tpl) {
   const dt = new Date(s.start_at);
   const dtEnd = new Date(s.end_at);
-  const dayNum = `${dt.getMonth() + 1}/${dt.getDate()}`;
-  const wdStr = `${DOW_EN[dt.getDay()]} 週${DOW_SHORT[dt.getDay()]}`;
+  const dateStr = `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')} 週${DOW_SHORT[dt.getDay()]}`;
   const timeStr = `${formatTime(dt)}–${formatTime(dtEnd)}`;
-  const remaining = Math.max(0, s.max_capacity - s.occupied);
-  const capPct = s.max_capacity > 0 ? Math.min(100, Math.round((s.occupied / s.max_capacity) * 100)) : 0;
-  const capLow = remaining <= 2;
+  const capStr = `已佔 ${s.occupied} / 上限 ${s.max_capacity}`;
+  const pct = Math.min(100, Math.round((s.occupied / s.max_capacity) * 100));
 
   if (s.is_full) {
     return `
-    <div class="sess-row waitlist" data-sid="${s.id}" data-type="waitlist" data-tpl-id="${tpl.id}"
+    <div class="sess-row" data-sid="${s.id}" data-type="waitlist" data-tpl-id="${tpl.id}"
          data-tpl-name="${escapeHtml(tpl.name)}" data-price="${s.price_per_session}">
       <input type="checkbox" style="accent-color:#d97706;width:16px;height:16px;flex-shrink:0;" aria-label="候補">
-      <div class="sess-date">
-        <span class="d tnum">${escapeHtml(dayNum)}</span>
-        <span class="wd">${escapeHtml(wdStr)}</span>
-      </div>
       <div class="sess-row-info">
-        <div class="name">${escapeHtml(tpl.name)}</div>
-        <div class="time tnum">${escapeHtml(timeStr)}</div>
+        <div class="sess-row-date">${escapeHtml(dateStr)}</div>
+        <div class="sess-row-time">${escapeHtml(timeStr)}</div>
       </div>
-      <div class="sess-cap">
-        <span class="dot-line warn-t"><span class="dot warn"></span>額滿</span>
-        <span class="sub">可候補${s.waitlist_count > 0 ? ` · ${s.waitlist_count} 人` : ''}</span>
+      <div style="text-align:right;">
+        <div class="sess-row-cap">${escapeHtml(capStr)}</div>
+        <span class="badge badge-waitlisted" style="font-size:11px;margin-top:3px;display:inline-flex;">額滿·可候補${s.waitlist_count > 0 ? `（${s.waitlist_count} 人候補中）` : ''}</span>
       </div>
     </div>`;
   }
@@ -246,18 +227,15 @@ function renderSessionRow(s, tpl) {
   <div class="sess-row" data-sid="${s.id}" data-type="pay" data-tpl-id="${tpl.id}"
        data-tpl-name="${escapeHtml(tpl.name)}" data-price="${s.price_per_session}">
     <input type="checkbox" style="accent-color:var(--brand-600);width:16px;height:16px;flex-shrink:0;" aria-label="報名">
-    <div class="sess-date">
-      <span class="d tnum">${escapeHtml(dayNum)}</span>
-      <span class="wd">${escapeHtml(wdStr)}</span>
-    </div>
     <div class="sess-row-info">
-      <div class="name">${escapeHtml(tpl.name)}</div>
-      <div class="time tnum">${escapeHtml(timeStr)}</div>
+      <div class="sess-row-date">${escapeHtml(dateStr)}</div>
+      <div class="sess-row-time">${escapeHtml(timeStr)}</div>
     </div>
-    <div class="sess-cap">
-      <span class="dot-line ok-t"><span class="dot ok"></span>剩 <span class="left-num">${remaining}</span> 名額</span>
-      <span class="capbar" aria-hidden="true"><span class="capbar-fill${capLow ? ' low' : ''}" style="width:${capPct}%"></span></span>
-      <span class="cap-meta">${s.occupied}/${s.max_capacity} 已報名</span>
+    <div style="text-align:right;">
+      <div class="sess-row-cap">${escapeHtml(capStr)}</div>
+      <div class="cc-bar" style="width:80px;margin-top:4px;">
+        <div class="cc-fill ${pct >= 100 ? 'full' : pct >= 70 ? 'warn' : 'open'}" style="width:${pct}%;"></div>
+      </div>
     </div>
   </div>`;
 }

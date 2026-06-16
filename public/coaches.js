@@ -84,8 +84,8 @@ function avatarHtml(coach, size = 'card') {
 /** 將 specialty 字串切成標籤陣列（以「、，,／/」或空白分割）*/
 function specialtyTags(specialty) {
   if (!specialty) return [];
-  // 以全形逗號、半形逗號、頓號、斜線、全形斜線、間隔點（·／・）、空白切分
-  const parts = specialty.split(/[、，,／/·・\s]+/).map((s) => s.trim()).filter(Boolean);
+  // 以全形逗號、半形逗號、頓號、斜線、全形斜線、空白切分
+  const parts = specialty.split(/[、，,／/\s]+/).map((s) => s.trim()).filter(Boolean);
   return parts.length > 0 ? parts : [specialty.trim()].filter(Boolean);
 }
 
@@ -363,8 +363,6 @@ function renderTimegrid(dateKey) {
     el.dataset.slot = s.start;
     el.dataset.remain = s.remain;
     if (s.past) el.classList.add('slot-past');
-    // 剩 1 名額 → 琥珀小圓點 + 色字（Nike 狀態樣式由 .ts-warn 套用）
-    if (!s.past && s.remain === 1) el.classList.add('ts-warn');
     const sub = s.past ? '補登 · 60 分鐘' : `60 分鐘${s.remain === 1 ? ' · 剩 1 名額' : ''}`;
     el.innerHTML = `<div class="t-main">${escapeHtml(fmtTime(s.start))}</div><div class="t-sub">${sub}</div>`;
     // 點擊時段卡 → 直接開 modal（不停留 sel 狀態，modal 開啟即有 UI 回饋）
@@ -699,7 +697,7 @@ $('recurring-preview-btn').addEventListener('click', async () => {
     const okCount = r.occurrences.filter(o => o.ok).length;
     const reasonText = { no_date: '當月無此日', unavailable: '不可預約（班表/請假/已被預訂/容量/日曆封鎖）' };
     $('recurring-preview-result').innerHTML = `
-      <div class="font-medium mb-1" style="color:var(--brand-700);">可建立 ${okCount} 堂 · 衝突 ${r.occurrences.length - okCount} 堂</div>
+      <div class="font-medium mb-1" style="color:#0369a1;">可建立 ${okCount} 堂 · 衝突 ${r.occurrences.length - okCount} 堂</div>
       ${r.occurrences.map(o => o.ok
         ? `<div style="color:#15803d;">✓ ${escapeHtml(fmtDate(o.startAt))}</div>`
         : `<div style="color:#b91c1c;">✗ ${escapeHtml(fmtDate(o.startAt))}　${reasonText[o.reason] || o.reason}</div>`).join('')}
@@ -967,7 +965,7 @@ function showRecurringSuccessView(result, coach) {
 
   successEl.innerHTML = `
     <div class="text-center py-6">
-      <div class="nk-success-mark">Booked · 預約完成</div>
+      <div class="text-5xl mb-4">✅</div>
       <h1 class="page-title">已建立 ${result.created.length} 堂循環預約</h1>
       <div class="card mt-4 mb-2 text-left text-sm">
         <div class="mb-2"><span class="text-slate-500">教練</span><br><strong>${coachName}</strong></div>
@@ -1035,7 +1033,7 @@ function showSuccessView(bookingResult, coach = modalCoach, slot = modalSlot) {
 
   successEl.innerHTML = `
     <div class="text-center py-6">
-      <div class="nk-success-mark">Booked · 預約成功</div>
+      <div class="text-5xl mb-4">✅</div>
       <h1 class="page-title">預約成功！</h1>
       <div class="card mt-4 mb-2 text-left">
         <div class="mb-2"><span class="text-slate-500">教練</span><br><strong>${coachName}</strong></div>
