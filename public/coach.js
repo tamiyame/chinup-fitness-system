@@ -84,7 +84,11 @@ async function init() {
   isAdmin = !!authUser.is_admin;
 
   if (isAdmin) {
-    await setupCoachPicker(); // 顯示+填入下拉，預設選自己（若有教練檔案）
+    try {
+      await setupCoachPicker(); // 顯示+填入下拉，預設選自己（若有教練檔案）
+    } catch (e) {
+      toast(`載入教練清單失敗：${e.message}`, 'error');
+    }
   } else {
     try {
       me = await api('/api/coach/me');
