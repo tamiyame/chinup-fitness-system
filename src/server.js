@@ -695,16 +695,28 @@ function loadCoachForUser(req, res) {
   return coach;
 }
 
+// admin 可帶 coachId（GET/DELETE 走 query、POST/PATCH 走 body）代選任一教練；
+// 非 admin 一律忽略 coachId、落回自己的教練檔案。service 層仍以 coach_id 設防（縱深防護）。
+function resolveCoach(req, res) {
+  const wanted = req.query.coachId ?? req.body?.coachId;
+  if (wanted != null && wanted !== '' && req.user.is_admin) {
+    const c = svcGetCoach(Number(wanted));
+    if (!c) { res.status(404).json({ error: 'coach_not_found' }); return null; }
+    return c;
+  }
+  return loadCoachForUser(req, res);
+}
+
 // --- One-on-one: coach self-service ---
 
 app.get('/api/coach/me', requireCoach, asyncHandler((req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   res.json(coach);
 }));
 
 app.patch('/api/coach/me/profile', requireCoach, asyncHandler((req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   const { display_name, specialty, bio } = req.body || {};
   svcUpdateCoach(coach.id, { displayName: display_name, specialty, bio });
@@ -712,13 +724,13 @@ app.patch('/api/coach/me/profile', requireCoach, asyncHandler((req, res) => {
 }));
 
 app.get('/api/coach/me/rules', requireCoach, asyncHandler((req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   res.json(svcListRules(coach.id));
 }));
 
 app.post('/api/coach/me/rules', requireCoach, asyncHandler((req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   const { day_of_week, start_time, end_time, effective_from, effective_to } = req.body || {};
   const result = svcAddRule({
@@ -733,20 +745,20 @@ app.post('/api/coach/me/rules', requireCoach, asyncHandler((req, res) => {
 }));
 
 app.delete('/api/coach/me/rules/:id', requireCoach, asyncHandler((req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   svcDeleteRule({ coachId: coach.id, ruleId: Number(req.params.id) });
   res.json({ ok: true });
 }));
 
 app.get('/api/coach/me/exceptions', requireCoach, asyncHandler((req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   res.json(svcListExceptions(coach.id));
 }));
 
 app.post('/api/coach/me/exceptions', requireCoach, asyncHandler((req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   const { exception_date, type, start_time, end_time, note } = req.body || {};
   const result = svcAddException({
@@ -761,20 +773,20 @@ app.post('/api/coach/me/exceptions', requireCoach, asyncHandler((req, res) => {
 }));
 
 app.delete('/api/coach/me/exceptions/:id', requireCoach, asyncHandler((req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   svcDeleteException({ coachId: coach.id, exceptionId: Number(req.params.id) });
   res.json({ ok: true });
 }));
 
 app.get('/api/coach/me/bookings', requireCoach, asyncHandler((req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   res.json(svcListCoachBookings(coach.id));
 }));
 
 app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler(async (req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'missing_range' });
@@ -783,7 +795,7 @@ app.get('/api/coach/me/availability-preview', requireCoach, asyncHandler(async (
 }));
 
 app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
-  const coach = loadCoachForUser(req, res);
+  const coach = resolveCoach(req, res);
   if (!coach) return;
   const { avatar_base64 } = req.body || {};
   const result = svcSaveAvatar({ coachId: coach.id, base64: avatar_base64 });
@@ -925,7 +937,13 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
   if (!booking) return res.status(404).json({ error: 'booking_not_found' });
 
   const coach = db.prepare('SELECT * FROM coaches WHERE id = ?').get(booking.coach_id);
-  const actorIsCoach = coach && coach.user_id === req.user.id;
+  const ownerIsCoach = coach && coach.user_id === req.user.id;
+  // 管理者代理：is_admin + 帶的 coachId 與本筆預約的教練相符（且自己不是該教練）
+  const wantedCoachId = req.query.coachId ?? req.body?.coachId;
+  const adminOnBehalf = !!req.user.is_admin && !ownerIsCoach
+    && wantedCoachId != null && wantedCoachId !== ''
+    && Number(wantedCoachId) === booking.coach_id;
+  const actorIsCoach = ownerIsCoach || adminOnBehalf;
   const { reason } = req.body || {};
 
   svcCancelBooking({
@@ -933,6 +951,7 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
     actorUserId: req.user.id,
     isCoach: actorIsCoach,
     reason: actorIsCoach ? (reason || null) : null,
+    adminOnBehalf,
   });
   syncBookingCancel(id); // commit 後副作用、不 await（失敗交 reconcile 兜底）
   res.json({ ok: true });

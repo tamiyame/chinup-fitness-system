@@ -203,7 +203,10 @@ body { visibility: hidden; }
   </div>
 
   <div class="nk-kicker">COACH · 教練後台</div>
-  <h1 class="page-title">教練後台</h1>
+  <div class="flex items-center gap-4 flex-wrap mb-1">
+    <h1 class="page-title">教練後台</h1>
+    <select id="coach-picker" class="border rounded p-2 text-sm hidden" style="width:auto;"></select>
+  </div>
 
   <div class="flex gap-2 border-b mb-4 overflow-x-auto">
     <button data-tab="bookings" class="tab tab-active">我的預約</button>
