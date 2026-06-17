@@ -136,6 +136,14 @@ const TEMPLATES = {
     subject: '新報名 - {{course_name}}',
     body: '🏋️ {{member_name}} 報名了「{{course_name}}」（{{start_at}}）。',
   },
+  course_registered_coach_batch: {  // 寄給教練（一張訂單多堂彙整）
+    subject: '新報名 - {{course_name}}',
+    body: '🏋️ {{member_name}} 報名了你帶的「{{course_name}}」共 {{count}} 堂（{{date_list}}）。',
+  },
+  course_registered_admin_batch: {  // 寄給管理者（一張訂單多堂彙整、中性）
+    subject: '新報名 - {{course_name}}',
+    body: '🏋️ {{member_name}} 報名了「{{course_name}}」共 {{count}} 堂（{{date_list}}）。',
+  },
 };
 
 function render(template, vars) {
@@ -275,10 +283,12 @@ export function notifyCourseCoach({ coachId, sessionId, type, vars = {} }) {
  * 讓店家掌握所有預約。沿用 notify()（各管理者有綁 LINE 推 LINE，否則 console）。
  * 無管理者時靜默略過。請傳「中性第三人稱」模板（勿用教練專屬「你帶的」文案）。
  */
-export function notifyAdmins({ sessionId = null, type, vars = {}, excludeUserId = null }) {
+export function notifyAdmins({ sessionId = null, type, vars = {}, excludeUserId = null, excludeUserIds = [] }) {
+  const exclude = new Set(excludeUserIds);
+  if (excludeUserId != null) exclude.add(excludeUserId);
   for (const row of getAdminUserIds.all()) {
-    // 不把第三人稱訊息發給報名本人（即使本人剛好是管理者）。
-    if (excludeUserId != null && row.id === excludeUserId) continue;
+    // 不把第三人稱訊息發給報名本人或已收到教練版的教練（即使本人剛好是管理者）。
+    if (exclude.has(row.id)) continue;
     notify({ userId: row.id, sessionId, type, vars });
   }
 }
