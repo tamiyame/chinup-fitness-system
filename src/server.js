@@ -937,7 +937,13 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
   if (!booking) return res.status(404).json({ error: 'booking_not_found' });
 
   const coach = db.prepare('SELECT * FROM coaches WHERE id = ?').get(booking.coach_id);
-  const actorIsCoach = coach && coach.user_id === req.user.id;
+  const ownerIsCoach = coach && coach.user_id === req.user.id;
+  // 管理者代理：is_admin + 帶的 coachId 與本筆預約的教練相符（且自己不是該教練）
+  const wantedCoachId = req.query.coachId ?? req.body?.coachId;
+  const adminOnBehalf = !!req.user.is_admin && !ownerIsCoach
+    && wantedCoachId != null && wantedCoachId !== ''
+    && Number(wantedCoachId) === booking.coach_id;
+  const actorIsCoach = ownerIsCoach || adminOnBehalf;
   const { reason } = req.body || {};
 
   svcCancelBooking({
@@ -945,6 +951,7 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
     actorUserId: req.user.id,
     isCoach: actorIsCoach,
     reason: actorIsCoach ? (reason || null) : null,
+    adminOnBehalf,
   });
   syncBookingCancel(id); // commit 後副作用、不 await（失敗交 reconcile 兜底）
   res.json({ ok: true });

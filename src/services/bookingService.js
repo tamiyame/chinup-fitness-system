@@ -137,7 +137,7 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
   });
 }
 
-export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason = null }) {
+export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason = null, adminOnBehalf = false }) {
   return tx(() => {
     const b = getBookingStmt.get(bookingId);
     if (!b) throw new ApiError(404, 'booking_not_found');
@@ -146,7 +146,9 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
     const coach = getCoachStmt.get(b.coach_id);
 
     if (isCoach) {
-      if (!coach || coach.user_id !== actorUserId) throw new ApiError(403, 'forbidden');
+      if (!coach) throw new ApiError(404, 'coach_not_found');
+      // adminOnBehalf：管理者代理該教練取消，跳過「擁有權」檢查（route 已驗證 is_admin + coachId 相符）
+      if (!adminOnBehalf && coach.user_id !== actorUserId) throw new ApiError(403, 'forbidden');
       if (!reason || !reason.trim()) throw new ApiError(400, 'missing_reason');
     } else {
       if (b.member_id !== actorUserId) throw new ApiError(403, 'forbidden');
@@ -159,7 +161,8 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
     const memberRow = getUserNameStmt.get(b.member_id);
     if (coach && memberRow) {
       const startFmt = fmtDateForLine(b.start_at);
-      const isCoachCancel = actorUserId === coach.user_id;
+      // adminOnBehalf 視為教練取消：通知會員「教練取消」
+      const isCoachCancel = adminOnBehalf || actorUserId === coach.user_id;
       if (isCoachCancel) {
         notify({
           userId: b.member_id,
