@@ -59,4 +59,37 @@ expect('1對1：教練兼管理者只收一則 booking_created（去重）', () 
 const m1on1 = db.prepare("SELECT id FROM users WHERE phone='0955000001'").get();
 expect('1對1：會員仍收一則 booking_confirmed', () => assert.equal(notifCount(m1on1.id, 'booking_confirmed'), 1));
 
+// ── Task 3: 團課訂單彙整 + 去重 ──
+const gcU = db.prepare("INSERT INTO users (name,email,password_hash,role,is_admin) VALUES ('NDUP GCoach','ndup-gc@x.com',?, 'coach',1)").run(hashPassword('x')); // 教練兼管理者
+const gcCoach = createCoach({ userId: gcU.lastInsertRowid, displayName: 'NDUP 團課教練' });
+setCoachActive(gcCoach.id, true);
+const gcUserId = gcU.lastInsertRowid;
+const pureAdmin = db.prepare("INSERT INTO users (name,email,password_hash,role,is_admin) VALUES ('NDUP PureAdmin','ndup-pa@x.com',?, 'coach',1)").run(hashPassword('x')).lastInsertRowid; // 純管理者（非該課教練）
+
+const gt = createTemplate({ name: 'NDUP 綜合體能', min_capacity: 1, max_capacity: 10, day_of_week: 3, start_time: '19:00', recurrence: 'weekly', cycle_start_date: dstr(2), cycle_end_date: dstr(45), coach_id: gcCoach.id });
+const sess3 = db.prepare('SELECT id, start_at FROM course_sessions WHERE template_id=? ORDER BY start_at ASC LIMIT 3').all(gt.templateId);
+expect('團課測試前置：取得 3 個場次', () => assert.equal(sess3.length, 3));
+const go = createGroupOrder({ name: '沈嗗', phone: '0955000002', paySessionIds: sess3.map(s => s.id) });
+confirmGroupOrder({ orderId: go.orderId, actorId: pureAdmin });
+
+expect('團課多堂：教練只收一則 course_registered_coach_batch', () => assert.equal(notifCount(gcUserId, 'course_registered_coach_batch'), 1));
+expect('教練那則含「共 3 堂」與全部 3 個日期(M/D)', () => {
+  const row = db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='course_registered_coach_batch' ORDER BY id DESC LIMIT 1").get(gcUserId);
+  assert(row.body.includes('共 3 堂'), row.body);
+  for (const s of sess3) { const m=/^\d{4}-(\d{2})-(\d{2})/.exec(s.start_at); const md=`${Number(m[1])}/${Number(m[2])}`; assert(row.body.includes(md), `body 應含 ${md}: ${row.body}`); }
+});
+expect('教練兼管理者不再收 course_registered_admin*（去重）', () => {
+  const c = db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type IN ('course_registered_admin','course_registered_admin_batch')").get(gcUserId).c;
+  assert.equal(c, 0);
+});
+expect('純管理者收一則 course_registered_admin_batch 摘要', () => assert.equal(notifCount(pureAdmin, 'course_registered_admin_batch'), 1));
+expect('會員仍只收一則 payment_received', () => assert.equal(notifCount(go.memberId, 'payment_received'), 1));
+
+// N=1 訂單 → 用單堂範本（無「共 N 堂」）
+const sess1 = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC LIMIT 1 OFFSET 3').all(gt.templateId);
+expect('團課測試前置：取得第 4 個場次（N=1 用）', () => assert.equal(sess1.length, 1));
+const go1 = createGroupOrder({ name: '沈嗗', phone: '0955000003', paySessionIds: sess1.map(s => s.id) });
+confirmGroupOrder({ orderId: go1.orderId, actorId: pureAdmin });
+expect('N=1 團課：教練收單堂 course_registered_coach（非 batch）', () => assert.equal(notifCount(gcUserId, 'course_registered_coach'), 1));
+
 console.log('[notification-dedup test] done');
