@@ -49,4 +49,14 @@ expect('course_registered_admin_batch 範本渲染（中性、無「你帶的」
   assert(row && row.body.includes('共 2 堂') && !row.body.includes('你帶的'), row && row.body);
 });
 
+// ── Task 2: 1對1 — 教練兼管理者只收一則 booking_created ──
+const caU = db.prepare("INSERT INTO users (name,email,password_hash,role,is_admin) VALUES ('NDUP CoachAdmin','ndup-ca@x.com',?, 'coach',1)").run(hashPassword('x'));
+const caCoach = createCoach({ userId: caU.lastInsertRowid, displayName: 'NDUP 教練兼管理' });
+setCoachActive(caCoach.id, true);
+const caUserId = caU.lastInsertRowid;
+createBookingAnon({ coachId: caCoach.id, startAt: futureLocal(5), name: '客A', phone: '0955000001' });
+expect('1對1：教練兼管理者只收一則 booking_created（去重）', () => assert.equal(notifCount(caUserId, 'booking_created'), 1));
+const m1on1 = db.prepare("SELECT id FROM users WHERE phone='0955000001'").get();
+expect('1對1：會員仍收一則 booking_confirmed', () => assert.equal(notifCount(m1on1.id, 'booking_confirmed'), 1));
+
 console.log('[notification-dedup test] done');
