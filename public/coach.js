@@ -3,6 +3,26 @@ import { api, fmtDate, dow, toast, getUser, escapeHtml, renderAuthBar } from './
 const $ = (id) => document.getElementById(id);
 const DOW_LABELS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 let me = null;
+let isAdmin = false;
+let selectedCoachId = null; // admin 代選的教練 id；null = 自己/未選
+
+// admin 代選教練時，GET/DELETE 用的 querystring；非 admin 或未選 → 空字串（落回 self）
+function coachQuery() {
+  return (isAdmin && selectedCoachId != null) ? `?coachId=${selectedCoachId}` : '';
+}
+// admin 代選教練時，POST/PATCH body 補上 coachId
+function withCoach(body) {
+  return (isAdmin && selectedCoachId != null) ? { ...body, coachId: selectedCoachId } : body;
+}
+// admin 尚未選教練（且自己沒有教練檔案）→ 顯示提示、不打 API
+function needsCoachSelection() { return isAdmin && selectedCoachId == null; }
+const PICK_PROMPT = '<p class="text-slate-500">請先從上方選擇教練</p>';
+
+function refreshPendingBanner() {
+  const banner = $('pending-banner');
+  if (!banner) return;
+  banner.classList.toggle('hidden', !(me && !me.is_active));
+}
 
 // 班表時間欄：下拉只給 10 分為單位（00/10/20/30/40/50），呈現像 Google Calendar 的小捲動框；
 // 手動仍可打精確分鐘（送出/離開焦點時正規化為 HH:MM）。原生時間欄/ datalist 的下拉高度無法自訂，故自製。
@@ -59,17 +79,22 @@ function attachTimeDropdown(input) {
 }
 
 async function init() {
-  try {
-    me = await api('/api/coach/me');
-  } catch (e) {
-    if (e.status === 404) { location.href = '/'; return; }
-    throw e;
-  }
-  if (!me.is_active) $('pending-banner').classList.remove('hidden');
-
-  // 渲染右上角身份列（含「綁定 LINE」按鈕）。coach.html 走 /api/coach/me 驗證、不經 bootAuth；
-  // 取真正的使用者(含 is_admin)來渲染，讓「教練兼管理者」也能看到管理者徽章與管理後台連結。
+  // 先取真正的使用者（含 is_admin），決定是否顯示教練下拉。
   const authUser = await api('/api/auth/me').catch(() => ({ role: 'coach' }));
+  isAdmin = !!authUser.is_admin;
+
+  if (isAdmin) {
+    await setupCoachPicker(); // 顯示+填入下拉，預設選自己（若有教練檔案）
+  } else {
+    try {
+      me = await api('/api/coach/me');
+    } catch (e) {
+      if (e.status === 404) { location.href = '/'; return; }
+      throw e;
+    }
+  }
+
+  refreshPendingBanner();
   await renderAuthBar(authUser);
 
   // Tab switching
@@ -81,6 +106,39 @@ async function init() {
   document.body.style.visibility = 'visible';
 }
 
+// admin：建立教練下拉。只列已啟用教練；若自己的教練檔案未啟用也補進清單以支援「預設選自己」。
+async function setupCoachPicker() {
+  const picker = $('coach-picker');
+  let self = null;
+  try { self = await api('/api/coach/me'); } catch (e) { if (e.status !== 404) throw e; }
+
+  const all = await api('/api/admin/coaches');
+  const active = all.filter(c => c.is_active);
+  if (self && !active.some(c => c.id === self.id)) active.unshift(self);
+
+  picker.innerHTML = '<option value="">— 請選擇教練 —</option>' +
+    active.map(c => `<option value="${c.id}">${escapeHtml(c.display_name)}${c.is_active ? '' : '（未啟用）'}</option>`).join('');
+
+  if (self) {
+    selectedCoachId = self.id;
+    me = self;
+    picker.value = String(self.id);
+  } else {
+    selectedCoachId = null;
+    me = null;
+  }
+  picker.classList.remove('hidden');
+  picker.addEventListener('change', onCoachChange);
+}
+
+async function onCoachChange() {
+  const v = $('coach-picker').value;
+  selectedCoachId = v ? Number(v) : null;
+  me = (selectedCoachId == null) ? null : await api(`/api/coach/me${coachQuery()}`);
+  refreshPendingBanner();
+  switchTab('bookings'); // 切回第一個分頁並重渲染
+}
+
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('tab-active', t.dataset.tab === name));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== `tab-${name}`));
@@ -90,8 +148,9 @@ function switchTab(name) {
 }
 
 async function renderBookings() {
-  const list = await api('/api/coach/me/bookings');
   const wrap = $('tab-bookings');
+  if (needsCoachSelection()) { wrap.innerHTML = PICK_PROMPT; return; }
+  const list = await api(`/api/coach/me/bookings${coachQuery()}`);
   if (list.length === 0) { wrap.innerHTML = '<p class="text-slate-500">沒有預約</p>'; return; }
   wrap.innerHTML = '';
   for (const b of list) {
@@ -120,7 +179,7 @@ async function renderBookings() {
       const reason = prompt('取消原因（會通知會員）：');
       if (!reason) return;
       try {
-        await api(`/api/bookings/${btn.dataset.id}`, { method: 'DELETE', body: { reason } });
+        await api(`/api/bookings/${btn.dataset.id}${coachQuery()}`, { method: 'DELETE', body: { reason } });
         toast('已取消');
         renderBookings();
       } catch (e) {
@@ -131,9 +190,10 @@ async function renderBookings() {
 }
 
 async function renderAvailability() {
+  if (needsCoachSelection()) { $('tab-availability').innerHTML = PICK_PROMPT; return; }
   const [rules, exceptions] = await Promise.all([
-    api('/api/coach/me/rules'),
-    api('/api/coach/me/exceptions'),
+    api(`/api/coach/me/rules${coachQuery()}`),
+    api(`/api/coach/me/exceptions${coachQuery()}`),
   ]);
 
   $('tab-availability').innerHTML = `
@@ -195,7 +255,7 @@ async function renderAvailability() {
   }
   ruleList.querySelectorAll('.rule-del').forEach(b => b.addEventListener('click', async () => {
     if (!confirm('確定刪除？')) return;
-    await api(`/api/coach/me/rules/${b.dataset.id}`, { method: 'DELETE' });
+    await api(`/api/coach/me/rules/${b.dataset.id}${coachQuery()}`, { method: 'DELETE' });
     renderAvailability();
   }));
 
@@ -208,7 +268,7 @@ async function renderAvailability() {
     try {
       await api('/api/coach/me/rules', {
         method: 'POST',
-        body: { day_of_week: Number(fd.get('day_of_week')), start_time: start, end_time: end },
+        body: withCoach({ day_of_week: Number(fd.get('day_of_week')), start_time: start, end_time: end }),
       });
       toast('已加入');
       renderAvailability();
@@ -235,7 +295,7 @@ async function renderAvailability() {
   }
   exList.querySelectorAll('.ex-del').forEach(b => b.addEventListener('click', async () => {
     if (!confirm('確定刪除？')) return;
-    await api(`/api/coach/me/exceptions/${b.dataset.id}`, { method: 'DELETE' });
+    await api(`/api/coach/me/exceptions/${b.dataset.id}${coachQuery()}`, { method: 'DELETE' });
     renderAvailability();
   }));
 
@@ -264,7 +324,7 @@ async function renderAvailability() {
     try {
       await api('/api/coach/me/exceptions', {
         method: 'POST',
-        body: { exception_date: fd.get('exception_date'), type, start_time, end_time, note: fd.get('note') || null },
+        body: withCoach({ exception_date: fd.get('exception_date'), type, start_time, end_time, note: fd.get('note') || null }),
       });
       toast('已加入');
       renderAvailability();
@@ -276,6 +336,7 @@ async function renderAvailability() {
 }
 
 async function renderProfile() {
+  if (needsCoachSelection() || !me) { $('tab-profile').innerHTML = PICK_PROMPT; return; }
   $('tab-profile').innerHTML = `
     <form id="profile-form" class="space-y-3 max-w-lg">
       <label class="block">
@@ -309,26 +370,26 @@ async function renderProfile() {
     try {
       await api('/api/coach/me/profile', {
         method: 'PATCH',
-        body: {
+        body: withCoach({
           display_name: fd.get('display_name'),
           specialty: fd.get('specialty') || null,
           bio: fd.get('bio') || null,
-        },
+        }),
       });
       const file = $('avatar-input').files[0];
       if (file) {
         if (file.size > 2 * 1024 * 1024) { toast('頭像超過 2MB', 'error'); return; }
         const reader = new FileReader();
         reader.onload = async () => {
-          await api('/api/coach/me/avatar', { method: 'POST', body: { avatar_base64: reader.result } });
+          await api('/api/coach/me/avatar', { method: 'POST', body: withCoach({ avatar_base64: reader.result }) });
           toast('已儲存');
-          me = await api('/api/coach/me');
+          me = await api(`/api/coach/me${coachQuery()}`);
           renderProfile();
         };
         reader.readAsDataURL(file);
       } else {
         toast('已儲存');
-        me = await api('/api/coach/me');
+        me = await api(`/api/coach/me${coachQuery()}`);
       }
     } catch (err) { toast(`錯誤：${err.message}`, 'error'); }
   });
