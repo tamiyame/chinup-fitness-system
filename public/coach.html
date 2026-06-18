@@ -164,6 +164,30 @@ body { visibility: hidden; }
   font-family:"Noto Sans TC",sans-serif; font-weight:800;
   color:var(--nk-acc-strong);
 }
+
+/* ── 我的預約：客人分組可收合卡（緊湊 + 聚焦淡化）── */
+#bk-list .bk-group{ border:1px solid var(--line); border-radius:9px; background:#fff; margin-bottom:6px; position:relative; overflow:hidden; transition:opacity .18s ease; }
+#bk-list .bk-group::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--brand-600); }
+#bk-list .bk-group.is-allpast::before{ background:var(--line); }
+#bk-list.has-open .bk-group:not(.open){ opacity:.4; }
+#bk-list.has-open .bk-group:not(.open):hover{ opacity:.72; }
+.bk-head{ display:flex; align-items:center; gap:10px; padding:8px 12px 8px 15px; cursor:pointer; user-select:none; min-height:42px; }
+.bk-toggle:hover{ background:#fafdff; }
+.bk-single .bk-head{ cursor:default; }
+.bk-id{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:1; min-width:0; }
+.bk-name{ font-family:"Noto Sans TC",sans-serif; font-weight:900; font-size:14px; letter-spacing:-.01em; }
+.bk-sep{ width:3px; height:3px; border-radius:50%; background:var(--line); flex:none; }
+.bk-next-d{ font-family:"Archivo",sans-serif; font-weight:700; font-size:12.5px; font-variant-numeric:tabular-nums; letter-spacing:.02em; color:var(--ink-soft); }
+.bk-count{ font-family:"Archivo",sans-serif; font-weight:800; font-size:11px; letter-spacing:.02em; color:var(--brand-700); background:var(--brand-50); border:1px solid var(--brand-100); border-radius:999px; padding:2px 8px; white-space:nowrap; }
+.bk-chev{ color:var(--ink-mute); transition:transform .15s ease; flex:none; }
+.bk-group.open .bk-chev{ transform:rotate(90deg); }
+.bk-body{ border-top:1px solid var(--line); padding:2px 12px 4px 15px; }
+.bk-group:not(.open) .bk-body{ display:none; }
+.bk-sess{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid var(--line); }
+.bk-sess:last-child{ border-bottom:0; }
+.bk-sess-when{ font-family:"Archivo",sans-serif; font-weight:700; font-size:13px; font-variant-numeric:tabular-nums; letter-spacing:.02em; color:var(--ink-strong); display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.bk-cancel{ font-family:"Archivo",sans-serif; font-weight:700; font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--err-fg); border:1px solid var(--line); border-radius:7px; padding:5px 10px; background:#fff; white-space:nowrap; min-height:32px; }
+.bk-cancel:hover{ border-color:var(--err-fg); }
 </style>
 </head>
 <body>
