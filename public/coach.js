@@ -5,6 +5,7 @@ const DOW_LABELS = ['週日', '週一', '週二', '週三', '週四', '週五', 
 let me = null;
 let isAdmin = false;
 let selectedCoachId = null; // admin 代選的教練 id；null = 自己/未選
+const expandedMembers = new Set(); // 展開中的客人 member_id（重繪時保留展開狀態）
 
 // admin 代選教練時，GET/DELETE 用的 querystring；非 admin 或未選 → 空字串（落回 self）
 function coachQuery() {
@@ -138,6 +139,7 @@ async function setupCoachPicker() {
 async function onCoachChange() {
   const v = $('coach-picker').value;
   selectedCoachId = v ? Number(v) : null;
+  expandedMembers.clear(); // 換教練重新開始
   me = (selectedCoachId == null) ? null : await api(`/api/coach/me${coachQuery()}`);
   refreshPendingBanner();
   switchTab('bookings'); // 切回第一個分頁並重渲染
@@ -151,43 +153,133 @@ function switchTab(name) {
   if (name === 'profile') renderProfile();
 }
 
+// '2026-06-21T17:00:00' → '06/21 17:00'（緊湊、省年）
+function fmtSlot(startAt) {
+  return String(startAt || '').slice(5, 16).replace('T', ' ').replace('-', '/');
+}
+function statusDot(b) {
+  return b.paid_at ? '<span class="nk-dot ok">已確認</span>' : '<span class="nk-dot warn">待確認</span>';
+}
+
 async function renderBookings() {
   const wrap = $('tab-bookings');
   if (needsCoachSelection()) { wrap.innerHTML = PICK_PROMPT; return; }
   const list = await api(`/api/coach/me/bookings${coachQuery()}`);
   if (list.length === 0) { wrap.innerHTML = '<p class="text-slate-500">沒有預約</p>'; return; }
-  wrap.innerHTML = '';
+
+  const now = Date.now();
+  const isUpcoming = (b) => b.status !== 'cancelled' && new Date(b.start_at).getTime() > now;
+  const asc = (a, b) => (a.start_at < b.start_at ? -1 : 1);
+  const desc = (a, b) => (a.start_at > b.start_at ? -1 : 1);
+
+  // 依 member_id 分組
+  const groups = new Map();
   for (const b of list) {
-    const card = document.createElement('div');
-    const cancelled = b.status === 'cancelled';
-    card.className = `card mb-3 tab-bookings-card${cancelled ? ' is-cancelled' : ''}`;
-    // 付款狀態：admin 核款後「已確認」，否則「待確認」（已取消不顯示）；Nike 用狀態小圓點 + 色字
-    const payBadge = cancelled ? '' : (b.paid_at
-      ? ' <span class="nk-dot ok align-middle">已確認</span>'
-      : ' <span class="nk-dot warn align-middle">待確認</span>');
-    card.innerHTML = `
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <div class="font-semibold flex items-center gap-2 flex-wrap">${escapeHtml(b.member_name)}${b.session_type === '1on2' ? ' <span class="nk-tag">1對2</span>' : ''}${payBadge}</div>
-          <div class="text-sm bk-when">${fmtDate(b.start_at)}</div>
-          ${b.note ? `<div class="text-sm text-slate-500 mt-1">備註：${escapeHtml(b.note)}</div>` : ''}
-          ${cancelled ? `<div class="text-sm text-red-500 mt-1">已取消${b.cancel_reason ? `（${escapeHtml(b.cancel_reason)}）` : ''}</div>` : ''}
-        </div>
-        ${!cancelled && new Date(b.start_at) > new Date() ? `<button data-id="${b.id}" class="btn-secondary text-sm cancel-btn">緊急取消</button>` : ''}
-      </div>
-    `;
-    wrap.appendChild(card);
+    let g = groups.get(b.member_id);
+    if (!g) { g = { memberId: b.member_id, name: b.member_name, has1on2: false, gs: [] }; groups.set(b.member_id, g); }
+    g.gs.push(b);
+    if (b.session_type === '1on2') g.has1on2 = true;
   }
+
+  // 每組算錨點 + 排序資料
+  const cards = [];
+  for (const g of groups.values()) {
+    const active = g.gs.filter(b => b.status !== 'cancelled');
+    const upcoming = active.filter(isUpcoming).sort(asc);
+    const pastActive = active.filter(b => !isUpcoming(b)).sort(desc);
+    const cancelled = g.gs.filter(b => b.status === 'cancelled').sort(desc);
+    const anchor = upcoming[0] || pastActive[0] || cancelled[0];
+    cards.push({ g, activeCount: active.length, hasUpcoming: upcoming.length > 0, anchor,
+      ordered: [...upcoming, ...pastActive, ...cancelled] });
+  }
+
+  // 群組排序：有 upcoming 在前（錨點升冪）；無 upcoming 在後（錨點降冪）
+  cards.sort((A, B) => {
+    if (A.hasUpcoming !== B.hasUpcoming) return A.hasUpcoming ? -1 : 1;
+    return A.hasUpcoming ? asc(A.anchor, B.anchor) : desc(A.anchor, B.anchor);
+  });
+
+  const anchorStatus = (b) => (b.status === 'cancelled'
+    ? '<span class="nk-dot" style="color:var(--ink-mute)">已取消</span>' : statusDot(b));
+  const sessRow = (b) => {
+    const tag = b.session_type === '1on2' ? ' <span class="nk-tag">1對2</span>' : '';
+    if (b.status === 'cancelled') {
+      return `<div class="bk-sess is-cancelled"><span class="bk-sess-when" style="color:var(--ink-mute)">${fmtSlot(b.start_at)}${tag} · 已取消${b.cancel_reason ? `（${escapeHtml(b.cancel_reason)}）` : ''}</span></div>`;
+    }
+    if (!isUpcoming(b)) {
+      return `<div class="bk-sess"><span class="bk-sess-when" style="color:var(--ink-mute)">${fmtSlot(b.start_at)}${tag} · 已結束</span></div>`;
+    }
+    return `<div class="bk-sess"><span class="bk-sess-when">${fmtSlot(b.start_at)}${tag} ${statusDot(b)}</span><button data-id="${b.id}" class="bk-cancel cancel-btn">緊急取消</button></div>`;
+  };
+
+  let html = '<div id="bk-list">';
+  for (const c of cards) {
+    const g = c.g;
+    const allPast = c.hasUpcoming ? '' : ' is-allpast';
+    const nameTag = g.has1on2 ? ' <span class="nk-tag">1對2</span>' : '';
+    if (g.gs.length === 1) {
+      const b = g.gs[0];
+      const canCancel = isUpcoming(b);
+      html += `
+        <div class="bk-group bk-single${allPast}">
+          <div class="bk-head">
+            <div class="bk-id">
+              <span class="bk-name">${escapeHtml(g.name)}</span>${nameTag}
+              <span class="bk-sep"></span>
+              <span class="bk-next-d">${fmtSlot(b.start_at)}</span>
+              ${anchorStatus(b)}
+            </div>
+            ${canCancel ? `<button data-id="${b.id}" class="bk-cancel cancel-btn">緊急取消</button>` : ''}
+          </div>
+        </div>`;
+    } else {
+      const open = expandedMembers.has(g.memberId) ? ' open' : '';
+      html += `
+        <div class="bk-group${open}${allPast}" data-mid="${g.memberId}">
+          <div class="bk-head bk-toggle">
+            <div class="bk-id">
+              <span class="bk-name">${escapeHtml(g.name)}</span>${nameTag}
+              <span class="bk-sep"></span>
+              <span class="bk-next-d">${fmtSlot(c.anchor.start_at)}</span>
+              ${anchorStatus(c.anchor)}
+            </div>
+            <span class="bk-count">共 ${c.activeCount} 堂</span>
+            <svg class="bk-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 6l6 6-6 6"/></svg>
+          </div>
+          <div class="bk-body">${c.ordered.map(sessRow).join('')}</div>
+        </div>`;
+    }
+  }
+  html += '</div>';
+  wrap.innerHTML = html;
+
+  const listEl = $('bk-list');
+  const syncFocus = () => listEl.classList.toggle('has-open', listEl.querySelector('.bk-group.open') != null);
+  syncFocus();
+
+  // 展開/收合（點 head；點到取消鈕不觸發）
+  wrap.querySelectorAll('.bk-toggle').forEach(head => {
+    head.addEventListener('click', (e) => {
+      if (e.target.closest('.cancel-btn')) return;
+      const group = head.closest('.bk-group');
+      const mid = Number(group.dataset.mid);
+      if (group.classList.toggle('open')) expandedMembers.add(mid); else expandedMembers.delete(mid);
+      syncFocus();
+    });
+  });
+
+  // 緊急取消
   wrap.querySelectorAll('.cancel-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
       const reason = prompt('取消原因（會通知會員）：');
       if (!reason) return;
       try {
         await api(`/api/bookings/${btn.dataset.id}${coachQuery()}`, { method: 'DELETE', body: { reason } });
         toast('已取消');
         renderBookings();
-      } catch (e) {
-        toast(`取消失敗：${e.message}`, 'error');
+      } catch (err) {
+        toast(`取消失敗：${err.message}`, 'error');
       }
     });
   });
