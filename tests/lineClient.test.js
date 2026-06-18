@@ -1,7 +1,7 @@
 // Unit-style: HMAC signature verification + MOCK behavior of lineClient
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { sendMessage, verifySignature } from '../src/services/lineClient.js';
+import { sendMessage, verifySignature, replyOrLog } from '../src/services/lineClient.js';
 
 function expect(label, fn) {
   try { fn(); console.log(`  ✓ ${label}`); }
@@ -65,5 +65,29 @@ await expectAsync('missing access token → { ok: false, error: line_not_configu
   assert.equal(r.error, 'line_not_configured');
 });
 if (origToken) process.env.LINE_CHANNEL_ACCESS_TOKEN = origToken;
+
+// --- replyOrLog: 失敗時 console.error 並回 {ok:false}；成功時不吵 ---
+process.env.LINE_MOCK = 'fail';
+await expectAsync('replyOrLog 失敗 → 回 {ok:false} 且 console.error 一次（含 context + error）', async () => {
+  const orig = console.error; const calls = [];
+  console.error = (...a) => calls.push(a);
+  let r;
+  try { r = await replyOrLog('tok', 'hi', 'bind'); } finally { console.error = orig; }
+  assert.equal(r.ok, false);
+  assert.equal(calls.length, 1);
+  assert.ok(String(calls[0][0]).includes('bind'), 'log 應含 context');
+  assert.equal(calls[0][1], 'mock_fail');
+});
+
+process.env.LINE_MOCK = '1';
+await expectAsync('replyOrLog 成功 → 回 {ok:true} 且不 console.error', async () => {
+  const orig = console.error; const calls = [];
+  console.error = (...a) => calls.push(a);
+  let r;
+  try { r = await replyOrLog('tok', 'hi', 'bind'); } finally { console.error = orig; }
+  assert.deepEqual(r, { ok: true });
+  assert.equal(calls.length, 0);
+});
+delete process.env.LINE_MOCK;
 
 console.log('[lineClient test] done');

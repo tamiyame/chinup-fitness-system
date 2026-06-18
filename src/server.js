@@ -66,7 +66,7 @@ import {
 } from './services/auth.js';
 import { randomBytes } from 'node:crypto';
 import { startScheduler } from './scheduler.js';
-import { verifySignature, reply as lineReply } from './services/lineClient.js';
+import { verifySignature, replyOrLog } from './services/lineClient.js';
 import {
   consumeCode,
   unbindByLineUserId,
@@ -1004,8 +1004,8 @@ app.post('/api/line/webhook', (req, res) => {
       if (event.type === 'message' && event.message?.type === 'text') {
         handleLineTextMessage(event);
       } else if (event.type === 'follow') {
-        lineReply(event.replyToken, '哈囉！請從 chinup 網站的 LINE 通知頁複製 6 位數綁定碼，貼到這裡。')
-          .catch((e) => console.error('[line follow reply]', e));
+        replyOrLog(event.replyToken, '哈囉！請從 chinup 網站的 LINE 通知頁複製 6 位數綁定碼，貼到這裡。', 'follow')
+          .catch((e) => console.error('[line follow reply threw]', e));
       } else if (event.type === 'unfollow') {
         unbindByLineUserId(event.source?.userId);
       }
@@ -1025,8 +1025,8 @@ function handleLineTextMessage(event) {
   if (!lineUserId || !replyToken) return;
 
   if (!/^\d{6}$/.test(text)) {
-    lineReply(replyToken, '哈囉！請從 chinup 網站的 LINE 通知頁複製 6 位數綁定碼，貼到這裡。')
-      .catch((e) => console.error('[line nonmatch reply]', e));
+    replyOrLog(replyToken, '哈囉！請從 chinup 網站的 LINE 通知頁複製 6 位數綁定碼，貼到這裡。', 'nonmatch')
+      .catch((e) => console.error('[line nonmatch reply threw]', e));
     return;
   }
 
@@ -1048,7 +1048,7 @@ function handleLineTextMessage(event) {
     default:
       msg = '處理中發生問題，請稍後再試。';
   }
-  lineReply(replyToken, msg).catch((e) => console.error('[line bind reply]', e));
+  replyOrLog(replyToken, msg, 'bind').catch((e) => console.error('[line bind reply threw]', e));
 }
 
 app.get('/api/admin/notifications', requireAdmin, asyncHandler((req, res) => {

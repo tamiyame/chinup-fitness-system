@@ -49,6 +49,18 @@ export async function reply(replyToken, text) {
 }
 
 /**
+ * reply() 永遠不丟例外、失敗時回 { ok:false, error }。fire-and-forget 的呼叫端
+ * （如 LINE webhook）若只用 .catch 會漏掉這類失敗——本包裝檢查回傳值並在失敗時
+ * console.error，讓 Railway log 看得到真正原因（HTTP 狀態 / LINE 錯誤訊息 / 未設定）。
+ * 一律回傳 reply() 的 { ok, error }，呼叫端可再決定後續處理。
+ */
+export async function replyOrLog(replyToken, text, context = '') {
+  const r = await reply(replyToken, text);
+  if (!r.ok) console.error(`[line reply${context ? ` ${context}` : ''}] 送出失敗:`, r.error);
+  return r;
+}
+
+/**
  * Verify the X-Line-Signature header against the raw request body.
  * LINE_MOCK=1 bypasses (tests).
  * @param {Buffer|string} rawBody - original request body bytes (e.g. req.rawBody)
