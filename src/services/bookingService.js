@@ -96,7 +96,7 @@ function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1
     notify({ userId: memberId, sessionId: null, type: 'booking_confirmed',
       vars: { coach_display_name: coach.display_name, start_at: startFmt } });
     // 加掛：店家管理者廣播（第三人稱、中性，沿用 booking_created 文案）
-    notifyAdmins({ type: 'booking_created', excludeUserId: memberId, vars: { member_name: memberRow.name, start_at: startFmt } });
+    notifyAdmins({ type: 'booking_created', excludeUserIds: [memberId, coach.user_id], vars: { member_name: memberRow.name, start_at: startFmt } });
   }
   return { id: bookingId, startAt, endAt };
 }

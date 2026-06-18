@@ -11,6 +11,13 @@ const PROMOTED_TTL_MS = 24 * 60 * 60 * 1000;     // 候補遞補後 24h（固定
 const getSession = db.prepare('SELECT * FROM course_sessions WHERE id = ?');
 const getTemplate = db.prepare('SELECT * FROM course_templates WHERE id = ?');
 const getAnyReg = db.prepare('SELECT * FROM registrations WHERE session_id = ? AND user_id = ?');
+const getCoachUserIdStmt = db.prepare('SELECT user_id FROM coaches WHERE id = ?');
+
+// '2026-07-08T19:00:00' → '7/8'（無前導零、無年、無時間）
+function fmtMD(startAt) {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(startAt || '');
+  return m ? `${Number(m[1])}/${Number(m[2])}` : String(startAt);
+}
 
 // 已佔名額：confirmed 一律算（含舊 member-flow 遷移過來、order_id 為 NULL 的列）；
 // pending 只在其訂單未過期時算。waitlisted 不算。
@@ -189,18 +196,50 @@ export function confirmGroupOrder({ orderId, actorId }) {
       notify({ userId: order.member_id, sessionId: first.session_id, type: 'payment_received',
         vars: { course_name: tpl.name, start_at: s.start_at } });
     }
-    // 加掛：逐場通知該場次教練「新報名」（一筆訂單可能跨多場、多位教練）
+    // 加掛：整張訂單「彙整」通知教練與管理者（去重：教練收「你帶的」一則，
+    // 非教練管理者每門課收摘要一則；同一人兼教練+管理者只收教練版那一則）。
     const confirmedSessions = db.prepare(`
       SELECT s.id AS session_id, s.coach_id, s.start_at, t.name AS course_name
       FROM registrations r JOIN course_sessions s ON s.id = r.session_id
       JOIN course_templates t ON t.id = s.template_id
       WHERE r.order_id = ? AND r.status = 'confirmed'
+      ORDER BY s.start_at
     `).all(orderId);
-    for (const cs of confirmedSessions) {
-      const vars = { member_name: order.customer_name, course_name: cs.course_name, start_at: cs.start_at };
-      notifyCourseCoach({ coachId: cs.coach_id, sessionId: cs.session_id, type: 'course_registered_coach', vars });
-      // 加掛：店家管理者廣播（中性第三人稱，不含「你帶的」）
-      notifyAdmins({ sessionId: cs.session_id, type: 'course_registered_admin', excludeUserId: order.member_id, vars });
+    if (confirmedSessions.length) {
+      const byCoachCourse = new Map(); // key: `${coach_id} ${course_name}`
+      const byCourse = new Map();      // key: course_name
+      for (const cs of confirmedSessions) {
+        const ck = `${cs.coach_id} ${cs.course_name}`;
+        if (!byCoachCourse.has(ck)) byCoachCourse.set(ck, { coachId: cs.coach_id, courseName: cs.course_name, sessionIds: [], dates: [] });
+        const cg = byCoachCourse.get(ck);
+        cg.sessionIds.push(cs.session_id); cg.dates.push(cs.start_at);
+        if (!byCourse.has(cs.course_name)) byCourse.set(cs.course_name, { courseName: cs.course_name, dates: [] });
+        byCourse.get(cs.course_name).dates.push(cs.start_at);
+      }
+      // 教練版（並收集所有教練 user_id，供管理者廣播排除）
+      const coachUserIds = new Set();
+      for (const g of byCoachCourse.values()) {
+        const cuRow = getCoachUserIdStmt.get(g.coachId);
+        if (cuRow) coachUserIds.add(cuRow.user_id);
+        if (g.dates.length === 1) {
+          notifyCourseCoach({ coachId: g.coachId, sessionId: g.sessionIds[0], type: 'course_registered_coach',
+            vars: { member_name: order.customer_name, course_name: g.courseName, start_at: fmtMD(g.dates[0]) } });
+        } else {
+          notifyCourseCoach({ coachId: g.coachId, sessionId: g.sessionIds[0], type: 'course_registered_coach_batch',
+            vars: { member_name: order.customer_name, course_name: g.courseName, count: g.dates.length, date_list: g.dates.map(fmtMD).join('、') } });
+        }
+      }
+      // 管理者摘要版（每門課一則；排除 member + 所有帶課教練 user_id）
+      const adminExclude = [order.member_id, ...coachUserIds];
+      for (const g of byCourse.values()) {
+        if (g.dates.length === 1) {
+          notifyAdmins({ type: 'course_registered_admin', excludeUserIds: adminExclude,
+            vars: { member_name: order.customer_name, course_name: g.courseName, start_at: fmtMD(g.dates[0]) } });
+        } else {
+          notifyAdmins({ type: 'course_registered_admin_batch', excludeUserIds: adminExclude,
+            vars: { member_name: order.customer_name, course_name: g.courseName, count: g.dates.length, date_list: g.dates.map(fmtMD).join('、') } });
+        }
+      }
     }
     return { ok: true };
   });
