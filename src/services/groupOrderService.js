@@ -516,5 +516,6 @@ export function getPublicSchedule({ phone, name }) {
   return {
     user: { name: user.name, phone: user.phone },
     items, one_on_one_remaining, group_remaining,
+    line_bound: user.role === 'user' ? !!user.line_user_id : null,
   };
 }

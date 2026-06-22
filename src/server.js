@@ -73,6 +73,7 @@ import {
   resetAllLineBindings,
   generateBindCode,
   unbindByUserId,
+  requestPublicBindCode,
 } from './services/lineBindingService.js';
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
@@ -97,6 +98,7 @@ const changePwLimiter = createRateLimiter({ name: 'change-password', windowMs: 1
 // 公開預約：20/min/IP——正常顧客一分鐘約 1-2 筆綽綽有餘；同時壓住
 // freebusy 放大（不同日期參數可繞過 60s 快取打到 Google API）與濫用 email 確認信
 const bookingLimiter = createRateLimiter({ name: 'public-booking', windowMs: 60_000, max: 20 });
+const lineBindLimiter = createRateLimiter({ name: 'public-line-bind', windowMs: 60_000, max: 10 });
 app.use(express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; },
@@ -880,6 +882,11 @@ app.post('/api/public/group-orders', asyncHandler((req, res) => {
 app.post('/api/public/my', asyncHandler((req, res) => {
   const { phone, name } = req.body || {};
   res.json(svcPublicSchedule({ phone, name }));
+}));
+
+app.post('/api/public/line/bind-code', lineBindLimiter, asyncHandler((req, res) => {
+  const { phone, name } = req.body || {};
+  res.json(requestPublicBindCode({ phone, name }));
 }));
 
 app.delete('/api/public/bookings/:id', asyncHandler((req, res) => {
