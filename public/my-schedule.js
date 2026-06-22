@@ -137,7 +137,7 @@ function renderLineNav() {
 }
 
 function closeLineBindModal() {
-  document.getElementById('line-bind-overlay').style.display = 'none';
+  document.getElementById('ms-line-overlay').style.display = 'none';
 }
 
 function bindDoneBtn() {
@@ -149,8 +149,8 @@ function bindDoneBtn() {
 }
 
 async function openLineBindModal() {
-  const overlay = document.getElementById('line-bind-overlay');
-  const body = document.getElementById('line-bind-body');
+  const overlay = document.getElementById('ms-line-overlay');
+  const body = document.getElementById('ms-line-body');
   overlay.style.display = 'flex';
   body.innerHTML = '<p class="lb-loading">產生綁定碼中…</p>';
   try {
@@ -498,7 +498,7 @@ document.getElementById('change-lookup-btn').addEventListener('click', () => {
 });
 
 // 綁定彈窗：點背景關閉
-const lbOverlay = document.getElementById('line-bind-overlay');
+const lbOverlay = document.getElementById('ms-line-overlay');
 if (lbOverlay) lbOverlay.addEventListener('click', (e) => { if (e.target === lbOverlay) closeLineBindModal(); });
 
 // Auto-fill from localStorage; auto-query if both present
