@@ -1,4 +1,4 @@
-import { api, fmtDate, toast, bootPublic, escapeHtml } from './app.js';
+import { api, fmtDate, toast, bootPublic, escapeHtml, getToken } from './app.js';
 
 // Public phone+name lookup — no login required.
 const LS_PHONE = 'chinup.my.phone';
@@ -11,6 +11,7 @@ const state = {
   filter: 'all',
   pastOpen: false,
   creds: null,  // { phone, name } after successful lookup
+  lineBound: null,  // true / false / null（非客戶或未查詢）
   one_on_one_remaining: 0,
   group_remaining: 0,
 };
@@ -52,8 +53,10 @@ async function doLookup(phone, name) {
     state.items = data.items ?? [];
     state.one_on_one_remaining = data.one_on_one_remaining ?? 0;
     state.group_remaining = data.group_remaining ?? 0;
+    state.lineBound = (data.line_bound ?? null);
     showResults();
     render();
+    renderLineNav();
   } catch (e) {
     if (e.status === 403) {
       errEl.textContent = '查無資料，請確認電話與姓名';
@@ -111,6 +114,70 @@ function showForm() {
   if (ledeEl) ledeEl.style.display = '';
   state.creds = null;
   state.items = [];
+  state.lineBound = null;
+  const bar = document.getElementById('auth-bar');
+  if (bar) bar.innerHTML = '';
+}
+
+// ── LINE 綁定（navbar 按鈕 + 彈窗）──────────────────────────────────────────────
+const LINE_SVG = '<svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 5.64 2 10.1c0 4 3.58 7.34 8.4 7.98.33.07.78.22.89.5.1.26.06.66.03.92l-.14.86c-.04.26-.2 1.02.9.56 1.1-.46 5.9-3.48 8.06-5.95C21.4 13.3 22 11.77 22 10.1 22 5.64 17.52 2 12 2z"/></svg>';
+
+function renderLineNav() {
+  const bar = document.getElementById('auth-bar');
+  if (!bar) return;
+  if (getToken()) return; // 員工登入時 auth-bar 由 app.js 擁有，不覆蓋
+  if (state.lineBound === false) {
+    bar.innerHTML = `<button id="ms-bind-btn" class="ms-line-btn" type="button">${LINE_SVG}綁定 LINE</button>`;
+    document.getElementById('ms-bind-btn').addEventListener('click', openLineBindModal);
+  } else if (state.lineBound === true) {
+    bar.innerHTML = '<span class="ms-line-bound">✓ 已綁定 LINE</span>';
+  } else {
+    bar.innerHTML = '';
+  }
+}
+
+function closeLineBindModal() {
+  document.getElementById('line-bind-overlay').style.display = 'none';
+}
+
+function bindDoneBtn() {
+  const btn = document.getElementById('lb-done-btn');
+  if (btn) btn.addEventListener('click', () => {
+    closeLineBindModal();
+    if (state.creds) doLookup(state.creds.phone, state.creds.name).catch(() => {});
+  });
+}
+
+async function openLineBindModal() {
+  const overlay = document.getElementById('line-bind-overlay');
+  const body = document.getElementById('line-bind-body');
+  overlay.style.display = 'flex';
+  body.innerHTML = '<p class="lb-loading">產生綁定碼中…</p>';
+  try {
+    const data = await api('/api/public/line/bind-code', { method: 'POST', body: state.creds });
+    const join = data.line_official_url
+      ? `<a class="lb-join" href="${escapeHtml(data.line_official_url)}" target="_blank" rel="noopener">${LINE_SVG}點我加入官方 LINE</a>`
+      : '<p class="lb-note">尚未設定官方 LINE 連結，請洽櫃台。</p>';
+    body.innerHTML = `
+      <div class="lb-code">${escapeHtml(String(data.code))}</div>
+      <div class="lb-code-note">綁定碼 15 分鐘內有效</div>
+      <ol class="lb-steps">
+        <li>加入 CHINUP 官方 LINE 帳號為好友</li>
+        <li>把上面的 6 位數綁定碼傳給官方帳號</li>
+        <li>完成後回此處按「我綁好了」</li>
+      </ol>
+      ${join}
+      <button class="lb-done" type="button" id="lb-done-btn">我綁好了，重新整理</button>`;
+    bindDoneBtn();
+  } catch (e) {
+    if (e.status === 409) {
+      body.innerHTML = '<p class="lb-note">此帳號已綁定 LINE。</p><button class="lb-done" type="button" id="lb-done-btn">關閉並重新整理</button>';
+      bindDoneBtn();
+    } else {
+      closeLineBindModal();
+      toast(`產生綁定碼失敗：${e.message}`, 'error');
+    }
+  }
 }
 
 // ── Card rendering ───────────────────────────────────────────────────────────
@@ -429,6 +496,10 @@ bindPastToggle();
 document.getElementById('change-lookup-btn').addEventListener('click', () => {
   showForm();
 });
+
+// 綁定彈窗：點背景關閉
+const lbOverlay = document.getElementById('line-bind-overlay');
+if (lbOverlay) lbOverlay.addEventListener('click', (e) => { if (e.target === lbOverlay) closeLineBindModal(); });
 
 // Auto-fill from localStorage; auto-query if both present
 const { savedPhone, savedName } = autoFillForm();
