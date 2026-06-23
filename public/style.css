@@ -1145,3 +1145,47 @@ details.session-row summary:hover { background: #f8faf9; }
 /* 補登（過去）時段卡：淡琥珀虛線框，與一般可預約時段區別 */
 .timeslot.slot-past { border-style: dashed; border-color: #fcd34d; background: #fffdf5; }
 .timeslot.slot-past .t-sub { color: #b45309; }
+
+/* 登錄預約 週曆 */
+.reg-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+.reg-navbtn{padding:4px 10px;font-size:13px;}
+.reg-range{font-weight:600;color:#0f172a;margin-left:4px;}
+.reg-grid-wrap{overflow:auto;max-height:70vh;}
+.reg-grid{display:grid;grid-template-columns:56px repeat(7,minmax(64px,1fr));gap:2px;min-width:640px;}
+.reg-cell{font-size:12px;border-radius:6px;padding:4px;min-height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.reg-head{font-weight:700;background:#f1f5f9;color:#0f172a;}
+.reg-date{font-weight:400;font-size:11px;color:#64748b;}
+.reg-timecol{background:#f8fafc;color:#64748b;font-variant-numeric:tabular-nums;}
+.reg-open{color:#cbd5e1;cursor:pointer;border:1px dashed #e2e8f0;}
+.reg-open:hover{background:#e0f2fe;color:#0284c7;border-color:#7dd3fc;}
+.reg-avail{background:#f0f9ff;border-color:#bae6fd;color:#7dd3fc;}
+.reg-booked{background:#dbeafe;color:#1e3a8a;font-weight:600;cursor:default;}
+.reg-group{background:#f3e8ff;color:#6b21a8;cursor:default;}
+.reg-sub{font-weight:400;font-size:10px;opacity:0.8;}
+
+/* 登錄彈窗 */
+.regm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:grid;place-items:center;padding:16px;}
+.regm-modal{background:#fff;border-radius:12px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;padding:20px;position:relative;}
+.regm-close{position:absolute;top:12px;right:14px;background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer;}
+.regm-title{font-weight:700;margin-bottom:12px;}
+.regm-slot{font-size:14px;margin-bottom:10px;}
+.regm-label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px;}
+.regm-input{width:100%;}
+.regm-results{max-height:160px;overflow-y:auto;}
+.regm-result{padding:6px 8px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:14px;}
+.regm-result:hover{background:#f0f9ff;}
+.regm-sub{font-size:12px;color:#64748b;}
+.regm-nopkg{font-size:13px;color:#b45309;margin:10px 0 6px;}
+.regm-newpkg{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.regm-newpkg button{grid-column:1/-1;}
+.regm-check{display:flex;align-items:center;gap:6px;margin:10px 0;font-size:14px;cursor:pointer;}
+.regm-rec{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:10px;}
+.regm-rec-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.regm-num{width:64px;}
+.regm-weekdays{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.regm-wd{font-size:13px;display:flex;align-items:center;gap:3px;}
+.regm-radio{display:flex;align-items:center;gap:4px;font-size:13px;}
+.regm-preview{max-height:180px;overflow-y:auto;margin:10px 0;font-size:13px;}
+.regm-occ{padding:2px 0;}
+.regm-ok{color:#166534;}.regm-conflict,.regm-depleted,.regm-no_date{color:#b45309;}
+.regm-actions{display:flex;gap:8px;justify-content:flex-end;}

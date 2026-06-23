@@ -40,6 +40,8 @@ import {
   refundBookingGroupAdmin as svcRefundBookingGroupAdmin,
   previewRecurringBookings as svcPreviewRecurring,
   createRecurringBookings as svcCreateRecurring,
+  previewCoachRegister as svcPreviewRegister,
+  createCoachRegister as svcCreateRegister,
 } from './services/bookingService.js';
 import {
   createGroupOrder as svcCreateGroupOrder,
@@ -88,6 +90,7 @@ import {
   archivePackage as svcArchivePackage,
   restorePackage as svcRestorePackage,
 } from './services/packageService.js';
+import { getCoachWeek as svcGetCoachWeek, searchCustomers as svcSearchCustomers } from './services/coachCalendarService.js';
 import { sendBookingConfirmation } from './services/emailService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -838,6 +841,31 @@ app.post('/api/coach/packages/:id/archive', requireCoach, asyncHandler((req, res
 
 app.post('/api/coach/packages/:id/restore', requireCoach, asyncHandler((req, res) => {
   res.json(svcRestorePackage(Number(req.params.id)));
+}));
+
+// --- 登錄預約：週曆彙整 / 客人搜尋 / 預覽 / 建立 ---
+app.get('/api/coach/week', requireCoach, asyncHandler((req, res) => {
+  const coach = resolveCoach(req, res); if (!coach) return;
+  const { start } = req.query;
+  res.json(svcGetCoachWeek({ coachId: coach.id, start }));
+}));
+
+app.get('/api/coach/customers/search', requireCoach, asyncHandler((req, res) => {
+  res.json(svcSearchCustomers(req.query.q));
+}));
+
+app.post('/api/coach/register/preview', requireCoach, asyncHandler((req, res) => {
+  const coach = resolveCoach(req, res); if (!coach) return;
+  const { memberId, packageId, startAt, recurrence } = req.body || {};
+  res.json(svcPreviewRegister({ coachId: coach.id, memberId: Number(memberId), packageId: Number(packageId), startAt, recurrence: recurrence || null }));
+}));
+
+app.post('/api/coach/register', requireCoach, asyncHandler((req, res) => {
+  const coach = resolveCoach(req, res); if (!coach) return;
+  const { memberId, packageId, startAt, recurrence } = req.body || {};
+  const r = svcCreateRegister({ coachId: coach.id, memberId: Number(memberId), packageId: Number(packageId), startAt, recurrence: recurrence || null, actorId: req.user.id });
+  for (const c of r.created) syncBookingCreate(c.id); // commit 後副作用
+  res.status(201).json(r);
 }));
 
 // --- Public (no auth): anon booking / group orders / phone lookup ---

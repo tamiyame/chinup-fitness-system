@@ -151,6 +151,7 @@ function switchTab(name) {
   if (name === 'bookings') renderBookings();
   if (name === 'availability') renderAvailability();
   if (name === 'profile') renderProfile();
+  if (name === 'register') renderRegister();
 }
 
 // '2026-06-21T17:00:00' → '06/21 17:00'（緊湊、省年）
@@ -492,5 +493,256 @@ async function renderProfile() {
 }
 
 function escapeAttr(s) { return escapeHtml(s); }
+
+// 登錄預約：週曆狀態
+let regWeekOffset = 0; // 0=本週
+const REG_HOUR_MIN = 7, REG_HOUR_MAX = 21; // 預設顯示 07:00–21:00（slot 起點）；資料超出此範圍時動態擴充，避免藏到預約
+const REG_DOW = ['一','二','三','四','五','六','日'];
+
+function regWeekRange(offset) {
+  const now = new Date();
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset * 7);
+  const dow = base.getDay();
+  const toMonday = dow === 0 ? -6 : 1 - dow;
+  const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() + toMonday);
+  const pad = (n) => String(n).padStart(2, '0');
+  const fk = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const dates = []; for (let i = 0; i < 7; i++) { const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i); dates.push(fk(d)); }
+  return { start: fk(start), dates };
+}
+
+async function renderRegister() {
+  const panel = $('tab-register');
+  if (selectedCoachId == null && isAdmin) { panel.innerHTML = '<p class="subtle">請先於上方選擇教練。</p>'; return; }
+  const { start, dates } = regWeekRange(regWeekOffset);
+  panel.innerHTML = `
+    <div class="reg-toolbar">
+      <button id="reg-prev" class="btn-secondary reg-navbtn">← 上一週</button>
+      <button id="reg-today" class="btn-secondary reg-navbtn">本週</button>
+      <button id="reg-next" class="btn-secondary reg-navbtn">下一週 →</button>
+      <span id="reg-range" class="reg-range"></span>
+    </div>
+    <div id="reg-grid" class="reg-grid-wrap"><p class="subtle">載入中…</p></div>`;
+  $('reg-prev').onclick = () => { regWeekOffset--; renderRegister(); };
+  $('reg-next').onclick = () => { regWeekOffset++; renderRegister(); };
+  $('reg-today').onclick = () => { regWeekOffset = 0; renderRegister(); };
+  $('reg-range').textContent = `${dates[0].slice(5).replace('-', '/')} – ${dates[6].slice(5).replace('-', '/')}`;
+
+  let data;
+  const q = coachQuery();
+  try { data = await api(`/api/coach/week${q ? q + '&' : '?'}start=${start}`); }
+  catch (e) { $('reg-grid').innerHTML = `<p class="subtle" style="color:#dc2626;">載入失敗：${escapeHtml(e.message)}</p>`; return; }
+
+  // 索引：available slots / bookings / group sessions by 'YYYY-MM-DDTHH'
+  const slotKey = (iso) => iso.slice(0, 13); // 'YYYY-MM-DDTHH'
+  const avail = new Set((data.availableSlots || []).map(s => slotKey(s.start)));
+  const bookByKey = new Map(); for (const b of data.bookings || []) bookByKey.set(slotKey(b.start_at), b);
+  const grpByKey = new Map(); for (const g of data.groupSessions || []) grpByKey.set(slotKey(g.start_at), g);
+
+  // 動態時段範圍：預設 07–21，但若資料（預約/團課/班表）含更早/更晚的整點則擴充，避免藏住範圍外的項目。
+  const hourOf = (iso) => Number(String(iso).slice(11, 13));
+  let hMin = REG_HOUR_MIN, hMax = REG_HOUR_MAX;
+  for (const b of data.bookings || []) { hMin = Math.min(hMin, hourOf(b.start_at)); hMax = Math.max(hMax, hourOf(b.start_at)); }
+  for (const g of data.groupSessions || []) { hMin = Math.min(hMin, hourOf(g.start_at)); hMax = Math.max(hMax, hourOf(g.start_at)); }
+  for (const s of data.availableSlots || []) { hMin = Math.min(hMin, hourOf(s.start)); hMax = Math.max(hMax, hourOf(s.start)); }
+  const hours = []; for (let h = hMin; h <= hMax; h++) hours.push(h);
+
+  const head = `<div class="reg-cell reg-head reg-timecol"></div>` +
+    dates.map((d, i) => `<div class="reg-cell reg-head">${REG_DOW[i]}<br><span class="reg-date">${d.slice(5).replace('-', '/')}</span></div>`).join('');
+  let rows = '';
+  for (const h of hours) {
+    const hh = String(h).padStart(2, '0');
+    rows += `<div class="reg-cell reg-timecol">${hh}:00</div>`;
+    for (const d of dates) {
+      const iso = `${d}T${hh}:00:00`; const key = `${d}T${hh}`;
+      const bk = bookByKey.get(key); const gp = grpByKey.get(key);
+      if (bk) {
+        const tag = bk.session_type === '1on2' ? '1對2' : '1對1';
+        rows += `<div class="reg-cell reg-booked" title="${escapeHtml(bk.member_name)}">${escapeHtml(bk.member_name)}<br><span class="reg-sub">${tag}</span></div>`;
+      } else if (gp) {
+        rows += `<div class="reg-cell reg-group" title="${escapeHtml(gp.name)}">${escapeHtml(gp.name)}<br><span class="reg-sub">團課</span></div>`;
+      } else {
+        const cls = avail.has(key) ? 'reg-open reg-avail' : 'reg-open';
+        rows += `<div class="reg-cell ${cls}" data-slot="${iso}">＋</div>`;
+      }
+    }
+  }
+  $('reg-grid').innerHTML = `<div class="reg-grid">${head}${rows}</div>`;
+  $('reg-grid').querySelectorAll('.reg-open[data-slot]').forEach(c => {
+    c.addEventListener('click', () => openRegisterModal(c.dataset.slot));
+  });
+}
+
+let regmSlot = null;       // 'YYYY-MM-DDTHH:00:00'
+let regmCustomer = null;   // {id,name,phone}
+let regmPackages = [];     // 該客人有效方案
+let regmPackageId = null;  // 選中方案
+
+const PKG_TYPE = { '1on1': '一對一', '1on2': '一對二' };
+function regmClose() { $('regm-overlay').style.display = 'none'; regmCustomer = null; regmPackages = []; regmPackageId = null; }
+
+function openRegisterModal(startAtISO) {
+  regmSlot = startAtISO; regmCustomer = null; regmPackages = []; regmPackageId = null;
+  const ov = $('regm-overlay'); ov.style.display = 'grid';
+  $('regm-close').onclick = regmClose;
+  ov.onclick = (e) => { if (e.target === ov) regmClose(); };
+  renderRegmBody();
+}
+
+function regmSlotLabel(iso) { return iso.slice(0, 16).replace('T', ' ').replace(/-/g, '/'); }
+
+function renderRegmBody() {
+  const body = $('regm-body');
+  body.innerHTML = `
+    <p class="regm-slot">時段：<strong>${escapeHtml(regmSlotLabel(regmSlot))}</strong>（60 分鐘）</p>
+    <label class="regm-label">搜尋客人（姓名或電話）</label>
+    <input id="regm-search" class="form-input regm-input" placeholder="輸入姓名或電話…" autocomplete="off" />
+    <div id="regm-results" class="regm-results"></div>
+    <div id="regm-picked"></div>`;
+  const search = $('regm-search');
+  let t = null;
+  search.addEventListener('input', () => {
+    clearTimeout(t);
+    const q = search.value.trim();
+    if (!q) { $('regm-results').innerHTML = ''; return; }
+    t = setTimeout(async () => {
+      try {
+        const list = await api(`/api/coach/customers/search?q=${encodeURIComponent(q)}`);
+        $('regm-results').innerHTML = list.length
+          ? list.map(u => `<div class="regm-result" data-id="${u.id}" data-name="${escapeHtml(u.name)}" data-phone="${escapeHtml(u.phone || '')}">${escapeHtml(u.name)} <span class="regm-sub">${escapeHtml(u.phone || '')}</span></div>`).join('')
+          : '<div class="regm-sub" style="padding:6px;">查無客人</div>';
+        $('regm-results').querySelectorAll('.regm-result').forEach(r => r.addEventListener('click', () => {
+          regmCustomer = list.find(u => u.id === Number(r.dataset.id));
+          $('regm-results').innerHTML = ''; search.value = regmCustomer.name;
+          loadRegmPackages();
+        }));
+      } catch (e) { $('regm-results').innerHTML = `<div class="regm-sub" style="color:#dc2626;padding:6px;">${escapeHtml(e.message)}</div>`; }
+    }, 250);
+  });
+}
+
+async function loadRegmPackages() {
+  const picked = $('regm-picked');
+  picked.innerHTML = '<p class="regm-sub">載入方案中…</p>';
+  let all = [];
+  try { all = await api(`/api/coach/packages?memberId=${regmCustomer.id}`); }
+  catch (e) { picked.innerHTML = `<p class="regm-sub" style="color:#dc2626;">${escapeHtml(e.message)}</p>`; return; }
+  regmPackages = all.filter(p => p.is_valid);
+  regmPackageId = regmPackages.length ? regmPackages[0].id : null;
+  renderRegmPicked();
+}
+
+function renderRegmPicked() {
+  const picked = $('regm-picked');
+  if (!regmPackages.length) {
+    picked.innerHTML = `
+      <div class="regm-nopkg">此客人沒有可用方案，請先開一個：</div>
+      <div class="regm-newpkg">
+        <select id="regm-np-type" class="form-select"><option value="1on1">一對一</option><option value="1on2">一對二</option></select>
+        <input id="regm-np-total" class="form-input" type="number" min="1" placeholder="堂數" />
+        <input id="regm-np-amount" class="form-input" type="number" min="0" placeholder="金額（可空）" />
+        <input id="regm-np-expiry" class="form-input" type="date" />
+        <button id="regm-np-create" class="btn-primary">建立方案</button>
+      </div>`;
+    $('regm-np-create').onclick = async () => {
+      const total = Number($('regm-np-total').value);
+      if (!Number.isInteger(total) || total <= 0) { toast('請填正確堂數', 'error'); return; }
+      const amt = $('regm-np-amount').value;
+      try {
+        await api('/api/coach/packages', { method: 'POST', body: { memberId: regmCustomer.id, sessionType: $('regm-np-type').value, totalSessions: total, amount: amt === '' ? null : Number(amt), expiresAt: $('regm-np-expiry').value || null } });
+        toast('方案已建立', 'success'); loadRegmPackages();
+      } catch (e) { toast(`建立失敗：${e.message}`, 'error'); }
+    };
+    return;
+  }
+  const opts = regmPackages.map(p => `<option value="${p.id}">${PKG_TYPE[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}${p.expires_at ? '・到期 ' + escapeHtml(p.expires_at) : ''}</option>`).join('');
+  picked.innerHTML = `
+    <label class="regm-label">選擇方案</label>
+    <select id="regm-pkg" class="form-select">${opts}</select>
+    <label class="regm-check"><input id="regm-rec-on" type="checkbox" /> 開啟循環</label>
+    <div id="regm-rec" class="regm-rec hidden">
+      <div class="regm-rec-row">
+        <select id="regm-freq" class="form-select">
+          <option value="daily">每天</option><option value="weekly" selected>每週</option>
+          <option value="monthly">每月</option><option value="yearly">每年</option><option value="custom">自訂</option>
+        </select>
+      </div>
+      <div id="regm-custom" class="regm-rec-row hidden">
+        <span>每</span><input id="regm-interval" class="form-input regm-num" type="number" min="1" value="1" />
+        <select id="regm-unit" class="form-select"><option value="weekly">週</option><option value="daily">天</option><option value="monthly">月</option><option value="yearly">年</option></select>
+      </div>
+      <div id="regm-weekdays" class="regm-weekdays hidden"></div>
+      <div class="regm-rec-row">
+        <label class="regm-radio"><input type="radio" name="regm-end" value="count" checked /> 共</label>
+        <input id="regm-count" class="form-input regm-num" type="number" min="1" max="52" value="4" /> 次
+        <label class="regm-radio"><input type="radio" name="regm-end" value="date" /> 到</label>
+        <input id="regm-enddate" class="form-input" type="date" disabled />
+      </div>
+    </div>
+    <div id="regm-preview" class="regm-preview"></div>
+    <div class="regm-actions">
+      <button id="regm-preview-btn" class="btn-secondary">預覽</button>
+      <button id="regm-submit" class="btn-primary">確認登錄</button>
+    </div>`;
+  $('regm-pkg').onchange = () => { regmPackageId = Number($('regm-pkg').value); };
+  regmPackageId = Number($('regm-pkg').value);
+  // 週幾勾選（預設循環起始日的星期）
+  const wdWrap = $('regm-weekdays');
+  wdWrap.innerHTML = ['一','二','三','四','五','六','日'].map((lab, i) => {
+    const val = i === 6 ? 0 : i + 1; // 一=1…六=6, 日=0
+    return `<label class="regm-wd"><input type="checkbox" value="${val}" /> ${lab}</label>`;
+  }).join('');
+  const toggleRec = () => $('regm-rec').classList.toggle('hidden', !$('regm-rec-on').checked);
+  $('regm-rec-on').onchange = toggleRec;
+  $('regm-freq').onchange = () => {
+    const custom = $('regm-freq').value === 'custom';
+    $('regm-custom').classList.toggle('hidden', !custom);
+    $('regm-weekdays').classList.toggle('hidden', !(custom && $('regm-unit').value === 'weekly'));
+  };
+  $('regm-unit').onchange = () => $('regm-weekdays').classList.toggle('hidden', !($('regm-freq').value === 'custom' && $('regm-unit').value === 'weekly'));
+  document.querySelectorAll('input[name="regm-end"]').forEach(r => r.onchange = () => {
+    const isDate = document.querySelector('input[name="regm-end"]:checked').value === 'date';
+    $('regm-enddate').disabled = !isDate; $('regm-count').disabled = isDate;
+  });
+  $('regm-preview-btn').onclick = doRegmPreview;
+  $('regm-submit').onclick = doRegmSubmit;
+}
+
+function buildRecurrence() {
+  if (!$('regm-rec-on') || !$('regm-rec-on').checked) return null;
+  const freqSel = $('regm-freq').value;
+  let frequency, interval = 1, byWeekday = null;
+  if (freqSel === 'custom') {
+    frequency = $('regm-unit').value; interval = Number($('regm-interval').value) || 1;
+    if (frequency === 'weekly') {
+      byWeekday = [...$('regm-weekdays').querySelectorAll('input:checked')].map(i => Number(i.value));
+      if (!byWeekday.length) byWeekday = null;
+    }
+  } else { frequency = freqSel; }
+  const endType = document.querySelector('input[name="regm-end"]:checked').value;
+  const end = endType === 'date' ? { type: 'date', date: $('regm-enddate').value } : { type: 'count', count: Number($('regm-count').value) || 1 };
+  return { frequency, interval, byWeekday, end };
+}
+
+async function doRegmPreview() {
+  const box = $('regm-preview'); box.innerHTML = '預覽中…';
+  try {
+    const r = await api('/api/coach/register/preview', { method: 'POST', body: withCoach({ memberId: regmCustomer.id, packageId: regmPackageId, startAt: regmSlot, recurrence: buildRecurrence() }) });
+    const label = { ok: '✓ 建立', conflict: '✕ 衝突跳過', no_date: '✕ 無此日', depleted: '✕ 方案用罄' };
+    box.innerHTML = `<div class="regm-sub">將建立 <strong>${r.willCreate}</strong> 筆、扣 ${r.willDeduct} 堂、方案剩 ${r.remainingAfter}</div>` +
+      r.occurrences.map(o => `<div class="regm-occ regm-${o.status}">${regmSlotLabel(o.startAt)} — ${label[o.status]}</div>`).join('');
+  } catch (e) { box.innerHTML = `<div class="regm-sub" style="color:#dc2626;">${escapeHtml(e.data?.error || e.message)}</div>`; }
+}
+
+async function doRegmSubmit() {
+  try {
+    const r = await api('/api/coach/register', { method: 'POST', body: withCoach({ memberId: regmCustomer.id, packageId: regmPackageId, startAt: regmSlot, recurrence: buildRecurrence() }) });
+    toast(`已登錄 ${r.created.length} 筆${r.skipped.length ? `（跳過 ${r.skipped.length}）` : ''}`, 'success');
+    regmClose(); renderRegister();
+  } catch (e) {
+    const msgs = { package_invalid: '方案已失效/用罄', package_member_mismatch: '方案不屬此客人', nothing_created: '無可建立場次（全衝突或用罄）', slot_taken: '此時段已被預約' };
+    toast(msgs[e.data?.error] || `登錄失敗：${e.message}`, 'error');
+  }
+}
 
 await init();
