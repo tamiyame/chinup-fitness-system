@@ -1145,3 +1145,20 @@ details.session-row summary:hover { background: #f8faf9; }
 /* 補登（過去）時段卡：淡琥珀虛線框，與一般可預約時段區別 */
 .timeslot.slot-past { border-style: dashed; border-color: #fcd34d; background: #fffdf5; }
 .timeslot.slot-past .t-sub { color: #b45309; }
+
+/* 登錄預約 週曆 */
+.reg-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+.reg-navbtn{padding:4px 10px;font-size:13px;}
+.reg-range{font-weight:600;color:#0f172a;margin-left:4px;}
+.reg-grid-wrap{overflow:auto;max-height:70vh;}
+.reg-grid{display:grid;grid-template-columns:56px repeat(7,minmax(64px,1fr));gap:2px;min-width:640px;}
+.reg-cell{font-size:12px;border-radius:6px;padding:4px;min-height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.reg-head{font-weight:700;background:#f1f5f9;color:#0f172a;}
+.reg-date{font-weight:400;font-size:11px;color:#64748b;}
+.reg-timecol{background:#f8fafc;color:#64748b;font-variant-numeric:tabular-nums;}
+.reg-open{color:#cbd5e1;cursor:pointer;border:1px dashed #e2e8f0;}
+.reg-open:hover{background:#e0f2fe;color:#0284c7;border-color:#7dd3fc;}
+.reg-avail{background:#f0f9ff;border-color:#bae6fd;color:#7dd3fc;}
+.reg-booked{background:#dbeafe;color:#1e3a8a;font-weight:600;cursor:default;}
+.reg-group{background:#f3e8ff;color:#6b21a8;cursor:default;}
+.reg-sub{font-weight:400;font-size:10px;opacity:0.8;}

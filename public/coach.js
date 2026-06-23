@@ -151,6 +151,7 @@ function switchTab(name) {
   if (name === 'bookings') renderBookings();
   if (name === 'availability') renderAvailability();
   if (name === 'profile') renderProfile();
+  if (name === 'register') renderRegister();
 }
 
 // '2026-06-21T17:00:00' → '06/21 17:00'（緊湊、省年）
@@ -492,5 +493,86 @@ async function renderProfile() {
 }
 
 function escapeAttr(s) { return escapeHtml(s); }
+
+// 登錄預約：週曆狀態
+let regWeekOffset = 0; // 0=本週
+const REG_HOUR_MIN = 7, REG_HOUR_MAX = 21; // 預設顯示 07:00–21:00（slot 起點）；資料超出此範圍時動態擴充，避免藏到預約
+const REG_DOW = ['一','二','三','四','五','六','日'];
+
+function regWeekRange(offset) {
+  const now = new Date();
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset * 7);
+  const dow = base.getDay();
+  const toMonday = dow === 0 ? -6 : 1 - dow;
+  const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() + toMonday);
+  const pad = (n) => String(n).padStart(2, '0');
+  const fk = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const dates = []; for (let i = 0; i < 7; i++) { const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i); dates.push(fk(d)); }
+  return { start: fk(start), dates };
+}
+
+async function renderRegister() {
+  const panel = $('tab-register');
+  if (selectedCoachId == null && isAdmin) { panel.innerHTML = '<p class="subtle">請先於上方選擇教練。</p>'; return; }
+  const { start, dates } = regWeekRange(regWeekOffset);
+  panel.innerHTML = `
+    <div class="reg-toolbar">
+      <button id="reg-prev" class="btn-secondary reg-navbtn">← 上一週</button>
+      <button id="reg-today" class="btn-secondary reg-navbtn">本週</button>
+      <button id="reg-next" class="btn-secondary reg-navbtn">下一週 →</button>
+      <span id="reg-range" class="reg-range"></span>
+    </div>
+    <div id="reg-grid" class="reg-grid-wrap"><p class="subtle">載入中…</p></div>`;
+  $('reg-prev').onclick = () => { regWeekOffset--; renderRegister(); };
+  $('reg-next').onclick = () => { regWeekOffset++; renderRegister(); };
+  $('reg-today').onclick = () => { regWeekOffset = 0; renderRegister(); };
+  $('reg-range').textContent = `${dates[0].slice(5).replace('-', '/')} – ${dates[6].slice(5).replace('-', '/')}`;
+
+  let data;
+  try { data = await api(`/api/coach/week${coachQuery() ? coachQuery() + '&' : '?'}start=${start}`); }
+  catch (e) { $('reg-grid').innerHTML = `<p class="subtle" style="color:#dc2626;">載入失敗：${escapeHtml(e.message)}</p>`; return; }
+
+  // 索引：available slots / bookings / group sessions by 'YYYY-MM-DDTHH'
+  const slotKey = (iso) => iso.slice(0, 13); // 'YYYY-MM-DDTHH'
+  const avail = new Set((data.availableSlots || []).map(s => slotKey(s.start)));
+  const bookByKey = new Map(); for (const b of data.bookings || []) bookByKey.set(slotKey(b.start_at), b);
+  const grpByKey = new Map(); for (const g of data.groupSessions || []) grpByKey.set(slotKey(g.start_at), g);
+
+  // 動態時段範圍：預設 07–21，但若資料（預約/團課/班表）含更早/更晚的整點則擴充，避免藏住範圍外的項目。
+  const hourOf = (iso) => Number(String(iso).slice(11, 13));
+  let hMin = REG_HOUR_MIN, hMax = REG_HOUR_MAX;
+  for (const b of data.bookings || []) { hMin = Math.min(hMin, hourOf(b.start_at)); hMax = Math.max(hMax, hourOf(b.start_at)); }
+  for (const g of data.groupSessions || []) { hMin = Math.min(hMin, hourOf(g.start_at)); hMax = Math.max(hMax, hourOf(g.start_at)); }
+  for (const s of data.availableSlots || []) { hMin = Math.min(hMin, hourOf(s.start)); hMax = Math.max(hMax, hourOf(s.start)); }
+  const hours = []; for (let h = hMin; h <= hMax; h++) hours.push(h);
+
+  const head = `<div class="reg-cell reg-head reg-timecol"></div>` +
+    dates.map((d, i) => `<div class="reg-cell reg-head">${REG_DOW[i]}<br><span class="reg-date">${d.slice(5).replace('-', '/')}</span></div>`).join('');
+  let rows = '';
+  for (const h of hours) {
+    const hh = String(h).padStart(2, '0');
+    rows += `<div class="reg-cell reg-timecol">${hh}:00</div>`;
+    for (const d of dates) {
+      const iso = `${d}T${hh}:00:00`; const key = `${d}T${hh}`;
+      const bk = bookByKey.get(key); const gp = grpByKey.get(key);
+      if (bk) {
+        const tag = bk.session_type === '1on2' ? '1對2' : '1對1';
+        rows += `<div class="reg-cell reg-booked" title="${escapeHtml(bk.member_name)}">${escapeHtml(bk.member_name)}<br><span class="reg-sub">${tag}</span></div>`;
+      } else if (gp) {
+        rows += `<div class="reg-cell reg-group" title="${escapeHtml(gp.name)}">${escapeHtml(gp.name)}<br><span class="reg-sub">團課</span></div>`;
+      } else {
+        const cls = avail.has(key) ? 'reg-open reg-avail' : 'reg-open';
+        rows += `<div class="reg-cell ${cls}" data-slot="${iso}">＋</div>`;
+      }
+    }
+  }
+  $('reg-grid').innerHTML = `<div class="reg-grid">${head}${rows}</div>`;
+  $('reg-grid').querySelectorAll('.reg-open[data-slot]').forEach(c => {
+    c.addEventListener('click', () => openRegisterModal(c.dataset.slot));
+  });
+}
+
+// Task 5 會實作；先 stub 避免 ReferenceError
+function openRegisterModal(startAtISO) { console.log('[register] slot', startAtISO); }
 
 await init();
