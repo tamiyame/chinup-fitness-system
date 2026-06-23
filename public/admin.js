@@ -599,8 +599,10 @@ function openUserEditModal(id) {
         ? '<button id="ue-restore" class="btn btn-ghost btn-sm">還原</button>'
         : '<button id="ue-archive" class="btn btn-danger btn-sm">封存此會員</button>'}
     </div>
-    ${archived ? '<p class="subtle" style="font-size:12px;margin-top:10px;">此會員已封存（僅後台列表隱藏；本人前台仍可查詢，下次同電話預約會自動還原）。</p>' : ''}`;
+    ${archived ? '<p class="subtle" style="font-size:12px;margin-top:10px;">此會員已封存（僅後台列表隱藏；本人前台仍可查詢，下次同電話預約會自動還原）。</p>' : ''}
+    <div id="ue-packages" style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:12px;"></div>`;
   ov.style.display = 'grid';
+  renderMemberPackages(id, body.querySelector('#ue-packages'));
 
   // 管理者標籤只在角色=教練時可勾；切回會員時自動取消勾選並禁用。
   const roleSel = body.querySelector('#ue-role');
@@ -666,6 +668,102 @@ function openUserEditModal(id) {
       ov.style.display = 'none';
       await loadUsers();
     } catch (e) { toast(`失敗：${e.message}`, 'error'); }
+  });
+}
+
+const PKG_TYPE_LABEL = { '1on1': '一對一', '1on2': '一對二' };
+
+async function renderMemberPackages(memberId, mountEl) {
+  if (!mountEl) return;
+  mountEl.innerHTML = '<p class="subtle" style="font-size:12px;">載入方案中…</p>';
+  let pkgs = [];
+  try { pkgs = await api(`/api/coach/packages?memberId=${memberId}&includeArchived=1`); }
+  catch { mountEl.innerHTML = '<p class="subtle" style="font-size:12px;color:#dc2626;">方案載入失敗</p>'; return; }
+
+  const rowHtml = pkgs.map(p => {
+    const arch = !!p.archived_at;
+    const badge = arch ? '<span class="badge badge-cancelled" style="font-size:10px;">已作廢</span>'
+      : p.is_valid ? '<span class="badge" style="font-size:10px;background:#dcfce7;color:#166534;">有效</span>'
+      : '<span class="badge" style="font-size:10px;background:#fef9c3;color:#854d0e;">已失效</span>';
+    const exp = p.expires_at ? `到期 ${p.expires_at}` : '永久';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+      <div style="font-size:13px;">
+        <strong>${PKG_TYPE_LABEL[p.session_type] || p.session_type}</strong> ${p.remaining_sessions}/${p.total_sessions} 堂 ${badge}
+        <div class="subtle" style="font-size:11px;">${exp}${p.amount != null ? ` · NT$${p.amount}` : ''}</div>
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0;">
+        <button class="btn btn-ghost btn-sm" data-act="adjust" data-id="${p.id}" data-total="${p.total_sessions}" data-remaining="${p.remaining_sessions}">調整</button>
+        ${arch
+          ? `<button class="btn btn-ghost btn-sm" data-act="restore" data-id="${p.id}">還原</button>`
+          : `<button class="btn btn-danger btn-sm" data-act="archive" data-id="${p.id}">作廢</button>`}
+      </div>
+    </div>`;
+  }).join('') || '<p class="subtle" style="font-size:12px;">尚無方案</p>';
+
+  mountEl.innerHTML = `
+    <div style="font-weight:600;font-size:13px;margin-bottom:6px;">方案（套餐）</div>
+    <div id="pkg-list">${rowHtml}</div>
+    <details style="margin-top:8px;">
+      <summary style="font-size:13px;cursor:pointer;color:#0284c7;">＋ 新增方案</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
+        <select id="pkg-type" class="form-select" style="margin:0;"><option value="1on1">一對一</option><option value="1on2">一對二</option></select>
+        <input id="pkg-total" class="form-input" type="number" min="1" placeholder="堂數" style="margin:0;" />
+        <input id="pkg-amount" class="form-input" type="number" min="0" placeholder="金額（可空）" style="margin:0;" />
+        <input id="pkg-expiry" class="form-input" type="date" style="margin:0;" />
+      </div>
+      <input id="pkg-note" class="form-input" placeholder="備註（可空）" style="margin:6px 0 0;" />
+      <button id="pkg-create" class="btn btn-primary btn-sm" style="margin-top:8px;">建立方案</button>
+    </details>`;
+
+  // 建立
+  mountEl.querySelector('#pkg-create')?.addEventListener('click', async () => {
+    const total = Number(mountEl.querySelector('#pkg-total').value);
+    if (!Number.isInteger(total) || total <= 0) { toast('請填正確堂數', 'error'); return; }
+    const amountRaw = mountEl.querySelector('#pkg-amount').value;
+    const expiry = mountEl.querySelector('#pkg-expiry').value;
+    try {
+      await api('/api/coach/packages', { method: 'POST', body: {
+        memberId, sessionType: mountEl.querySelector('#pkg-type').value, totalSessions: total,
+        amount: amountRaw === '' ? null : Number(amountRaw),
+        expiresAt: expiry || null, note: mountEl.querySelector('#pkg-note').value || null,
+      }});
+      toast('方案已建立', 'success');
+      renderMemberPackages(memberId, mountEl);
+    } catch (e) {
+      const msgs = { invalid_total: '堂數不正確', invalid_amount: '金額不正確', invalid_expires_at: '到期日格式錯', invalid_session_type: '類型不正確' };
+      toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
+    }
+  });
+
+  // 調整 / 作廢 / 還原
+  mountEl.querySelector('#pkg-list')?.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    const act = btn.dataset.act;
+    try {
+      if (act === 'adjust') {
+        const total = Number(btn.dataset.total);
+        const cur = Number(btn.dataset.remaining);
+        const input = prompt(`調整剩餘堂數（0–${total}）`, String(cur));
+        if (input == null) return;
+        const r = Number(input);
+        if (!Number.isInteger(r) || r < 0 || r > total) { toast('堂數需為 0–' + total, 'error'); return; }
+        await api(`/api/coach/packages/${id}`, { method: 'PATCH', body: { remaining: r } });
+        toast('已調整剩餘堂數', 'success');
+      } else if (act === 'archive') {
+        if (!confirm('確定作廢此方案？作廢後不可再扣抵（剩餘堂數保留紀錄）。')) return;
+        await api(`/api/coach/packages/${id}/archive`, { method: 'POST' });
+        toast('已作廢', 'success');
+      } else if (act === 'restore') {
+        await api(`/api/coach/packages/${id}/restore`, { method: 'POST' });
+        toast('已還原', 'success');
+      }
+      renderMemberPackages(memberId, mountEl);
+    } catch (e) {
+      const msgs = { invalid_remaining: '剩餘堂數超出範圍', package_not_found: '找不到方案' };
+      toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
+    }
   });
 }
 
