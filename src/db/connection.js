@@ -221,6 +221,11 @@ addColumnIfMissing('group_orders', 'refunded_by', 'INTEGER REFERENCES users(id)'
 // recurring_group_id：同一串循環預約存「首堂 booking id」（供未來整串操作；本版僅落資料）。
 addColumnIfMissing('bookings', 'recurring_group_id', 'INTEGER');
 
+// ── 2026-06-24 方案（套餐）系統 ──
+// customer_packages 表由 SCHEMA 的 CREATE TABLE IF NOT EXISTS 建立（含既有 DB）。
+// bookings.package_id：扣抵來源方案（NULL=非方案預約）。取消預約時回補該方案 1 堂。
+addColumnIfMissing('bookings', 'package_id', 'INTEGER REFERENCES customer_packages(id)');
+
 // ── 2026-06-12 教練課付款狀態流 ──
 // paid_at NULL=待核對、非 NULL=已核對（鏡像 group_orders.paid_at/paid_by；status 不變，佔時段/容量照舊）。
 // 一次性 backfill（偵測訊號=欄位不存在）：上線當下過去場次視為已核對、未來場次留 NULL 進待核對（業主決策）。

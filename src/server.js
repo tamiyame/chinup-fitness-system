@@ -81,6 +81,13 @@ import { createRateLimiter } from './middleware/rateLimit.js';
 import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours } from './services/discountService.js';
 import { isValidPhone } from './services/userService.js';
 import { syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
+import {
+  createPackage as svcCreatePackage,
+  listPackagesForMember as svcListPackages,
+  adjustRemaining as svcAdjustRemaining,
+  archivePackage as svcArchivePackage,
+  restorePackage as svcRestorePackage,
+} from './services/packageService.js';
 import { sendBookingConfirmation } from './services/emailService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -802,6 +809,35 @@ app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
   const { avatar_base64 } = req.body || {};
   const result = svcSaveAvatar({ coachId: coach.id, base64: avatar_base64 });
   res.json(result);
+}));
+
+// --- 方案（套餐）：教練/管理者管理客人方案 ---
+app.post('/api/coach/packages', requireCoach, asyncHandler((req, res) => {
+  const { memberId, sessionType, totalSessions, amount, expiresAt, note } = req.body || {};
+  res.status(201).json(svcCreatePackage({
+    memberId: Number(memberId), sessionType, totalSessions, amount, expiresAt, note, createdBy: req.user.id,
+  }));
+}));
+
+app.get('/api/coach/packages', requireCoach, asyncHandler((req, res) => {
+  const memberId = Number(req.query.memberId);
+  if (!memberId) return res.status(400).json({ error: 'missing_member' });
+  const includeArchived = req.query.includeArchived === '1' || req.query.includeArchived === 'true';
+  res.json(svcListPackages(memberId, { includeArchived }));
+}));
+
+app.patch('/api/coach/packages/:id', requireCoach, asyncHandler((req, res) => {
+  const { remaining, note } = req.body || {};
+  if (remaining == null) return res.status(400).json({ error: 'missing_remaining' });
+  res.json(svcAdjustRemaining({ packageId: Number(req.params.id), remaining, note: note ?? null }));
+}));
+
+app.post('/api/coach/packages/:id/archive', requireCoach, asyncHandler((req, res) => {
+  res.json(svcArchivePackage(Number(req.params.id)));
+}));
+
+app.post('/api/coach/packages/:id/restore', requireCoach, asyncHandler((req, res) => {
+  res.json(svcRestorePackage(Number(req.params.id)));
 }));
 
 // --- Public (no auth): anon booking / group orders / phone lookup ---

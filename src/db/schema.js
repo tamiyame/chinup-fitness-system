@@ -167,6 +167,21 @@ CREATE TABLE IF NOT EXISTS coach_availability_exceptions (
   CHECK (type = 'leave' OR (start_time IS NOT NULL AND end_time IS NOT NULL AND start_time < end_time))
 );
 
+CREATE TABLE IF NOT EXISTS customer_packages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  member_id INTEGER NOT NULL REFERENCES users(id),
+  session_type TEXT NOT NULL CHECK (session_type IN ('1on1','1on2')),
+  total_sessions INTEGER NOT NULL CHECK (total_sessions > 0),
+  remaining_sessions INTEGER NOT NULL CHECK (remaining_sessions >= 0),
+  amount INTEGER,
+  expires_at TEXT,
+  note TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  archived_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_customer_packages_member ON customer_packages(member_id);
+
 CREATE TABLE IF NOT EXISTS bookings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   coach_id INTEGER NOT NULL REFERENCES coaches(id) ON DELETE RESTRICT,
@@ -189,6 +204,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   refunded_at TEXT,
   refunded_by INTEGER REFERENCES users(id),
   recurring_group_id INTEGER,
+  package_id INTEGER REFERENCES customer_packages(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK (start_at < end_at)
 );
