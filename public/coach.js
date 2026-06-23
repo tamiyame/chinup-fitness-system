@@ -612,7 +612,7 @@ function renderRegmBody() {
           ? list.map(u => `<div class="regm-result" data-id="${u.id}" data-name="${escapeHtml(u.name)}" data-phone="${escapeHtml(u.phone || '')}">${escapeHtml(u.name)} <span class="regm-sub">${escapeHtml(u.phone || '')}</span></div>`).join('')
           : '<div class="regm-sub" style="padding:6px;">查無客人</div>';
         $('regm-results').querySelectorAll('.regm-result').forEach(r => r.addEventListener('click', () => {
-          regmCustomer = { id: Number(r.dataset.id), name: r.dataset.name, phone: r.dataset.phone };
+          regmCustomer = list.find(u => u.id === Number(r.dataset.id));
           $('regm-results').innerHTML = ''; search.value = regmCustomer.name;
           loadRegmPackages();
         }));
@@ -655,7 +655,7 @@ function renderRegmPicked() {
     };
     return;
   }
-  const opts = regmPackages.map(p => `<option value="${p.id}">${PKG_TYPE[p.session_type]}・剩 ${p.remaining_sessions}/${p.total_sessions}${p.expires_at ? '・到期 ' + p.expires_at : ''}</option>`).join('');
+  const opts = regmPackages.map(p => `<option value="${p.id}">${PKG_TYPE[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}${p.expires_at ? '・到期 ' + escapeHtml(p.expires_at) : ''}</option>`).join('');
   picked.innerHTML = `
     <label class="regm-label">選擇方案</label>
     <select id="regm-pkg" class="form-select">${opts}</select>
