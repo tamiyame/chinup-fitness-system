@@ -4,6 +4,7 @@ import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js
 import { notify, notifyAdmins, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getOneOnOnePriceByType, getLineOfficialUrl } from './discountService.js';
+import { refundOne as refundPackageOne } from './packageService.js';
 import { assertBookableTx, computeAvailableSlots } from './availabilityService.js';
 import { sendPaymentConfirmedEmail, sendRecurringConfirmation } from './emailService.js';
 
@@ -22,6 +23,13 @@ const cancelBookingStmt = db.prepare(`
   SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?, cancel_reason = ?
   WHERE id = ? AND status = 'confirmed'
 `);
+
+// 取消「confirmed→cancelled」的預約若來自方案 → 回補 1 堂（呼叫端須保證恰在轉移當下呼叫一次）。
+function refundPackageForBooking(b) {
+  if (b && b.package_id) {
+    try { refundPackageOne(b.package_id); } catch { /* 回補失敗不阻斷取消 */ }
+  }
+}
 
 const listMemberStmt = db.prepare(`
   SELECT b.*, c.display_name AS coach_display_name, c.id AS coach_id
@@ -155,6 +163,7 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
     }
 
     cancelBookingStmt.run(nowLocal(), actorUserId, reason, bookingId);
+    refundPackageForBooking(b);
     releaseRedemption({ kind: 'booking', refId: bookingId });
 
     // Phase 3C: notify the OTHER party (the one who didn't cancel)
@@ -192,6 +201,7 @@ export function cancelBookingAnon({ bookingId, phone, name }) {
     const user = getUserByPhoneAndName({ phone, name });
     if (!user || user.id !== b.member_id) throw new ApiError(403, 'forbidden');
     cancelBookingStmt.run(nowLocal(), user.id, null, bookingId);
+    refundPackageForBooking(b);
     releaseRedemption({ kind: 'booking', refId: bookingId });
     const coach = getCoachStmt.get(b.coach_id);
     const memberRow = getUserNameStmt.get(b.member_id);
@@ -211,6 +221,7 @@ export function cancelBookingAdmin({ bookingId, actorId, reason = null }) {
     if (!b) throw new ApiError(404, 'booking_not_found');
     if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
     cancelBookingStmt.run(nowLocal(), actorId, reason, bookingId);
+    refundPackageForBooking(b);
     releaseRedemption({ kind: 'booking', refId: bookingId });
     const coach = getCoachStmt.get(b.coach_id);
     const memberRow = getUserNameStmt.get(b.member_id);
@@ -240,6 +251,7 @@ export function refundBookingAdmin({ bookingId, actorId }) {
     const wasConfirmed = b.status === 'confirmed';
     if (wasConfirmed) {
       cancelBookingStmt.run(nowLocal(), actorId, '取消並退款', bookingId);
+      refundPackageForBooking(b);
       releaseRedemption({ kind: 'booking', refId: bookingId });
     }
     db.prepare('UPDATE bookings SET refunded_at=?, refunded_by=? WHERE id=?').run(nowLocal(), actorId, bookingId);
@@ -581,6 +593,7 @@ export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
     if (!rows.length) throw new ApiError(409, 'no_pending_bookings');
     for (const b of rows) {
       cancelBookingStmt.run(nowLocal(), actorId, reason, b.id);
+      refundPackageForBooking(b);
       releaseRedemption({ kind: 'booking', refId: b.id });
     }
     const coach = getCoachStmt.get(rows[0].coach_id);
@@ -612,6 +625,7 @@ export function refundBookingGroupAdmin({ groupId, actorId }) {
     for (const b of rows) {
       if (b.status === 'confirmed') {
         cancelBookingStmt.run(now, actorId, '取消並退款', b.id);
+        refundPackageForBooking(b);
         releaseRedemption({ kind: 'booking', refId: b.id });
         cancelled.push(b.id);
       }
