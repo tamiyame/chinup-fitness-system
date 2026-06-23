@@ -4,7 +4,7 @@ import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js
 import { notify, notifyAdmins, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getOneOnOnePriceByType, getLineOfficialUrl } from './discountService.js';
-import { refundOne as refundPackageOne } from './packageService.js';
+import { refundOne as refundPackageOne, deductOne as pkgDeductOne, getPackage as pkgGetPackage } from './packageService.js';
 import { assertBookableTx, computeAvailableSlots } from './availabilityService.js';
 import { sendPaymentConfirmedEmail, sendRecurringConfirmation } from './emailService.js';
 
@@ -547,6 +547,82 @@ export function expandRecurrence({ startAt, frequency, interval = 1, byWeekday =
     }
   }
   return out.slice(0, maxCount);
+}
+
+const getValidPackageForRegister = (packageId, memberId) => {
+  const p = pkgGetPackage(packageId);
+  if (!p) throw new ApiError(404, 'package_not_found');
+  if (p.member_id !== memberId) throw new ApiError(400, 'package_member_mismatch');
+  if (!p.is_valid) throw new ApiError(409, 'package_invalid'); // 已作廢/用罄/過期
+  return p;
+};
+
+const hasConfirmedClash = db.prepare(
+  "SELECT 1 FROM bookings WHERE coach_id = ? AND start_at = ? AND status = 'confirmed' LIMIT 1"
+);
+
+/** 把 recurrence（null=單筆 / 物件=循環）展開成 occurrence 清單（含 reason）。 */
+function _registerOccurrences({ startAt, recurrence }) {
+  if (!recurrence) return [{ startAt }];
+  return expandRecurrence({ startAt, ...recurrence });
+}
+
+/** 預覽：逐場標 ok/conflict/no_date/depleted（依方案剩餘額度）。不寫入。 */
+export function previewCoachRegister({ coachId, memberId, packageId, startAt, recurrence = null }) {
+  const coach = getCoachStmt.get(coachId);
+  if (!coach) throw new ApiError(404, 'coach_not_found');
+  const p = getValidPackageForRegister(packageId, memberId);
+  let budget = p.remaining_sessions;
+  const occ = _registerOccurrences({ startAt, recurrence });
+  const occurrences = [];
+  let willCreate = 0;
+  for (const o of occ) {
+    if (o.reason === 'no_date') { occurrences.push({ startAt: o.startAt, status: 'no_date' }); continue; }
+    if (hasConfirmedClash.get(coachId, o.startAt)) { occurrences.push({ startAt: o.startAt, status: 'conflict' }); continue; }
+    if (budget > 0) { budget--; willCreate++; occurrences.push({ startAt: o.startAt, status: 'ok' }); }
+    else occurrences.push({ startAt: o.startAt, status: 'depleted' });
+  }
+  return { occurrences, willCreate, willDeduct: willCreate, remainingAfter: p.remaining_sessions - willCreate };
+}
+
+/** 建立登錄預約（單筆/循環，皆走方案）。tx 內：驗方案 → 逐場（衝突跳過、扣堂建立、用罄即停）→ 串 group。 */
+export function createCoachRegister({ coachId, memberId, packageId, startAt, recurrence = null, actorId }) {
+  const coach = getCoachStmt.get(coachId);
+  if (!coach) throw new ApiError(404, 'coach_not_found');
+  const isRecurring = !!recurrence;
+  return tx(() => {
+    const p = getValidPackageForRegister(packageId, memberId);
+    const sessionType = p.session_type;
+    const unitPrice = p.amount != null ? Math.round(p.amount / p.total_sessions) : null;
+    const occ = _registerOccurrences({ startAt, recurrence });
+    const created = [];
+    const skipped = [];
+    for (const o of occ) {
+      if (o.reason === 'no_date') { skipped.push({ startAt: o.startAt, reason: 'no_date' }); continue; }
+      if (hasConfirmedClash.get(coachId, o.startAt)) { skipped.push({ startAt: o.startAt, reason: 'conflict' }); continue; }
+      if (!pkgDeductOne(packageId)) break; // 用罄即停
+      const r = createBookingCore({ coach, memberId, startAt: o.startAt, note: null, sessionType, silent: isRecurring, enforceAvailability: false });
+      db.prepare('UPDATE bookings SET package_id=?, paid_at=?, paid_by=?, original_amount=? WHERE id=?')
+        .run(packageId, nowLocal(), actorId, unitPrice, r.id);
+      created.push({ id: r.id, startAt: o.startAt });
+    }
+    if (!created.length) throw new ApiError(409, 'nothing_created', { skipped });
+    let groupId = null;
+    if (isRecurring) {
+      // 多筆才串 group（循環只成 1 筆＝單筆，免群組）
+      if (created.length > 1) {
+        groupId = created[0].id;
+        const ids = created.map(c => c.id); const ph = ids.map(() => '?').join(',');
+        db.prepare(`UPDATE bookings SET recurring_group_id = ? WHERE id IN (${ph})`).run(groupId, ...ids);
+      }
+      // 循環摘要通知（不逐堂轟炸）；created.length>=1 一律發，避免「循環只成 1 筆 → 零通知」。
+      const summaryVars = { count: created.length, coach_display_name: coach.display_name,
+        member_name: getUserNameStmt.get(memberId)?.name || '', freq_text: '登錄', first_at: fmtDateForLine(created[0].startAt) };
+      notify({ userId: memberId, sessionId: null, type: 'booking_recurring_created', vars: summaryVars });
+      if (coach.user_id !== actorId) notify({ userId: coach.user_id, sessionId: null, type: 'booking_recurring_created_coach', vars: summaryVars });
+    }
+    return { created, skipped, groupId, deducted: created.length, remainingAfter: pkgGetPackage(packageId).remaining_sessions };
+  });
 }
 
 /** 單一 occurrence 可建立？＝與單筆公開預約相同管線（班表/請假/緩衝/容量/重疊/freebusy）。
