@@ -84,10 +84,14 @@ const getMostRecentBookingWithCoachStmt = db.prepare(`
 `);
 
 // 核心建單：寫 bookings + 通知教練/會員。不碰點數。
-function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1', silent = false }) {
+function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1', silent = false, enforceAvailability = true }) {
   const endAt = addMinutes(startAt, 60);
   // 同教練重疊 / 全店容量（tx 內、純 DB → 無競態）。UNIQUE index 仍為最後兜底。
-  assertBookableTx({ coachId: coach.id, startAt, endAt, units: sessionType === '1on2' ? 2 : 1 });
+  // enforceAvailability=false（員工手動登錄）：跳過班表/容量檢查，允許任意整點；
+  // 仍靠 INSERT 的 UNIQUE(coach_id,start_at) 擋同教練同整點重複。
+  if (enforceAvailability) {
+    assertBookableTx({ coachId: coach.id, startAt, endAt, units: sessionType === '1on2' ? 2 : 1 });
+  }
   let bookingId;
   try {
     const info = insertBookingStmt.run(coach.id, memberId, startAt, endAt, note, sessionType);
@@ -465,6 +469,83 @@ export function recurringOccurrences({ startAt, frequency, intervalDays = null, 
     }
   }
   return out;
+}
+
+// ── 2026-06-24 進階循環（Google 行事曆式；PR2 登錄用，獨立於舊 recurringOccurrences）──
+const REC_FREQS = ['daily', 'weekly', 'monthly', 'yearly'];
+const REC_MAX_OCCURRENCES = 366; // 上限保護（含 no_date）
+
+/** 展開循環為 occurrence 清單（chronological）。
+ *  rule: { frequency, interval=1, byWeekday=[0..6]|null（0=日，僅 weekly）, end:{type:'count',count}|{type:'date',date} }
+ *  monthly/yearly 遇無此日 → { startAt, reason:'no_date' }（不順延）。count 計入 no_date。 */
+export function expandRecurrence({ startAt, frequency, interval = 1, byWeekday = null, end }) {
+  if (typeof startAt !== 'string' || !START_AT_RE.test(startAt)) throw new ApiError(400, 'invalid_start_at');
+  if (!REC_FREQS.includes(frequency)) throw new ApiError(400, 'invalid_frequency');
+  const iv = Number(interval);
+  if (!Number.isInteger(iv) || iv < 1 || iv > 52) throw new ApiError(400, 'invalid_interval');
+  if (!end || (end.type !== 'count' && end.type !== 'date')) throw new ApiError(400, 'invalid_end');
+  let maxCount = REC_MAX_OCCURRENCES, endDate = null;
+  if (end.type === 'count') {
+    maxCount = Number(end.count);
+    if (!Number.isInteger(maxCount) || maxCount < 1 || maxCount > REC_MAX_OCCURRENCES) throw new ApiError(400, 'invalid_count');
+  } else {
+    endDate = end.date;
+    if (typeof endDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) throw new ApiError(400, 'invalid_end_date');
+  }
+  const [datePart, timePart] = startAt.split('T'); // timePart='HH:MM:00'
+  const [y0, m0, d0] = datePart.split('-').map(Number);
+  const pad = (n) => String(n).padStart(2, '0');
+  const within = (label) => (endDate ? label.slice(0, 10) <= endDate : true);
+  const out = [];
+  const push = (label, reason) => { out.push(reason ? { startAt: label, reason } : { startAt: label }); };
+
+  if (frequency === 'daily' || (frequency === 'weekly' && !byWeekday)) {
+    const stepDays = frequency === 'daily' ? iv : iv * 7;
+    for (let k = 0; out.length < maxCount; k++) {
+      const d = new Date(`${datePart}T00:00:00`);
+      d.setDate(d.getDate() + stepDays * k);
+      const label = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${timePart}`;
+      if (!within(label)) break;
+      push(label);
+      if (k > REC_MAX_OCCURRENCES) break;
+    }
+  } else if (frequency === 'weekly') {
+    // byWeekday：以「起始日當週的週一」為 anchor，每 iv 週為一個 block，block 內取選定週幾(>=起始日)。
+    const wd = [...new Set(byWeekday)].filter(n => Number.isInteger(n) && n >= 0 && n <= 6).sort((a, b) => a - b);
+    if (!wd.length) throw new ApiError(400, 'invalid_byweekday');
+    const start = new Date(`${datePart}T00:00:00`);
+    const dow = start.getDay(); // 0=日
+    const toMonday = dow === 0 ? -6 : 1 - dow;
+    const anchorMonday = new Date(start.getFullYear(), start.getMonth(), start.getDate() + toMonday);
+    for (let b = 0; out.length < maxCount; b++) {
+      const blockMonday = new Date(anchorMonday.getFullYear(), anchorMonday.getMonth(), anchorMonday.getDate() + b * iv * 7);
+      let pushedBeyondEnd = false;
+      for (const d of wd) {
+        const offset = d === 0 ? 6 : d - 1; // 週一=0 … 週日=6
+        const date = new Date(blockMonday.getFullYear(), blockMonday.getMonth(), blockMonday.getDate() + offset);
+        if (date < start) continue; // 第一個 block 內早於起始日的略過
+        const label = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${timePart}`;
+        if (!within(label)) { pushedBeyondEnd = true; break; }
+        push(label);
+        if (out.length >= maxCount) break;
+      }
+      if (pushedBeyondEnd) break;
+      if (b > REC_MAX_OCCURRENCES) break;
+    }
+  } else { // monthly / yearly
+    for (let k = 0; out.length < maxCount; k++) {
+      let y, m;
+      if (frequency === 'monthly') { const t = (m0 - 1) + iv * k; y = y0 + Math.floor(t / 12); m = (t % 12) + 1; }
+      else { y = y0 + iv * k; m = m0; }
+      const probe = new Date(y, m - 1, d0);
+      const label = `${y}-${pad(m)}-${pad(d0)}T${timePart}`;
+      if (!within(label)) break;
+      if (probe.getMonth() !== m - 1) push(label, 'no_date'); // 該月/年無此日
+      else push(label);
+      if (k > REC_MAX_OCCURRENCES) break;
+    }
+  }
+  return out.slice(0, maxCount);
 }
 
 /** 單一 occurrence 可建立？＝與單筆公開預約相同管線（班表/請假/緩衝/容量/重疊/freebusy）。
