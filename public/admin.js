@@ -685,14 +685,14 @@ async function renderMemberPackages(memberId, mountEl) {
     const badge = arch ? '<span class="badge badge-cancelled" style="font-size:10px;">已作廢</span>'
       : p.is_valid ? '<span class="badge" style="font-size:10px;background:#dcfce7;color:#166534;">有效</span>'
       : '<span class="badge" style="font-size:10px;background:#fef9c3;color:#854d0e;">已失效</span>';
-    const exp = p.expires_at ? `到期 ${p.expires_at}` : '永久';
+    const exp = p.expires_at ? `到期 ${escapeHtml(p.expires_at)}` : '永久';
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
       <div style="font-size:13px;">
-        <strong>${PKG_TYPE_LABEL[p.session_type] || p.session_type}</strong> ${p.remaining_sessions}/${p.total_sessions} 堂 ${badge}
-        <div class="subtle" style="font-size:11px;">${exp}${p.amount != null ? ` · NT$${p.amount}` : ''}</div>
+        <strong>${PKG_TYPE_LABEL[p.session_type] || escapeHtml(p.session_type)}</strong> ${p.remaining_sessions}/${p.total_sessions} 堂 ${badge}
+        <div class="subtle" style="font-size:11px;">${exp}${p.amount != null ? ` · NT$${escapeHtml(String(p.amount))}` : ''}</div>
       </div>
       <div style="display:flex;gap:4px;flex-shrink:0;">
-        <button class="btn btn-ghost btn-sm" data-act="adjust" data-id="${p.id}" data-total="${p.total_sessions}" data-remaining="${p.remaining_sessions}">調整</button>
+        <button class="btn btn-ghost btn-sm" data-act="adjust" data-id="${p.id}" data-total="${escapeHtml(String(p.total_sessions))}" data-remaining="${escapeHtml(String(p.remaining_sessions))}">調整</button>
         ${arch
           ? `<button class="btn btn-ghost btn-sm" data-act="restore" data-id="${p.id}">還原</button>`
           : `<button class="btn btn-danger btn-sm" data-act="archive" data-id="${p.id}">作廢</button>`}
