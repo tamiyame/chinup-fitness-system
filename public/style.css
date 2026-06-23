@@ -1162,3 +1162,30 @@ details.session-row summary:hover { background: #f8faf9; }
 .reg-booked{background:#dbeafe;color:#1e3a8a;font-weight:600;cursor:default;}
 .reg-group{background:#f3e8ff;color:#6b21a8;cursor:default;}
 .reg-sub{font-weight:400;font-size:10px;opacity:0.8;}
+
+/* 登錄彈窗 */
+.regm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:grid;place-items:center;padding:16px;}
+.regm-modal{background:#fff;border-radius:12px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;padding:20px;position:relative;}
+.regm-close{position:absolute;top:12px;right:14px;background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer;}
+.regm-title{font-weight:700;margin-bottom:12px;}
+.regm-slot{font-size:14px;margin-bottom:10px;}
+.regm-label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px;}
+.regm-input{width:100%;}
+.regm-results{max-height:160px;overflow-y:auto;}
+.regm-result{padding:6px 8px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:14px;}
+.regm-result:hover{background:#f0f9ff;}
+.regm-sub{font-size:12px;color:#64748b;}
+.regm-nopkg{font-size:13px;color:#b45309;margin:10px 0 6px;}
+.regm-newpkg{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.regm-newpkg button{grid-column:1/-1;}
+.regm-check{display:flex;align-items:center;gap:6px;margin:10px 0;font-size:14px;cursor:pointer;}
+.regm-rec{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:10px;}
+.regm-rec-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.regm-num{width:64px;}
+.regm-weekdays{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.regm-wd{font-size:13px;display:flex;align-items:center;gap:3px;}
+.regm-radio{display:flex;align-items:center;gap:4px;font-size:13px;}
+.regm-preview{max-height:180px;overflow-y:auto;margin:10px 0;font-size:13px;}
+.regm-occ{padding:2px 0;}
+.regm-ok{color:#166534;}.regm-conflict,.regm-depleted,.regm-no_date{color:#b45309;}
+.regm-actions{display:flex;gap:8px;justify-content:flex-end;}
