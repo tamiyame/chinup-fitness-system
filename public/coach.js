@@ -529,7 +529,8 @@ async function renderRegister() {
   $('reg-range').textContent = `${dates[0].slice(5).replace('-', '/')} – ${dates[6].slice(5).replace('-', '/')}`;
 
   let data;
-  try { data = await api(`/api/coach/week${coachQuery() ? coachQuery() + '&' : '?'}start=${start}`); }
+  const q = coachQuery();
+  try { data = await api(`/api/coach/week${q ? q + '&' : '?'}start=${start}`); }
   catch (e) { $('reg-grid').innerHTML = `<p class="subtle" style="color:#dc2626;">載入失敗：${escapeHtml(e.message)}</p>`; return; }
 
   // 索引：available slots / bookings / group sessions by 'YYYY-MM-DDTHH'
