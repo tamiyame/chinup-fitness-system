@@ -56,4 +56,9 @@ expect('驗證：頻率錯/間隔錯/end 錯/count 越界', () => {
   assert.throws(() => expandRecurrence({ startAt:'2026-07-01T10:00:00', frequency:'daily', end:{type:'bad'} }), /invalid_end/);
   assert.throws(() => expandRecurrence({ startAt:'bad', frequency:'daily', end:{type:'count',count:2} }), /invalid_start_at/);
 });
+expect('weekly byWeekday 含週日 + end=date：同週較早日不被週日提前 break 漏掉', () => {
+  // 週日(0)+週一(1)，起 2026-07-01(三)，到 2026-07-06(一)
+  const o = expandRecurrence({ startAt:'2026-07-01T10:00:00', frequency:'weekly', byWeekday:[0,1], end:{type:'date',date:'2026-07-06'} });
+  assert.deepEqual(o.map(x=>x.startAt), ['2026-07-05T10:00:00','2026-07-06T10:00:00']);
+});
 console.log('[recurrence-expand test] done');

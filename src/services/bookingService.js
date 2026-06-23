@@ -511,8 +511,10 @@ export function expandRecurrence({ startAt, frequency, interval = 1, byWeekday =
     }
   } else if (frequency === 'weekly') {
     // byWeekday：以「起始日當週的週一」為 anchor，每 iv 週為一個 block，block 內取選定週幾(>=起始日)。
-    const wd = [...new Set(byWeekday)].filter(n => Number.isInteger(n) && n >= 0 && n <= 6).sort((a, b) => a - b);
-    if (!wd.length) throw new ApiError(400, 'invalid_byweekday');
+    // 先把每個週幾轉成 Mon-anchored offset（週一=0 … 週日=6）再依「日期序」排序，
+    // 否則週日(0)若先疊代且超過 endDate 會提前 break，漏掉同週較早的日子（如週一）。
+    const offsets = [...new Set(byWeekday)].filter(n => Number.isInteger(n) && n >= 0 && n <= 6).map(d => d === 0 ? 6 : d - 1).sort((a, b) => a - b);
+    if (!offsets.length) throw new ApiError(400, 'invalid_byweekday');
     const start = new Date(`${datePart}T00:00:00`);
     const dow = start.getDay(); // 0=日
     const toMonday = dow === 0 ? -6 : 1 - dow;
@@ -520,8 +522,7 @@ export function expandRecurrence({ startAt, frequency, interval = 1, byWeekday =
     for (let b = 0; out.length < maxCount; b++) {
       const blockMonday = new Date(anchorMonday.getFullYear(), anchorMonday.getMonth(), anchorMonday.getDate() + b * iv * 7);
       let pushedBeyondEnd = false;
-      for (const d of wd) {
-        const offset = d === 0 ? 6 : d - 1; // 週一=0 … 週日=6
+      for (const offset of offsets) {
         const date = new Date(blockMonday.getFullYear(), blockMonday.getMonth(), blockMonday.getDate() + offset);
         if (date < start) continue; // 第一個 block 內早於起始日的略過
         const label = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${timePart}`;
