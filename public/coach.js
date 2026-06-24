@@ -15,6 +15,10 @@ function coachQuery() {
 function withCoach(body) {
   return (isAdmin && selectedCoachId != null) ? { ...body, coachId: selectedCoachId } : body;
 }
+// 登錄/預覽目標教練：管理者用登錄分頁選的（非 all）；一般教練落回自己（後端 resolveCoach）
+function regTargetBody(body) {
+  return (isAdmin && regViewCoachId && regViewCoachId !== 'all') ? { ...body, coachId: Number(regViewCoachId) } : body;
+}
 // admin 尚未選教練（且自己沒有教練檔案）→ 顯示提示、不打 API
 function needsCoachSelection() { return isAdmin && selectedCoachId == null; }
 const PICK_PROMPT = '<p class="text-slate-500">請先從上方選擇教練</p>';
@@ -152,6 +156,10 @@ function switchTab(name) {
   if (name === 'availability') renderAvailability();
   if (name === 'profile') renderProfile();
   if (name === 'register') renderRegister();
+  // 登錄分頁用自己的「全部教練」選擇器；隱藏共用下拉避免混淆。共用下拉只給管理者 →
+  // 非管理者完全不碰（否則 toggle(class,false) 會把本該隱藏的空下拉顯示出來）。
+  const sharedPicker = $('coach-picker');
+  if (isAdmin && sharedPicker) sharedPicker.classList.toggle('hidden', name === 'register');
 }
 
 // '2026-06-21T17:00:00' → '06/21 17:00'（緊湊、省年）
@@ -496,6 +504,8 @@ function escapeAttr(s) { return escapeHtml(s); }
 
 // 登錄預約：週曆狀態
 let regWeekOffset = 0; // 0=本週
+let regViewCoachId = 'all'; // 管理者登錄分頁檢視：'all' 或 coachId 字串；一般教練不使用
+let regCoachOptionsCache = null; // 教練選單 options HTML 快取（避免每次重繪重撈 /api/admin/coaches）
 const REG_HOUR_MIN = 7, REG_HOUR_MAX = 21; // 預設顯示 07:00–21:00（slot 起點）；資料超出此範圍時動態擴充，避免藏到預約
 const REG_DOW = ['一','二','三','四','五','六','日'];
 
@@ -513,13 +523,18 @@ function regWeekRange(offset) {
 
 async function renderRegister() {
   const panel = $('tab-register');
-  if (selectedCoachId == null && isAdmin) { panel.innerHTML = '<p class="subtle">請先於上方選擇教練。</p>'; return; }
   const { start, dates } = regWeekRange(regWeekOffset);
+  // 工具列（管理者多一個「全部教練」選擇器）
+  let pickerHtml = '';
+  if (isAdmin) {
+    pickerHtml = `<select id="reg-coach-picker" class="border rounded p-1 text-sm" style="width:auto;"></select>`;
+  }
   panel.innerHTML = `
     <div class="reg-toolbar">
       <button id="reg-prev" class="btn-secondary reg-navbtn">← 上一週</button>
       <button id="reg-today" class="btn-secondary reg-navbtn">本週</button>
       <button id="reg-next" class="btn-secondary reg-navbtn">下一週 →</button>
+      ${pickerHtml}
       <span id="reg-range" class="reg-range"></span>
     </div>
     <div id="reg-grid" class="reg-grid-wrap"><p class="subtle">載入中…</p></div>`;
@@ -528,18 +543,41 @@ async function renderRegister() {
   $('reg-today').onclick = () => { regWeekOffset = 0; renderRegister(); };
   $('reg-range').textContent = `${dates[0].slice(5).replace('-', '/')} – ${dates[6].slice(5).replace('-', '/')}`;
 
+  // 管理者：填充教練選擇器（全部教練 + 各 active coach）
+  if (isAdmin) {
+    const picker = $('reg-coach-picker');
+    if (!regCoachOptionsCache) {
+      let opts = '<option value="all">全部教練</option>';
+      try {
+        const all = await api('/api/admin/coaches');
+        opts += all.filter(c => c.is_active).map(c => `<option value="${c.id}">${escapeHtml(c.display_name)}</option>`).join('');
+      } catch {}
+      regCoachOptionsCache = opts;
+    }
+    picker.innerHTML = regCoachOptionsCache;
+    picker.value = regViewCoachId;
+    picker.onchange = () => { regViewCoachId = picker.value; renderRegister(); };
+  }
+
+  // 取週資料
   let data;
-  const q = coachQuery();
-  try { data = await api(`/api/coach/week${q ? q + '&' : '?'}start=${start}`); }
-  catch (e) { $('reg-grid').innerHTML = `<p class="subtle" style="color:#dc2626;">載入失敗：${escapeHtml(e.message)}</p>`; return; }
+  try {
+    let url;
+    if (isAdmin) url = `/api/coach/week?all=1&start=${start}` + (regViewCoachId !== 'all' ? `&coachId=${regViewCoachId}` : '');
+    else url = `/api/coach/week?start=${start}`;
+    data = await api(url);
+  } catch (e) { $('reg-grid').innerHTML = `<p class="subtle" style="color:#dc2626;">載入失敗：${escapeHtml(e.message)}</p>`; return; }
 
-  // 索引：available slots / bookings / group sessions by 'YYYY-MM-DDTHH'
-  const slotKey = (iso) => iso.slice(0, 13); // 'YYYY-MM-DDTHH'
+  const slotKey = (iso) => iso.slice(0, 13);
+  // 多教練同格 → 陣列
+  const bookByKey = new Map(); for (const b of data.bookings || []) { const k = slotKey(b.start_at); (bookByKey.get(k) || bookByKey.set(k, []).get(k)).push(b); }
+  const grpByKey = new Map(); for (const g of data.groupSessions || []) { const k = slotKey(g.start_at); (grpByKey.get(k) || grpByKey.set(k, []).get(k)).push(g); }
   const avail = new Set((data.availableSlots || []).map(s => slotKey(s.start)));
-  const bookByKey = new Map(); for (const b of data.bookings || []) bookByKey.set(slotKey(b.start_at), b);
-  const grpByKey = new Map(); for (const g of data.groupSessions || []) grpByKey.set(slotKey(g.start_at), g);
+  const isAll = isAdmin && regViewCoachId === 'all';
+  const targetCoachId = isAdmin ? (regViewCoachId !== 'all' ? Number(regViewCoachId) : null) : null;
+  const canRegister = !isAdmin || targetCoachId != null;
 
-  // 動態時段範圍：預設 07–21，但若資料（預約/團課/班表）含更早/更晚的整點則擴充，避免藏住範圍外的項目。
+  // 動態時段
   const hourOf = (iso) => Number(String(iso).slice(11, 13));
   let hMin = REG_HOUR_MIN, hMax = REG_HOUR_MAX;
   for (const b of data.bookings || []) { hMin = Math.min(hMin, hourOf(b.start_at)); hMax = Math.max(hMax, hourOf(b.start_at)); }
@@ -555,23 +593,37 @@ async function renderRegister() {
     rows += `<div class="reg-cell reg-timecol">${hh}:00</div>`;
     for (const d of dates) {
       const iso = `${d}T${hh}:00:00`; const key = `${d}T${hh}`;
-      const bk = bookByKey.get(key); const gp = grpByKey.get(key);
-      if (bk) {
-        const tag = bk.session_type === '1on2' ? '1對2' : '1對1';
-        rows += `<div class="reg-cell reg-booked" title="${escapeHtml(bk.member_name)}">${escapeHtml(bk.member_name)}<br><span class="reg-sub">${tag}</span></div>`;
-      } else if (gp) {
-        rows += `<div class="reg-cell reg-group" title="${escapeHtml(gp.name)}">${escapeHtml(gp.name)}<br><span class="reg-sub">團課</span></div>`;
+      const bks = bookByKey.get(key) || []; const gps = grpByKey.get(key) || [];
+      if (bks.length || gps.length) {
+        let inner = bks.map(b => {
+          const tag = b.session_type === '1on2' ? '1對2' : '1對1';
+          const other = targetCoachId != null && b.coach_id !== targetCoachId;
+          const coachLbl = (isAll || other) ? `<span class="reg-sub">· ${escapeHtml(b.coach_name || '')}</span>` : '';
+          return `<div class="reg-bk${other ? ' reg-booked-other' : ''}" data-bk="${b.id}">${escapeHtml(b.member_name)} <span class="reg-sub">${tag}</span>${coachLbl}</div>`;
+        }).join('');
+        inner += gps.map(g => `<div class="reg-gp">${escapeHtml(g.name)} <span class="reg-sub">團課${isAll ? '· ' + escapeHtml(g.coach_name || '') : ''}</span></div>`).join('');
+        rows += `<div class="reg-cell reg-multi">${inner}</div>`;
       } else {
-        const cls = avail.has(key) ? 'reg-open reg-avail' : 'reg-open';
+        const cls = (canRegister && avail.has(key)) ? 'reg-open reg-avail' : 'reg-open';
         rows += `<div class="reg-cell ${cls}" data-slot="${iso}">＋</div>`;
       }
     }
   }
   $('reg-grid').innerHTML = `<div class="reg-grid">${head}${rows}</div>`;
-  $('reg-grid').querySelectorAll('.reg-open[data-slot]').forEach(c => {
-    c.addEventListener('click', () => openRegisterModal(c.dataset.slot));
-  });
+  // 空格登錄
+  $('reg-grid').querySelectorAll('.reg-open[data-slot]').forEach(c => c.addEventListener('click', () => {
+    if (!canRegister) { toast('請先於上方選擇要登錄的教練', 'error'); return; }
+    openRegisterModal(c.dataset.slot);
+  }));
+  // 預約格 → 編輯
+  $('reg-grid').querySelectorAll('.reg-bk[data-bk]').forEach(c => c.addEventListener('click', () => {
+    const all = data.bookings.find(b => b.id === Number(c.dataset.bk));
+    if (all) openBookingEditModal(all);
+  }));
 }
+
+// Task 4 取代；先 stub 避免 ReferenceError
+function openBookingEditModal(booking) { console.log('[edit] booking', booking.id); }
 
 let regmSlot = null;       // 'YYYY-MM-DDTHH:00:00'
 let regmCustomer = null;   // {id,name,phone}
@@ -727,7 +779,7 @@ function buildRecurrence() {
 async function doRegmPreview() {
   const box = $('regm-preview'); box.innerHTML = '預覽中…';
   try {
-    const r = await api('/api/coach/register/preview', { method: 'POST', body: withCoach({ memberId: regmCustomer.id, packageId: regmPackageId, startAt: regmSlot, recurrence: buildRecurrence() }) });
+    const r = await api('/api/coach/register/preview', { method: 'POST', body: regTargetBody({ memberId: regmCustomer.id, packageId: regmPackageId, startAt: regmSlot, recurrence: buildRecurrence() }) });
     const label = { ok: '✓ 建立', conflict: '✕ 衝突跳過', no_date: '✕ 無此日', depleted: '✕ 方案用罄' };
     box.innerHTML = `<div class="regm-sub">將建立 <strong>${r.willCreate}</strong> 筆、扣 ${r.willDeduct} 堂、方案剩 ${r.remainingAfter}</div>` +
       r.occurrences.map(o => `<div class="regm-occ regm-${o.status}">${regmSlotLabel(o.startAt)} — ${label[o.status]}</div>`).join('');
@@ -736,7 +788,7 @@ async function doRegmPreview() {
 
 async function doRegmSubmit() {
   try {
-    const r = await api('/api/coach/register', { method: 'POST', body: withCoach({ memberId: regmCustomer.id, packageId: regmPackageId, startAt: regmSlot, recurrence: buildRecurrence() }) });
+    const r = await api('/api/coach/register', { method: 'POST', body: regTargetBody({ memberId: regmCustomer.id, packageId: regmPackageId, startAt: regmSlot, recurrence: buildRecurrence() }) });
     toast(`已登錄 ${r.created.length} 筆${r.skipped.length ? `（跳過 ${r.skipped.length}）` : ''}`, 'success');
     regmClose(); renderRegister();
   } catch (e) {
