@@ -625,6 +625,59 @@ export function createCoachRegister({ coachId, memberId, packageId, startAt, rec
   });
 }
 
+const clashOtherBooking = db.prepare(
+  "SELECT 1 FROM bookings WHERE coach_id = ? AND start_at = ? AND status = 'confirmed' AND id <> ? LIMIT 1"
+);
+
+/** 改時段（同教練）：移動 start/end，不動 member/package/付款。權限：非管理者限本人教練。 */
+export function rescheduleBooking({ bookingId, newStartAt, actorUserId, isAdmin = false }) {
+  if (typeof newStartAt !== 'string' || !START_AT_RE.test(newStartAt)) throw new ApiError(400, 'invalid_start_at');
+  return tx(() => {
+    const b = getBookingStmt.get(bookingId);
+    if (!b) throw new ApiError(404, 'booking_not_found');
+    if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
+    const coach = getCoachStmt.get(b.coach_id);
+    if (!isAdmin && (!coach || coach.user_id !== actorUserId)) throw new ApiError(403, 'forbidden');
+    const newEndAt = addMinutes(newStartAt, 60);
+    if (clashOtherBooking.get(b.coach_id, newStartAt, bookingId)) throw new ApiError(409, 'slot_taken');
+    try {
+      db.prepare('UPDATE bookings SET start_at = ?, end_at = ? WHERE id = ?').run(newStartAt, newEndAt, bookingId);
+    } catch (e) {
+      if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
+      throw e;
+    }
+    if (coach) notify({ userId: b.member_id, sessionId: null, type: 'booking_rescheduled',
+      vars: { coach_display_name: coach.display_name, start_at: fmtDateForLine(newStartAt) } });
+    return { ok: true, bookingId, startAt: newStartAt, endAt: newEndAt };
+  });
+}
+
+/** 改客人/方案（同教練同時段）：退舊方案(若有)→驗新方案(屬新客人、有效)→扣新→更新欄位（轉為方案登錄、已核對）。 */
+export function reassignBooking({ bookingId, newMemberId, newPackageId, actorUserId, isAdmin = false }) {
+  return tx(() => {
+    const b = getBookingStmt.get(bookingId);
+    if (!b) throw new ApiError(404, 'booking_not_found');
+    if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
+    const coach = getCoachStmt.get(b.coach_id);
+    if (!isAdmin && (!coach || coach.user_id !== actorUserId)) throw new ApiError(403, 'forbidden');
+    const memberId = Number(newMemberId);
+    const p = pkgGetPackage(newPackageId);
+    if (!p) throw new ApiError(404, 'package_not_found');
+    if (p.member_id !== memberId) throw new ApiError(400, 'package_member_mismatch');
+    if (!p.is_valid) throw new ApiError(409, 'package_invalid');
+    if (b.discount_code) releaseRedemption({ kind: 'booking', refId: bookingId }); // 釋放舊折扣碼用量（轉方案後不再套折扣；比照 cancelBooking）
+    if (b.package_id) refundPackageOne(b.package_id);          // 退舊方案（+1；refundOne 封頂、best-effort）
+    if (!pkgDeductOne(newPackageId)) throw new ApiError(409, 'package_depleted'); // 防禦（單執行緒下用罄方案 is_valid=false 已先擋為 package_invalid）；失敗 → tx rollback 還原退舊
+    const unitPrice = p.amount != null ? Math.round(p.amount / p.total_sessions) : null;
+    db.prepare(`UPDATE bookings SET member_id = ?, package_id = ?, session_type = ?, original_amount = ?,
+                discount_code = NULL, discount_amount = NULL, paid_at = ?, paid_by = ? WHERE id = ?`)
+      .run(memberId, newPackageId, p.session_type, unitPrice, nowLocal(), actorUserId, bookingId);
+    if (coach) notify({ userId: memberId, sessionId: null, type: 'booking_confirmed',
+      vars: { coach_display_name: coach.display_name, start_at: fmtDateForLine(b.start_at) } });
+    return { ok: true, bookingId };
+  });
+}
+
 /** 單一 occurrence 可建立？＝與單筆公開預約相同管線（班表/請假/緩衝/容量/重疊/freebusy）。
  *  includePast（限管理者）：放行過去日期的場次（容量/重疊仍照常檢查）。 */
 function _occurrenceAvailable({ coachId, startAt, units, externalBusy, includePast = false }) {

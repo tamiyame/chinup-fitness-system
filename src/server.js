@@ -42,6 +42,8 @@ import {
   createRecurringBookings as svcCreateRecurring,
   previewCoachRegister as svcPreviewRegister,
   createCoachRegister as svcCreateRegister,
+  rescheduleBooking as svcRescheduleBooking,
+  reassignBooking as svcReassignBooking,
 } from './services/bookingService.js';
 import {
   createGroupOrder as svcCreateGroupOrder,
@@ -845,9 +847,19 @@ app.post('/api/coach/packages/:id/restore', requireCoach, asyncHandler((req, res
 
 // --- 登錄預約：週曆彙整 / 客人搜尋 / 預覽 / 建立 ---
 app.get('/api/coach/week', requireCoach, asyncHandler((req, res) => {
+  const wantAll = (req.query.all === '1' || req.query.all === 'true') && !!req.user.is_admin;
+  if (wantAll) {
+    // 全部教練：coachId 可選（決定底色/登錄目標）。
+    let coachId = null;
+    if (req.query.coachId != null && req.query.coachId !== '') {
+      const c = svcGetCoach(Number(req.query.coachId));
+      if (!c) return res.status(404).json({ error: 'coach_not_found' });
+      coachId = c.id;
+    }
+    return res.json(svcGetCoachWeek({ coachId, start: req.query.start, all: true }));
+  }
   const coach = resolveCoach(req, res); if (!coach) return;
-  const { start } = req.query;
-  res.json(svcGetCoachWeek({ coachId: coach.id, start }));
+  res.json(svcGetCoachWeek({ coachId: coach.id, start: req.query.start }));
 }));
 
 app.get('/api/coach/customers/search', requireCoach, asyncHandler((req, res) => {
@@ -866,6 +878,20 @@ app.post('/api/coach/register', requireCoach, asyncHandler((req, res) => {
   const r = svcCreateRegister({ coachId: coach.id, memberId: Number(memberId), packageId: Number(packageId), startAt, recurrence: recurrence || null, actorId: req.user.id });
   for (const c of r.created) syncBookingCreate(c.id); // commit 後副作用
   res.status(201).json(r);
+}));
+
+app.patch('/api/coach/bookings/:id/reschedule', requireCoach, asyncHandler((req, res) => {
+  const { startAt } = req.body || {};
+  const r = svcRescheduleBooking({ bookingId: Number(req.params.id), newStartAt: startAt, actorUserId: req.user.id, isAdmin: !!req.user.is_admin });
+  syncBookingCancel(r.bookingId).then(() => syncBookingCreate(r.bookingId)); // 刷新日曆事件
+  res.json(r);
+}));
+
+app.patch('/api/coach/bookings/:id/reassign', requireCoach, asyncHandler((req, res) => {
+  const { memberId, packageId } = req.body || {};
+  const r = svcReassignBooking({ bookingId: Number(req.params.id), newMemberId: Number(memberId), newPackageId: Number(packageId), actorUserId: req.user.id, isAdmin: !!req.user.is_admin });
+  syncBookingCancel(r.bookingId).then(() => syncBookingCreate(r.bookingId));
+  res.json(r);
 }));
 
 // --- Public (no auth): anon booking / group orders / phone lookup ---

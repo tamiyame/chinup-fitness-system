@@ -54,6 +54,10 @@ const TEMPLATES = {
     subject: '一對一預約成功 - {{coach_display_name}}',
     body: '✅ 已成功預約 {{coach_display_name}} 教練的 {{start_at}} 課程。',
   },
+  booking_rescheduled: {  // 寄給會員（教練/管理者改期）
+    subject: '預約時間已更新 - {{coach_display_name}}',
+    body: '🔄 您與 {{coach_display_name}} 教練的課程已改至 {{start_at}}，請留意新的上課時間。',
+  },
   booking_cancelled_by_member: {  // 寄給教練
     subject: '會員取消預約 - {{member_name}}',
     body: '⚠️ {{member_name}} 取消了 {{start_at}} 的一對一預約。',
