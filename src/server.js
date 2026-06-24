@@ -42,6 +42,8 @@ import {
   createRecurringBookings as svcCreateRecurring,
   previewCoachRegister as svcPreviewRegister,
   createCoachRegister as svcCreateRegister,
+  rescheduleBooking as svcRescheduleBooking,
+  reassignBooking as svcReassignBooking,
 } from './services/bookingService.js';
 import {
   createGroupOrder as svcCreateGroupOrder,
@@ -876,6 +878,20 @@ app.post('/api/coach/register', requireCoach, asyncHandler((req, res) => {
   const r = svcCreateRegister({ coachId: coach.id, memberId: Number(memberId), packageId: Number(packageId), startAt, recurrence: recurrence || null, actorId: req.user.id });
   for (const c of r.created) syncBookingCreate(c.id); // commit 後副作用
   res.status(201).json(r);
+}));
+
+app.patch('/api/coach/bookings/:id/reschedule', requireCoach, asyncHandler((req, res) => {
+  const { startAt } = req.body || {};
+  const r = svcRescheduleBooking({ bookingId: Number(req.params.id), newStartAt: startAt, actorUserId: req.user.id, isAdmin: !!req.user.is_admin });
+  syncBookingCancel(r.bookingId).then(() => syncBookingCreate(r.bookingId)); // 刷新日曆事件
+  res.json(r);
+}));
+
+app.patch('/api/coach/bookings/:id/reassign', requireCoach, asyncHandler((req, res) => {
+  const { memberId, packageId } = req.body || {};
+  const r = svcReassignBooking({ bookingId: Number(req.params.id), newMemberId: Number(memberId), newPackageId: Number(packageId), actorUserId: req.user.id, isAdmin: !!req.user.is_admin });
+  syncBookingCancel(r.bookingId).then(() => syncBookingCreate(r.bookingId));
+  res.json(r);
 }));
 
 // --- Public (no auth): anon booking / group orders / phone lookup ---
