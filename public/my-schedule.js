@@ -382,7 +382,7 @@ function render() {
               <div class="pk-meta">已登錄 ${used} · 共 ${total} 堂${exp}</div>
               <div class="pk-bar"><div class="pk-bar-fill" style="width:${pct}%"></div></div>
             </div>
-            <div class="pk-remain"><span class="pk-rnum">${remain}</span><span class="pk-rlabel">剩餘堂</span></div>
+            <div class="pk-remain"><span class="pk-rtop">剩餘</span><span class="pk-rnum">${remain}</span><span class="pk-rlabel">堂</span></div>
           </div>`;
         }).join('');
     }
