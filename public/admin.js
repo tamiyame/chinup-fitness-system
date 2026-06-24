@@ -673,6 +673,18 @@ function openUserEditModal(id) {
 
 const PKG_TYPE_LABEL = { '1on1': '一對一', '1on2': '一對二' };
 
+let adminDiscountCodesCache = null; // [{code,discount_type,discount_value}]
+async function getDiscountCodes() {
+  if (adminDiscountCodesCache) return adminDiscountCodesCache;
+  try { adminDiscountCodesCache = await api('/api/coach/discount-codes'); } catch { adminDiscountCodesCache = []; }
+  return adminDiscountCodesCache;
+}
+function discountOptionsHtml(codes) {
+  const label = (c) => c.discount_type === 'percent' ? `${c.discount_value}% 折扣` : `折抵 $${c.discount_value}`;
+  return '<option value="">不使用折扣碼</option>' +
+    codes.map(c => `<option value="${escapeHtml(c.code)}">${escapeHtml(c.code)} — ${label(c)}</option>`).join('');
+}
+
 async function renderMemberPackages(memberId, mountEl) {
   if (!mountEl) return;
   mountEl.innerHTML = '<p class="subtle" style="font-size:12px;">載入方案中…</p>';
@@ -712,8 +724,11 @@ async function renderMemberPackages(memberId, mountEl) {
         <input id="pkg-expiry" class="form-input" type="date" style="margin:0;" />
       </div>
       <input id="pkg-note" class="form-input" placeholder="備註（可空）" style="margin:6px 0 0;" />
+      <select id="pkg-discount" class="form-select" style="margin:6px 0 0;"></select>
       <button id="pkg-create" class="btn btn-primary btn-sm" style="margin-top:8px;">建立方案</button>
     </details>`;
+
+  getDiscountCodes().then(codes => { const el = mountEl.querySelector('#pkg-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
 
   // 建立
   mountEl.querySelector('#pkg-create')?.addEventListener('click', async () => {
@@ -726,6 +741,7 @@ async function renderMemberPackages(memberId, mountEl) {
         memberId, sessionType: mountEl.querySelector('#pkg-type').value, totalSessions: total,
         amount: amountRaw === '' ? null : Number(amountRaw),
         expiresAt: expiry || null, note: mountEl.querySelector('#pkg-note').value || null,
+        discountCode: mountEl.querySelector('#pkg-discount')?.value || null,
       }});
       toast('方案已建立', 'success');
       renderMemberPackages(memberId, mountEl);

@@ -506,6 +506,17 @@ function escapeAttr(s) { return escapeHtml(s); }
 let regWeekOffset = 0; // 0=本週
 let regViewCoachId = 'all'; // 管理者登錄分頁檢視：'all' 或 coachId 字串；一般教練不使用
 let regCoachOptionsCache = null; // 教練選單 options HTML 快取（避免每次重繪重撈 /api/admin/coaches）
+let regDiscountCodesCache = null; // [{code,discount_type,discount_value}]
+async function getDiscountCodes() {
+  if (regDiscountCodesCache) return regDiscountCodesCache;
+  try { regDiscountCodesCache = await api('/api/coach/discount-codes'); } catch { regDiscountCodesCache = []; }
+  return regDiscountCodesCache;
+}
+function discountOptionsHtml(codes) {
+  const label = (c) => c.discount_type === 'percent' ? `${c.discount_value}% 折扣` : `折抵 $${c.discount_value}`;
+  return '<option value="">不使用折扣碼</option>' +
+    codes.map(c => `<option value="${escapeHtml(c.code)}">${escapeHtml(c.code)} — ${label(c)}</option>`).join('');
+}
 const REG_HOUR_MIN = 7, REG_HOUR_MAX = 21; // 預設顯示 07:00–21:00（slot 起點）；資料超出此範圍時動態擴充，避免藏到預約
 const REG_DOW = ['一','二','三','四','五','六','日'];
 
@@ -795,14 +806,16 @@ function renderRegmPicked() {
         <input id="regm-np-total" class="form-input" type="number" min="1" placeholder="堂數" />
         <input id="regm-np-amount" class="form-input" type="number" min="0" placeholder="金額（可空）" />
         <input id="regm-np-expiry" class="form-input" type="date" />
+        <select id="regm-np-discount" class="form-select"></select>
         <button id="regm-np-create" class="btn-primary">建立方案</button>
       </div>`;
+    getDiscountCodes().then(codes => { const el = document.getElementById('regm-np-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
     $('regm-np-create').onclick = async () => {
       const total = Number($('regm-np-total').value);
       if (!Number.isInteger(total) || total <= 0) { toast('請填正確堂數', 'error'); return; }
       const amt = $('regm-np-amount').value;
       try {
-        await api('/api/coach/packages', { method: 'POST', body: { memberId: regmCustomer.id, sessionType: $('regm-np-type').value, totalSessions: total, amount: amt === '' ? null : Number(amt), expiresAt: $('regm-np-expiry').value || null } });
+        await api('/api/coach/packages', { method: 'POST', body: { memberId: regmCustomer.id, sessionType: $('regm-np-type').value, totalSessions: total, amount: amt === '' ? null : Number(amt), expiresAt: $('regm-np-expiry').value || null, discountCode: document.getElementById('regm-np-discount')?.value || null } });
         toast('方案已建立', 'success'); loadRegmPackages();
       } catch (e) { toast(`建立失敗：${e.message}`, 'error'); }
     };
