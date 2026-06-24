@@ -225,6 +225,7 @@ addColumnIfMissing('bookings', 'recurring_group_id', 'INTEGER');
 // customer_packages 表由 SCHEMA 的 CREATE TABLE IF NOT EXISTS 建立（含既有 DB）。
 // bookings.package_id：扣抵來源方案（NULL=非方案預約）。取消預約時回補該方案 1 堂。
 addColumnIfMissing('bookings', 'package_id', 'INTEGER REFERENCES customer_packages(id)');
+addColumnIfMissing('customer_packages', 'discount_code', 'TEXT');
 
 // ── 2026-06-12 教練課付款狀態流 ──
 // paid_at NULL=待核對、非 NULL=已核對（鏡像 group_orders.paid_at/paid_by；status 不變，佔時段/容量照舊）。

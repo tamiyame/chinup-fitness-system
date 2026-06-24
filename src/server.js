@@ -80,7 +80,7 @@ import {
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
-import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours } from './services/discountService.js';
+import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours, listActiveDiscountCodes } from './services/discountService.js';
 import { isValidPhone } from './services/userService.js';
 import { syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
 import {
@@ -816,10 +816,12 @@ app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
 
 // --- 方案（套餐）：教練/管理者管理客人方案 ---
 app.post('/api/coach/packages', requireCoach, asyncHandler((req, res) => {
-  const { memberId, sessionType, totalSessions, amount, expiresAt, note } = req.body || {};
-  res.status(201).json(svcCreatePackage({
-    memberId: Number(memberId), sessionType, totalSessions, amount, expiresAt, note, createdBy: req.user.id,
-  }));
+  const { memberId, sessionType, totalSessions, amount, expiresAt, note, discountCode } = req.body || {};
+  res.status(201).json(svcCreatePackage({ memberId: Number(memberId), sessionType, totalSessions, amount, expiresAt, note, discountCode, createdBy: req.user.id }));
+}));
+
+app.get('/api/coach/discount-codes', requireCoach, asyncHandler((req, res) => {
+  res.json(listActiveDiscountCodes());
 }));
 
 app.get('/api/coach/packages', requireCoach, asyncHandler((req, res) => {
