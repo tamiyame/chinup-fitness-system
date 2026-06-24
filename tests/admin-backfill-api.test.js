@@ -63,14 +63,6 @@ expect('非管理者 + backfill=1 → 過去日期空清單（忽略）', () => 
 const bkAnon = await req('POST', '/api/public/bookings', { body: { coachId, startAt: pastStart, name:'過去客', phone:'0957000001' } });
 expect('匿名預約過去時段 → 409 slot_unavailable', () => assert.equal(bkAnon.status, 409));
 
-// 管理者循環預覽（過去起始）→ 首堂可建立（過去場次照常驗證、容量正常）
-const rprev = await req('POST', '/api/bookings/recurring/preview', { token, body: { coachId, startAt: pastStart2, sessionType:'1on1', frequency:'weekly', count: 2 } });
-expect('管理者循環預覽（過去起始）→ 首堂 ok', () => {
-  assert.equal(rprev.status, 200);
-  const first = rprev.data.occurrences.find(o => o.startAt === pastStart2);
-  assert.ok(first && first.ok === true);
-});
-
 // 管理者用正常端點預約過去時段 → 201（比照正常：建立 confirmed、待核對）
 const bkAdmin = await req('POST', '/api/public/bookings', { token, body: { coachId, startAt: pastStart, name:'過去客', phone:'0957000001' } });
 expect('管理者預約過去時段 → 201', () => assert.equal(bkAdmin.status, 201));

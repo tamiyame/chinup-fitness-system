@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 process.env.LINE_MOCK = '1';
 process.env.GMAIL_MOCK = '1';
 const { db } = await import('../src/db/connection.js');
-const { createRecurringBookings, listPendingPaymentBookings, confirmBookingPaymentGroup,
+const { listPendingPaymentBookings, confirmBookingPaymentGroup,
         cancelBookingAdminGroup, refundBookingGroupAdmin, refundBookingAdmin, listConfirmedPayments } = await import('../src/services/bookingService.js');
 const { addRule, computeAvailableSlots } = await import('../src/services/availabilityService.js');
 
@@ -18,11 +18,24 @@ for (let dow = 0; dow <= 6; dow++) addRule({ coachId, dayOfWeek: dow, startTime:
 const pad = n => String(n).padStart(2,'0');
 const day = (d) => { const x = new Date(Date.now() + d*86400000); return `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`; };
 
+const insBk = db.prepare("INSERT INTO bookings (coach_id, member_id, start_at, end_at, session_type, original_amount) VALUES (?, ?, ?, ?, '1on1', 1500)");
+function makeUnpaidGroup({ startOffset, time, count, name, phone }) {
+  let uid = db.prepare('SELECT id FROM users WHERE phone=?').get(phone)?.id;
+  if (!uid) uid = Number(db.prepare("INSERT INTO users (name,email,role,phone) VALUES (?, ?, 'user', ?)").run(name, `bg-${phone}@x.com`, phone).lastInsertRowid);
+  const hh = time.slice(0, 2); const endHh = String(Number(hh) + 1).padStart(2, '0');
+  const ids = [];
+  for (let k = 0; k < count; k++) {
+    const ds = day(startOffset + 7 * k); // weekly = +7 天，對齊舊 recurringOccurrences
+    ids.push(Number(insBk.run(coachId, uid, `${ds}T${time}:00`, `${ds}T${endHh}:00:00`).lastInsertRowid));
+  }
+  const groupId = ids[0];
+  const ph = ids.map(() => '?').join(',');
+  db.prepare(`UPDATE bookings SET recurring_group_id=? WHERE id IN (${ph})`).run(groupId, ...ids);
+  return { groupId, created: ids.map(id => ({ id })) };
+}
+
 // 三堂循環（未收款）
-const r1 = createRecurringBookings({
-  coachId, startAt: `${day(7)}T10:00:00`, name: '批量客', phone: '0983111222',
-  frequency: 'weekly', count: 3, actorId: operator,
-});
+const r1 = makeUnpaidGroup({ startOffset: 7, time: '10:00', count: 3, name: '批量客', phone: '0983111222' });
 
 expect('pending：三堂集中成一個 group 項目', () => {
   const list = listPendingPaymentBookings();
@@ -73,10 +86,7 @@ expect('整批退款：其餘全退、時段釋出、會員摘要一則', () => 
 });
 
 // 第二批：整批取消（未收款）
-const r2 = createRecurringBookings({
-  coachId, startAt: `${day(8)}T14:00:00`, name: '批量客二', phone: '0983333444',
-  frequency: 'weekly', count: 2, actorId: operator,
-});
+const r2 = makeUnpaidGroup({ startOffset: 8, time: '14:00', count: 2, name: '批量客二', phone: '0983333444' });
 expect('整批取消：全部 cancelled、釋出時段、通知會員＋教練各一則', () => {
   db.exec("DELETE FROM notifications");
   const r = cancelBookingAdminGroup({ groupId: r2.groupId, actorId: operator, reason: '排程調整' });

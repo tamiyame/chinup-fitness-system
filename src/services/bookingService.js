@@ -6,7 +6,7 @@ import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getOneOnOnePriceByType, getLineOfficialUrl } from './discountService.js';
 import { refundOne as refundPackageOne, deductOne as pkgDeductOne, getPackage as pkgGetPackage } from './packageService.js';
 import { assertBookableTx, computeAvailableSlots } from './availabilityService.js';
-import { sendPaymentConfirmedEmail, sendRecurringConfirmation } from './emailService.js';
+import { sendPaymentConfirmedEmail } from './emailService.js';
 
 const START_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -429,48 +429,6 @@ function addMinutes(localTs, minutes) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// 循環預約（教練/管理者限定；spec: docs/superpowers/specs/2026-06-12-recurring-bookings-design.md）
-// ─────────────────────────────────────────────────────────────────────
-
-const RECURRING_FREQS = ['daily', 'weekly', 'monthly', 'custom'];
-
-function _validateRecurringParams({ startAt, sessionType, frequency, intervalDays, count }) {
-  if (typeof startAt !== 'string' || !START_AT_RE.test(startAt)) throw new ApiError(400, 'invalid_start_at');
-  if (sessionType !== '1on1' && sessionType !== '1on2') throw new ApiError(400, 'invalid_session_type');
-  if (!RECURRING_FREQS.includes(frequency)) throw new ApiError(400, 'invalid_frequency');
-  if (frequency === 'custom' && (!Number.isInteger(intervalDays) || intervalDays < 1 || intervalDays > 90)) {
-    throw new ApiError(400, 'invalid_interval');
-  }
-  if (!Number.isInteger(count) || count < 2 || count > 52) throw new ApiError(400, 'invalid_count');
-}
-
-/** occurrence 清單（含首堂）。monthly 以首堂「日」為準，當月無此日 → reason:'no_date'（不順延）。 */
-export function recurringOccurrences({ startAt, frequency, intervalDays = null, count }) {
-  const [datePart, timePart] = startAt.split('T');
-  const [y0, m0, d0] = datePart.split('-').map(Number);
-  const pad = (n) => String(n).padStart(2, '0');
-  const out = [];
-  for (let k = 0; k < count; k++) {
-    if (frequency === 'monthly') {
-      const totalM = (m0 - 1) + k;
-      const y = y0 + Math.floor(totalM / 12);
-      const m = (totalM % 12) + 1;
-      const probe = new Date(y, m - 1, d0);
-      const label = `${y}-${pad(m)}-${pad(d0)}T${timePart}`;
-      // 該月無此日（如 2/31）→ Date 會 roll 到下月 → 標記跳過
-      if (probe.getMonth() !== m - 1) { out.push({ startAt: label, reason: 'no_date' }); continue; }
-      out.push({ startAt: label });
-    } else {
-      const step = frequency === 'daily' ? 1 : frequency === 'weekly' ? 7 : intervalDays;
-      const d = new Date(`${datePart}T00:00:00`);
-      d.setDate(d.getDate() + step * k);
-      out.push({ startAt: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${timePart}` });
-    }
-  }
-  return out;
-}
-
 // ── 2026-06-24 進階循環（Google 行事曆式；PR2 登錄用，獨立於舊 recurringOccurrences）──
 const REC_FREQS = ['daily', 'weekly', 'monthly', 'yearly'];
 const REC_MAX_OCCURRENCES = 366; // 上限保護（含 no_date）
@@ -675,101 +633,6 @@ export function reassignBooking({ bookingId, newMemberId, newPackageId, actorUse
     if (coach) notify({ userId: memberId, sessionId: null, type: 'booking_confirmed',
       vars: { coach_display_name: coach.display_name, start_at: fmtDateForLine(b.start_at) } });
     return { ok: true, bookingId };
-  });
-}
-
-/** 單一 occurrence 可建立？＝與單筆公開預約相同管線（班表/請假/緩衝/容量/重疊/freebusy）。
- *  includePast（限管理者）：放行過去日期的場次（容量/重疊仍照常檢查）。 */
-function _occurrenceAvailable({ coachId, startAt, units, externalBusy, includePast = false }) {
-  const date = startAt.slice(0, 10);
-  const slots = computeAvailableSlots({ coachId, fromDate: date, toDate: date, externalBusy, includePast });
-  const hit = slots.find((s) => s.start === startAt);
-  return !!(hit && hit.remain >= units);
-}
-
-/** 預覽：逐場回 { startAt, ok, reason? }，不寫任何東西。 */
-export function previewRecurringBookings({ coachId, startAt, sessionType = '1on1', frequency, intervalDays = null, count, externalBusy = null, includePast = false }) {
-  _validateRecurringParams({ startAt, sessionType, frequency, intervalDays, count });
-  const coach = getCoachStmt.get(coachId);
-  if (!coach) throw new ApiError(404, 'coach_not_found');
-  if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
-  const units = sessionType === '1on2' ? 2 : 1;
-  const occurrences = recurringOccurrences({ startAt, frequency, intervalDays, count }).map((o) => {
-    if (o.reason) return { startAt: o.startAt, ok: false, reason: o.reason };
-    return _occurrenceAvailable({ coachId, startAt: o.startAt, units, externalBusy, includePast })
-      ? { startAt: o.startAt, ok: true }
-      : { startAt: o.startAt, ok: false, reason: 'unavailable' };
-  });
-  return { occurrences };
-}
-
-/** 建立循環預約：tx 內逐場重驗、跳過衝突、可建立者逐堂建立（silent）＋逐堂折扣；
- *  markPaid → 全部直接標已核對（經手人=操作者）。摘要通知各一則。 */
-export function createRecurringBookings({ coachId, startAt, name, phone, email = null, sessionType = '1on1',
-  frequency, intervalDays = null, count, markPaid = false, discountCode = null, actorId, externalBusy = null, includePast = false }) {
-  _validateRecurringParams({ startAt, sessionType, frequency, intervalDays, count });
-  if (email != null && email !== '' && !EMAIL_RE.test(email)) throw new ApiError(400, 'invalid_email');
-  const coach = getCoachStmt.get(coachId);
-  if (!coach) throw new ApiError(404, 'coach_not_found');
-  if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
-  const units = sessionType === '1on2' ? 2 : 1;
-  return tx(() => {
-    const user = findOrCreateUserByPhone({ phone, name });
-    const created = [];
-    const skipped = [];
-    for (const o of recurringOccurrences({ startAt, frequency, intervalDays, count })) {
-      if (o.reason) { skipped.push({ startAt: o.startAt, reason: o.reason }); continue; }
-      if (!_occurrenceAvailable({ coachId, startAt: o.startAt, units, externalBusy, includePast })) {
-        skipped.push({ startAt: o.startAt, reason: 'unavailable' });
-        continue;
-      }
-      const r = createBookingCore({ coach, memberId: user.id, startAt: o.startAt, note: null, sessionType, silent: true });
-      // 金額＋折扣：逐堂套用、與單堂語意一致。額度用罄（總量/每人上限）→ 該堂回
-      // 原價、不中斷整批（spec）；其餘錯誤（無效碼/停用/過期）照樣拋出讓操作者知道。
-      const subtotal = getOneOnOnePriceByType(sessionType);
-      let originalAmount = subtotal, discountAmount = null, discountCode_ = null, finalAmount = subtotal;
-      let applied = null;
-      try {
-        applied = applyDiscountTx({ code: discountCode, phone, subtotal, kind: 'booking', refId: r.id });
-      } catch (e) {
-        if (!(e instanceof ApiError) || !['code_exhausted', 'per_phone_exhausted'].includes(e.code)) throw e;
-      }
-      if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalAmount = applied.finalTotal; }
-      db.prepare('UPDATE bookings SET original_amount=?, discount_amount=?, discount_code=?, customer_email=? WHERE id=?')
-        .run(originalAmount, discountAmount, discountCode_, (email || null), r.id);
-      created.push({ id: r.id, startAt: o.startAt, finalAmount });
-    }
-    if (!created.length) throw new ApiError(409, 'all_conflicted', { skipped });
-
-    const groupId = created[0].id;
-    const ids = created.map((c) => c.id);
-    const ph = ids.map(() => '?').join(',');
-    db.prepare(`UPDATE bookings SET recurring_group_id = ? WHERE id IN (${ph})`).run(groupId, ...ids);
-    if (markPaid) {
-      db.prepare(`UPDATE bookings SET paid_at = ?, paid_by = ? WHERE id IN (${ph})`).run(nowLocal(), actorId, ...ids);
-    }
-
-    // 摘要通知（不逐堂轟炸）
-    const freqText = frequency === 'daily' ? '每日' : frequency === 'weekly' ? '每週'
-      : frequency === 'monthly' ? '每月' : `每 ${intervalDays} 天`;
-    const summaryVars = {
-      count: created.length, coach_display_name: coach.display_name,
-      member_name: user.name, freq_text: freqText, first_at: fmtDateForLine(created[0].startAt),
-    };
-    notify({ userId: user.id, sessionId: null, type: 'booking_recurring_created', vars: summaryVars });
-    if (coach.user_id !== actorId) {
-      notify({ userId: coach.user_id, sessionId: null, type: 'booking_recurring_created_coach', vars: summaryVars });
-    }
-    notifyAdmins({ type: 'booking_recurring_created_coach', excludeUserId: actorId, vars: summaryVars });
-    if (email) sendRecurringConfirmation(groupId); // fire-and-forget（無 email 自動略過）
-
-    const result = {
-      created, skipped, groupId, markPaid: !!markPaid,
-      totalAmount: created.reduce((sum, c) => sum + (c.finalAmount || 0), 0),
-    };
-    if (user.role === 'user' && !user.line_user_id) result.lineBindCode = generateBindCode(user.id).code;
-    result.lineOfficialUrl = getLineOfficialUrl();
-    return result;
   });
 }
 

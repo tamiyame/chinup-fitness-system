@@ -38,8 +38,6 @@ import {
   confirmBookingPaymentGroup as svcConfirmBookingPaymentGroup,
   cancelBookingAdminGroup as svcCancelBookingAdminGroup,
   refundBookingGroupAdmin as svcRefundBookingGroupAdmin,
-  previewRecurringBookings as svcPreviewRecurring,
-  createRecurringBookings as svcCreateRecurring,
   previewCoachRegister as svcPreviewRegister,
   createCoachRegister as svcCreateRegister,
   rescheduleBooking as svcRescheduleBooking,
@@ -1052,38 +1050,6 @@ app.delete('/api/bookings/:id', requireUser, asyncHandler((req, res) => {
   });
   syncBookingCancel(id); // commit 後副作用、不 await（失敗交 reconcile 兜底）
   res.json({ ok: true });
-}));
-
-// ─── 循環預約（教練/管理者限定；spec: 2026-06-12-recurring-bookings-design.md）───
-
-app.post('/api/bookings/recurring/preview', requireCoach, asyncHandler(async (req, res) => {
-  const { coachId, startAt, sessionType, frequency, intervalDays, count } = req.body || {};
-  const params = {
-    coachId: Number(coachId), startAt, sessionType: sessionType || '1on1', frequency,
-    intervalDays: intervalDays != null && intervalDays !== '' ? Number(intervalDays) : null,
-    count: Number(count),
-  };
-  // 一對一不卡 Google 行事曆忙碌時段（externalBusy=null）；管理者可於過去日期排循環，容量/重疊仍照常檢查。
-  res.json(svcPreviewRecurring({ ...params, externalBusy: null, includePast: !!req.user.is_admin }));
-}));
-
-app.post('/api/bookings/recurring', requireCoach, asyncHandler(async (req, res) => {
-  const { coachId, startAt, sessionType, frequency, intervalDays, count, name, phone, email, markPaid, discountCode } = req.body || {};
-  if (!isValidPhone(String(phone || ''))) return res.status(400).json({ error: 'invalid_phone', detail: '電話需為 8-15 碼數字' });
-  const params = {
-    coachId: Number(coachId), startAt, sessionType: sessionType || '1on1', frequency,
-    intervalDays: intervalDays != null && intervalDays !== '' ? Number(intervalDays) : null,
-    count: Number(count),
-  };
-  // 一對一不卡 Google 行事曆忙碌時段（externalBusy=null）。
-  const r = svcCreateRecurring({
-    ...params, name, phone, email: email || null,
-    markPaid: !!markPaid, discountCode: discountCode || null,
-    actorId: req.user.id, externalBusy: null, includePast: !!req.user.is_admin,
-  });
-  // commit 後副作用：逐堂建日曆事件（不 await；reconcile 兜底）
-  for (const c of r.created) syncBookingCreate(c.id);
-  res.status(201).json(r);
 }));
 
 // ─── Phase 3C · LINE notification endpoints ───
