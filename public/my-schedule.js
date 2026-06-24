@@ -14,6 +14,7 @@ const state = {
   lineBound: null,  // true / false / null（非客戶或未查詢）
   one_on_one_remaining: 0,
   group_remaining: 0,
+  packages: [],
 };
 
 // ── Lookup form ──────────────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ async function doLookup(phone, name) {
     state.items = data.items ?? [];
     state.one_on_one_remaining = data.one_on_one_remaining ?? 0;
     state.group_remaining = data.group_remaining ?? 0;
+    state.packages = data.packages ?? [];
     state.lineBound = (data.line_bound ?? null);
     showResults();
     render();
@@ -114,6 +116,7 @@ function showForm() {
   if (ledeEl) ledeEl.style.display = '';
   state.creds = null;
   state.items = [];
+  state.packages = [];
   state.lineBound = null;
   const bar = document.getElementById('auth-bar');
   if (bar) bar.innerHTML = '';
@@ -360,6 +363,29 @@ function render() {
   const summaryEl = document.getElementById('remaining-summary');
   summaryEl.textContent =
     `1對1 剩 ${state.one_on_one_remaining} 堂 · 團體 剩 ${state.group_remaining} 堂`;
+
+  // 我的方案（有效套餐）
+  const PKG_TYPE = { '1on1': '一對一', '1on2': '一對二' };
+  const pkgSec = document.getElementById('packages-section');
+  if (pkgSec) {
+    const pkgs = state.packages || [];
+    if (pkgs.length === 0) {
+      pkgSec.style.display = 'none';
+      pkgSec.innerHTML = '';
+    } else {
+      pkgSec.style.display = 'block';
+      pkgSec.innerHTML =
+        '<div class="section-label">我的方案</div>' +
+        pkgs.map((p) => {
+          const t = PKG_TYPE[p.session_type] || escapeHtml(p.session_type);
+          const exp = p.expires_at ? `（到期 ${escapeHtml(String(p.expires_at)).replace(/-/g, '/')}）` : '';
+          return `<div class="pkg-row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:6px;background:#f8fafc;">
+            <span style="font-weight:600;">${t}</span>
+            <span style="font-size:13px;color:#334155;">總 ${p.total_sessions} 堂・已登錄 ${p.used_sessions}・剩 ${p.remaining_sessions}${exp}</span>
+          </div>`;
+        }).join('');
+    }
+  }
 
   const filtered = filterItems(state.items, state.filter);
   // 即將到來：由近到遠（最早的在最上、標記 Next）；已結束：由新到舊
