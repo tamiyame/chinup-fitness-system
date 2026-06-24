@@ -622,8 +622,109 @@ async function renderRegister() {
   }));
 }
 
-// Task 4 取代；先 stub 避免 ReferenceError
-function openBookingEditModal(booking) { console.log('[edit] booking', booking.id); }
+let bkeditBooking = null;
+function bkeditClose() { $('bkedit-overlay').style.display = 'none'; bkeditBooking = null; }
+
+function openBookingEditModal(booking) {
+  bkeditBooking = booking;
+  const ov = $('bkedit-overlay'); ov.style.display = 'grid';
+  $('bkedit-close').onclick = bkeditClose;
+  ov.onclick = (e) => { if (e.target === ov) bkeditClose(); };
+  renderBkeditBody();
+}
+
+function bkSlotLabel(iso) { return String(iso).slice(0, 16).replace('T', ' ').replace(/-/g, '/'); }
+
+function renderBkeditBody() {
+  const b = bkeditBooking;
+  const tag = b.session_type === '1on2' ? '1對2' : '1對1';
+  const source = b.package_id ? '方案登錄' : (b.discount_code ? `折扣碼 ${escapeHtml(b.discount_code)}` : '一般預約');
+  const paid = b.paid_at ? '已核對' : '待核對';
+  const body = $('bkedit-body');
+  body.innerHTML = `
+    <div class="bke-detail">
+      <div><b>客人：</b>${escapeHtml(b.member_name)}</div>
+      <div><b>教練：</b>${escapeHtml(b.coach_name || '')}</div>
+      <div><b>時段：</b>${bkSlotLabel(b.start_at)}（${tag}）</div>
+      <div><b>付款：</b>${paid}　<b>來源：</b>${source}</div>
+    </div>
+    <div class="bke-actions">
+      <button id="bke-resched-btn" class="btn-secondary">改時段</button>
+      <button id="bke-reassign-btn" class="btn-secondary">改客人/方案</button>
+      <button id="bke-cancel-btn" class="btn-danger">取消預約</button>
+    </div>
+    <div id="bke-panel"></div>`;
+  $('bke-cancel-btn').onclick = doBkCancel;
+  $('bke-resched-btn').onclick = renderBkResched;
+  $('bke-reassign-btn').onclick = renderBkReassign;
+}
+
+async function doBkCancel() {
+  const b = bkeditBooking;
+  if (!confirm(`確定取消「${b.member_name}」${bkSlotLabel(b.start_at)} 的預約？${b.package_id ? '（將回補 1 堂方案）' : ''}`)) return;
+  try {
+    // 管理者取消他教練的預約：帶該預約 coach_id 走 adminOnBehalf；本人取消自己不需。
+    const qs = isAdmin ? `?coachId=${b.coach_id}` : '';
+    await api(`/api/bookings/${b.id}${qs}`, { method: 'DELETE', body: { reason: '後台取消' } });
+    toast('已取消預約', 'success'); bkeditClose(); renderRegister();
+  } catch (e) { toast(`取消失敗：${e.data?.error || e.message}`, 'error'); }
+}
+
+function renderBkResched() {
+  const b = bkeditBooking;
+  const day = String(b.start_at).slice(0, 10);
+  const hours = []; for (let h = 6; h <= 22; h++) hours.push(String(h).padStart(2, '0'));
+  $('bke-panel').innerHTML = `
+    <div class="bke-sub">改到：</div>
+    <div class="bke-row">
+      <input id="bke-date" type="date" class="form-input" value="${day}" />
+      <select id="bke-hour" class="form-select">${hours.map(h => `<option value="${h}" ${String(b.start_at).slice(11,13)===h?'selected':''}>${h}:00</option>`).join('')}</select>
+      <button id="bke-resched-go" class="btn-primary">確認改期</button>
+    </div>`;
+  $('bke-resched-go').onclick = async () => {
+    const startAt = `${$('bke-date').value}T${$('bke-hour').value}:00:00`;
+    try {
+      await api(`/api/coach/bookings/${b.id}/reschedule`, { method: 'PATCH', body: { startAt } });
+      toast('已改期', 'success'); bkeditClose(); renderRegister();
+    } catch (e) { const m = { slot_taken: '該時段已被預約', forbidden: '無權限', invalid_start_at: '時間格式錯' }; toast(m[e.data?.error] || `改期失敗：${e.message}`, 'error'); }
+  };
+}
+
+function renderBkReassign() {
+  const b = bkeditBooking;
+  let picked = null; // {id,name,phone}
+  $('bke-panel').innerHTML = `
+    <div class="bke-sub">改指定客人/方案：</div>
+    <input id="bke-search" class="form-input" placeholder="搜尋客人姓名或電話…" autocomplete="off" />
+    <div id="bke-results" class="regm-results"></div>
+    <div id="bke-pkg"></div>`;
+  const search = $('bke-search'); let t = null;
+  search.addEventListener('input', () => {
+    clearTimeout(t); const q = search.value.trim();
+    if (!q) { $('bke-results').innerHTML = ''; return; }
+    t = setTimeout(async () => {
+      try {
+        const list = await api(`/api/coach/customers/search?q=${encodeURIComponent(q)}`);
+        $('bke-results').innerHTML = list.length ? list.map(u => `<div class="regm-result" data-id="${u.id}">${escapeHtml(u.name)} <span class="regm-sub">${escapeHtml(u.phone || '')}</span></div>`).join('') : '<div class="regm-sub" style="padding:6px;">查無客人</div>';
+        $('bke-results').querySelectorAll('.regm-result').forEach(r => r.addEventListener('click', async () => {
+          picked = list.find(u => u.id === Number(r.dataset.id));
+          $('bke-results').innerHTML = ''; search.value = picked.name;
+          const all = await api(`/api/coach/packages?memberId=${picked.id}`);
+          const valid = all.filter(p => p.is_valid);
+          if (!valid.length) { $('bke-pkg').innerHTML = '<div class="regm-sub" style="color:#b45309;">此客人沒有可用方案，請先於會員管理或登錄彈窗開方案。</div>'; return; }
+          const PT = { '1on1': '一對一', '1on2': '一對二' };
+          $('bke-pkg').innerHTML = `<select id="bke-pkgsel" class="form-select">${valid.map(p => `<option value="${p.id}">${PT[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}</option>`).join('')}</select><button id="bke-reassign-go" class="btn-primary" style="margin-top:6px;">確認改指定</button>`;
+          $('bke-reassign-go').onclick = async () => {
+            try {
+              await api(`/api/coach/bookings/${b.id}/reassign`, { method: 'PATCH', body: { memberId: picked.id, packageId: Number($('bke-pkgsel').value) } });
+              toast('已改指定客人/方案', 'success'); bkeditClose(); renderRegister();
+            } catch (e) { const m = { package_invalid: '方案已失效/用罄', package_member_mismatch: '方案不屬此客人', package_depleted: '方案堂數不足', forbidden: '無權限' }; toast(m[e.data?.error] || `失敗：${e.message}`, 'error'); }
+          };
+        }));
+      } catch (e) { $('bke-results').innerHTML = `<div class="regm-sub" style="color:#dc2626;padding:6px;">${escapeHtml(e.message)}</div>`; }
+    }, 250);
+  });
+}
 
 let regmSlot = null;       // 'YYYY-MM-DDTHH:00:00'
 let regmCustomer = null;   // {id,name,phone}

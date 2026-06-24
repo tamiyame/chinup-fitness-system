@@ -1195,3 +1195,7 @@ details.session-row summary:hover { background: #f8faf9; }
 .regm-occ{padding:2px 0;}
 .regm-ok{color:#166534;}.regm-conflict,.regm-depleted,.regm-no_date{color:#b45309;}
 .regm-actions{display:flex;gap:8px;justify-content:flex-end;}
+.bke-detail{font-size:13px;line-height:1.7;margin-bottom:12px;}
+.bke-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.bke-sub{font-size:13px;font-weight:600;margin:8px 0 4px;}
+.bke-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
