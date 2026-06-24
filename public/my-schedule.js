@@ -359,12 +359,7 @@ function filterItems(items, filter) {
 }
 
 function render() {
-  // Summary line
-  const summaryEl = document.getElementById('remaining-summary');
-  summaryEl.textContent =
-    `1對1 剩 ${state.one_on_one_remaining} 堂 · 團體 剩 ${state.group_remaining} 堂`;
-
-  // 我的方案（有效套餐）
+  // 我的方案（有效套餐）· Nike 卡片：Archivo 大字剩餘數 + 已登錄/共 + 進度條（取代舊「剩 N 堂」膠囊）
   const PKG_TYPE = { '1on1': '一對一', '1on2': '一對二' };
   const pkgSec = document.getElementById('packages-section');
   if (pkgSec) {
@@ -378,10 +373,16 @@ function render() {
         '<div class="section-label">我的方案</div>' +
         pkgs.map((p) => {
           const t = PKG_TYPE[p.session_type] || escapeHtml(p.session_type);
-          const exp = p.expires_at ? `（到期 ${escapeHtml(String(p.expires_at)).replace(/-/g, '/')}）` : '';
-          return `<div class="pkg-row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:6px;background:#f8fafc;">
-            <span style="font-weight:600;">${t}</span>
-            <span style="font-size:13px;color:#334155;">總 ${p.total_sessions} 堂・已登錄 ${p.used_sessions}・剩 ${p.remaining_sessions}${exp}</span>
+          const total = p.total_sessions, used = p.used_sessions, remain = p.remaining_sessions;
+          const pct = total > 0 ? Math.round((used / total) * 100) : 0;
+          const exp = p.expires_at ? ` · 到期 ${escapeHtml(String(p.expires_at)).replace(/-/g, '/')}` : '';
+          return `<div class="pk-card">
+            <div class="pk-main">
+              <div class="pk-type">${t}</div>
+              <div class="pk-meta">已登錄 ${used} · 共 ${total} 堂${exp}</div>
+              <div class="pk-bar"><div class="pk-bar-fill" style="width:${pct}%"></div></div>
+            </div>
+            <div class="pk-remain"><span class="pk-rnum">${remain}</span><span class="pk-rlabel">剩餘堂</span></div>
           </div>`;
         }).join('');
     }

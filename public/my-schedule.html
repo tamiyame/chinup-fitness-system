@@ -141,16 +141,18 @@
     border-color: var(--brand-500, #6366f1);
     box-shadow: 0 0 0 3px rgba(99,102,241,.12);
   }
-  .remaining-banner {
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    border-radius: 10px;
-    padding: 10px 16px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #1d4ed8;
-    margin-bottom: 18px;
-  }
+  /* 我的方案（套餐）· Nike 語彙：細線卡 + Archivo 大字剩餘數 + 進度條 */
+  #packages-section { margin: 4px 0 18px; }
+  .pk-card { display: flex; align-items: center; gap: 14px; border: 1px solid var(--line); border-radius: 14px; padding: 13px 16px; margin-bottom: 10px; background: var(--surface); }
+  .pk-card:last-child { margin-bottom: 0; }
+  .pk-main { flex: 1; min-width: 0; }
+  .pk-type { font-weight: 800; font-size: 15px; letter-spacing: -.01em; color: var(--ink); line-height: 1.1; }
+  .pk-meta { margin-top: 4px; font-size: 12px; font-weight: 500; color: var(--ink-mute); letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+  .pk-bar { margin-top: 9px; height: 5px; border-radius: 999px; background: var(--brand-50); overflow: hidden; }
+  .pk-bar-fill { height: 100%; background: var(--brand-600); border-radius: 999px; }
+  .pk-remain { flex: none; text-align: right; line-height: 1; }
+  .pk-rnum { font-family: "Archivo", sans-serif; font-weight: 900; font-size: 30px; line-height: .9; letter-spacing: -.03em; color: var(--brand-700); font-variant-numeric: tabular-nums; display: block; }
+  .pk-rlabel { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-mute); display: block; margin-top: 4px; }
   /* ── LINE 綁定（navbar 按鈕 + 彈窗）── */
   .ms-line-btn{ display:inline-flex; align-items:center; gap:6px; background:#06c755; color:#fff; border:0; border-radius:8px; font-family:"Noto Sans TC",sans-serif; font-weight:700; font-size:13px; padding:7px 12px; cursor:pointer; min-height:36px; white-space:nowrap; }
   .ms-line-btn:hover{ filter:brightness(.95); }
@@ -246,13 +248,8 @@
 
   <!-- ── Results ── -->
   <section id="results-section" class="pb-16" style="display:none;">
-    <!-- Remaining counts banner -->
-    <div id="remaining-summary" class="remaining-banner">
-      1對1 剩 0 堂 · 團體 剩 0 堂
-    </div>
-
     <!-- 我的方案（有效套餐） -->
-    <div id="packages-section" style="display:none;margin:12px 0;"></div>
+    <div id="packages-section" style="display:none;"></div>
 
     <!-- Tabs -->
     <div class="tab-bar" id="tab-bar">
