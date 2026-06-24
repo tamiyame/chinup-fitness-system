@@ -845,9 +845,19 @@ app.post('/api/coach/packages/:id/restore', requireCoach, asyncHandler((req, res
 
 // --- 登錄預約：週曆彙整 / 客人搜尋 / 預覽 / 建立 ---
 app.get('/api/coach/week', requireCoach, asyncHandler((req, res) => {
+  const wantAll = (req.query.all === '1' || req.query.all === 'true') && !!req.user.is_admin;
+  if (wantAll) {
+    // 全部教練：coachId 可選（決定底色/登錄目標）。
+    let coachId = null;
+    if (req.query.coachId != null && req.query.coachId !== '') {
+      const c = svcGetCoach(Number(req.query.coachId));
+      if (!c) return res.status(404).json({ error: 'coach_not_found' });
+      coachId = c.id;
+    }
+    return res.json(svcGetCoachWeek({ coachId, start: req.query.start, all: true }));
+  }
   const coach = resolveCoach(req, res); if (!coach) return;
-  const { start } = req.query;
-  res.json(svcGetCoachWeek({ coachId: coach.id, start }));
+  res.json(svcGetCoachWeek({ coachId: coach.id, start: req.query.start }));
 }));
 
 app.get('/api/coach/customers/search', requireCoach, asyncHandler((req, res) => {
