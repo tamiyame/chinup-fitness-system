@@ -1,5 +1,6 @@
 import { db, tx, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
+import { quoteDiscount } from './discountService.js';
 
 const SESSION_TYPES = ['1on1', '1on2'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -17,7 +18,7 @@ export function getPackage(id) {
   return row;
 }
 
-export function createPackage({ memberId, sessionType, totalSessions, amount = null, expiresAt = null, note = null, createdBy = null }) {
+export function createPackage({ memberId, sessionType, totalSessions, amount = null, expiresAt = null, note = null, createdBy = null, discountCode = null }) {
   if (!memberId) throw new ApiError(400, 'missing_member');
   if (!SESSION_TYPES.includes(sessionType)) throw new ApiError(400, 'invalid_session_type');
   const total = Number(totalSessions);
@@ -40,11 +41,17 @@ export function createPackage({ memberId, sessionType, totalSessions, amount = n
   }
   const member = db.prepare('SELECT id FROM users WHERE id = ?').get(memberId);
   if (!member) throw new ApiError(404, 'member_not_found');
+  let discountCodeStored = null;
+  // 僅在「有填金額」時才套折扣：amt==null（金額留空）→ 略過，不存碼、不把金額變成 0。
+  if (discountCode != null && String(discountCode).trim() !== '' && amt != null) {
+    const q = quoteDiscount({ code: discountCode, amount: amt });
+    if (q) { amt = q.finalTotal; discountCodeStored = q.code; }
+  }
   // created_at 用 nowLocal()（本地 wall-clock，與全站一致；不用 DEFAULT 的 UTC datetime('now')）。
   const info = db.prepare(
-    `INSERT INTO customer_packages (member_id, session_type, total_sessions, remaining_sessions, amount, expires_at, note, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(memberId, sessionType, total, total, amt, exp, (note && note.trim()) || null, createdBy, nowLocal());
+    `INSERT INTO customer_packages (member_id, session_type, total_sessions, remaining_sessions, amount, expires_at, note, created_by, created_at, discount_code)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(memberId, sessionType, total, total, amt, exp, (note && note.trim()) || null, createdBy, nowLocal(), discountCodeStored);
   return getPackage(Number(info.lastInsertRowid));
 }
 

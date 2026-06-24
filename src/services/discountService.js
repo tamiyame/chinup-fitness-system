@@ -60,6 +60,32 @@ export function releaseRedemption({ kind, refId }) {
   deleteRedemption.run(kind, refId);
 }
 
+/** 下拉用：active 且在效期內的折扣碼（只回 code/type/value）。 */
+export function listActiveDiscountCodes() {
+  const today = todayLocal();
+  return db.prepare(`
+    SELECT code, discount_type, discount_value FROM discount_codes
+    WHERE active = 1
+      AND (valid_from IS NULL OR valid_from <= ?)
+      AND (valid_until IS NULL OR valid_until >= ?)
+    ORDER BY code ASC
+  `).all(today, today);
+}
+
+/** 方案折扣報價：驗 active＋效期，算折扣（**不查用量上限**，方案不限用量）。空碼→null。 */
+export function quoteDiscount({ code, amount }) {
+  const norm = normalizeCode(code);
+  if (!norm) return null;
+  const c = getCodeStmt.get(norm);
+  if (!c) throw new ApiError(404, 'invalid_code');
+  if (!c.active) throw new ApiError(409, 'code_inactive');
+  const today = todayLocal();
+  if (c.valid_from && today < c.valid_from) throw new ApiError(409, 'code_not_started');
+  if (c.valid_until && today > c.valid_until) throw new ApiError(409, 'code_expired');
+  const { discountAmount, finalTotal } = computeDiscount(c.discount_type, c.discount_value, amount);
+  return { code: c.code, discountAmount, finalTotal };
+}
+
 export function listDiscountCodes() {
   return db.prepare('SELECT * FROM discount_codes ORDER BY created_at DESC, id DESC').all()
     .map((c) => ({ ...c, used_count: countUsesStmt.get(c.id).c }));

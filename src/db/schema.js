@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS customer_packages (
   amount INTEGER,
   expires_at TEXT,
   note TEXT,
+  discount_code TEXT,
   created_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   archived_at TEXT
