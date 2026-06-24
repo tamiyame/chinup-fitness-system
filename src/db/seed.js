@@ -1,8 +1,9 @@
 import { db } from './connection.js';
 import { hashPassword } from '../services/auth.js';
 
-// 依 FK 依賴順序清空：group_orders/bookings/point_transactions 都引用 users（無 cascade），
+// 依 FK 依賴順序清空：group_orders/bookings/point_transactions/customer_packages 都引用 users（無 cascade），
 // 測試跑完常留下這些列（測試只在開頭 reset），不先刪會讓 DELETE FROM users 撞 FK。
+// customer_packages 須在 bookings 之後（bookings.package_id 參照它）、users 之前（member_id/created_by 參照 users）。
 db.exec(`
   DELETE FROM auth_sessions;
   DELETE FROM notifications;
@@ -11,6 +12,7 @@ db.exec(`
   DELETE FROM registrations;
   DELETE FROM group_orders;
   DELETE FROM bookings;
+  DELETE FROM customer_packages;
   DELETE FROM course_sessions;
   DELETE FROM course_templates;
   DELETE FROM users;
