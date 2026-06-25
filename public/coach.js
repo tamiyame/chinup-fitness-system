@@ -732,9 +732,9 @@ async function doDragReschedule(bookingId, startAt) {
     const m = { slot_taken: '該時段已被預約', forbidden: '無權限改此預約', invalid_start_at: '時間格式錯', already_cancelled: '預約已取消', booking_not_found: '查無此預約' };
     toast(m[e.data?.error] || `改期失敗：${e.message}`, 'error');
   } finally {
-    regRescheduleInFlight = false;
+    await renderRegister();                    // 成功＝移到新格；失敗＝視覺還原。重繪(含 refetch)完成後才解旗標
+    regRescheduleInFlight = false;             // 避免重繪 refetch 視窗內對陳舊節點重入拖曳
   }
-  renderRegister();                            // 成功＝移到新格；失敗＝視覺還原
 }
 
 let bkeditBooking = null;
