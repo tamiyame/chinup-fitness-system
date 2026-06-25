@@ -66,9 +66,10 @@
 
 - **Modify `public/style.css`**：在第 1170 行後新增 5 條拖曳樣式（cursor/touch-action、來源塊淡化、目標格高亮、浮動 ghost）。
 - **Modify `public/coach.js`**：
-  - 第 508 行後新增 `let regDrag = null;`。
-  - 第 634 行後新增拖曳控制器函式群（`bindBookingDrag`/`onRegPointerMove`/`onRegPointerUp`/`onRegPointerCancel`/`regClearDropHover`/`regDragCleanup`/`doDragReschedule`）。
-  - 第 629–633 行的 `.reg-bk` click 綁定替換為 `bindBookingDrag`。
+  - 第 508 行後新增 3 個模組狀態（`regDrag` / `regRescheduleInFlight` / `regSuppressClick`）。
+  - 第 535 行 `renderRegister()` 開頭加 `regDragCleanup();`。
+  - 第 634 行後新增拖曳控制器函式群（`bindBookingDrag`/`onRegPointerMove`/`onRegPointerUp`/`onRegPointerCancel`/`regClearDropHover`/`regDragRemoveListeners`/`regDragCleanup`/`doDragReschedule`）。
+  - 第 624–633 行重接綁定：`.reg-open` click 前置 `regSuppressClick` 守門；`.reg-bk` click 改為 `bindBookingDrag`。
 
 只有一個交付單元（拖曳改時段功能），CSS 與 JS 相依、無法各自獨立驗收，故合併為單一 Task。
 
@@ -81,8 +82,8 @@
 - Modify: `public/coach.js`（第 508 行後加狀態；第 634 行後加控制器；第 629–633 行替換綁定）
 
 **Interfaces:**
-- Consumes（既有，來自 `./app.js` import 與模組內）：`api(url,{method,body})`（throw 時 `e.data.error` 帶後端錯誤碼、`e.message` 為訊息）、`toast(msg,type)`、`escapeHtml`、`$`、`isAdmin`、`renderRegister()`、`openBookingEditModal(booking)`。
-- Produces（本 PR 新增，模組內互相呼叫，外部不依賴）：`let regDrag`、`bindBookingDrag(el, booking)`、`onRegPointerMove(e)`、`onRegPointerUp(e)`、`onRegPointerCancel(e)`、`regClearDropHover()`、`regDragRemoveListeners(el)`、`regDragCleanup()`、`async doDragReschedule(bookingId, startAt)`。
+- Consumes（既有，來自 `./app.js` import 與模組內）：`api(url,{method,body})`（throw 時 `e.data.error` 帶後端錯誤碼、`e.message` 為訊息）、`toast(msg,type)`、`$`、`isAdmin`、`renderRegister()`、`openBookingEditModal(booking)`、`openRegisterModal(slot)`。
+- Produces（本 PR 新增，模組內互相呼叫，外部不依賴）：`let regDrag`、`let regRescheduleInFlight`、`let regSuppressClick`、`bindBookingDrag(el, booking)`、`onRegPointerMove(e)`、`onRegPointerUp(e)`、`onRegPointerCancel(e)`、`regClearDropHover()`、`regDragRemoveListeners(el)`、`regDragCleanup()`、`async doDragReschedule(bookingId, startAt)`。
 
 - [ ] **Step 1：加 CSS 拖曳樣式**
 
@@ -92,19 +93,23 @@
 /* 拖拉改時段 */
 .reg-bk{touch-action:none;cursor:grab;}
 .reg-bk:active{cursor:grabbing;}
-.reg-bk-dragging{opacity:.4;}
+.reg-bk-dragging{opacity:.4;pointer-events:none;}
 .reg-drop-hover{outline:2px dashed var(--brand-600);outline-offset:-2px;background:var(--brand-50);}
 .reg-drag-ghost{position:fixed;left:0;top:0;pointer-events:none;z-index:9999;background:#dbeafe;color:#1e3a8a;font-size:11px;border-radius:6px;padding:4px 8px;box-shadow:0 6px 20px rgba(0,0,0,.18);opacity:.95;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;}
 ```
 
-> 註：第 1166 行 `.reg-bk{...cursor:pointer;...}` 原有 `cursor:pointer` 仍在，但因本區塊在其後、且 `.reg-bk{cursor:grab;}` 後出現，grab 會覆蓋 pointer；`touch-action:none` 讓觸控按住塊時不捲頁（快速 tap 仍可開編輯）。
+> 註1：第 1166 行 `.reg-bk{...cursor:pointer;...}` 原有 `cursor:pointer` 仍在，但本區塊在其後且 `.reg-bk{cursor:grab;}` 後出現，grab 覆蓋 pointer。
+> 註2：`touch-action:none` 讓觸控按住塊時由 JS 接管雙軸拖曳（不被瀏覽器當捲動），快速 tap 仍可開編輯；代價是手指起點落在塊上時無法捲週曆——這是 draggable 元件的標準取捨，使用者改由空白格／時間欄處捲動（那些元素未設 touch-action）。
+> 註3：`.reg-bk-dragging` 的 `pointer-events:none` 讓淡化中的 source 塊完全退出 hit-testing，使 `elementFromPoint` 命中其下的空格、且不再觸發 `.reg-bk:hover` 閃爍。Pointer Capture 對「被捕獲的那一指」仍會把事件送達 source（capture 不受 `pointer-events:none` 影響），故拖曳事件流不受影響。
 
 - [ ] **Step 2：加模組狀態 `regDrag`**
 
-在 `public/coach.js` 第 508 行 `let regCoachOptionsCache = null; ...` 那一行之後（登錄分頁 `let` 區），新增一行：
+在 `public/coach.js` 第 508 行 `let regCoachOptionsCache = null; ...` 那一行之後（登錄分頁 `let` 區），新增三行：
 
 ```js
 let regDrag = null; // 拖拉改時段中的狀態：{ id, booking, srcEl, startX, startY, pointerId, moved, ghost, dropSlot }
+let regRescheduleInFlight = false; // reschedule PATCH 飛行中，擋拖曳重入
+let regSuppressClick = false; // 拖放結束後吞掉緊接的合成 click（避免落點空格又開登錄彈窗）
 ```
 
 - [ ] **Step 3：加拖曳控制器函式群**
@@ -126,7 +131,10 @@ function regDragRemoveListeners(el) {
 function regDragCleanup() {
   if (!regDrag) return;
   if (regDrag.ghost) regDrag.ghost.remove();
-  if (regDrag.srcEl) regDrag.srcEl.classList.remove('reg-bk-dragging');
+  if (regDrag.srcEl) {
+    regDrag.srcEl.classList.remove('reg-bk-dragging');
+    regDragRemoveListeners(regDrag.srcEl);
+  }
   regClearDropHover();
   regDrag = null;
 }
@@ -134,8 +142,8 @@ function regDragCleanup() {
 // 對單一預約塊綁定 pointerdown：tap → 開編輯彈窗；拖過閾值 → 改時段
 function bindBookingDrag(el, booking) {
   el.addEventListener('pointerdown', (e) => {
-    if (regDrag) return;                       // 已有拖曳進行中（多指）→ 忽略
-    if (!e.isPrimary) return;                  // 只認主要指標
+    if (regDrag || regRescheduleInFlight) return; // 已在拖曳或改期飛行中 → 忽略
+    if (!e.isPrimary) return;                      // 只認主要指標
     if (e.pointerType === 'mouse' && e.button !== 0) return; // 滑鼠只認左鍵
     regDrag = {
       id: booking.id, booking, srcEl: el,
@@ -150,7 +158,7 @@ function bindBookingDrag(el, booking) {
 }
 
 function onRegPointerMove(e) {
-  if (!regDrag) return;
+  if (!regDrag || e.pointerId !== regDrag.pointerId) return; // 只回應啟動拖曳的那一指
   const dx = e.clientX - regDrag.startX, dy = e.clientY - regDrag.startY;
   if (!regDrag.moved) {
     if (Math.hypot(dx, dy) < 8) return;        // 未過閾值 → 仍可能是 tap
@@ -172,9 +180,8 @@ function onRegPointerMove(e) {
 }
 
 function onRegPointerUp(e) {
-  if (!regDrag) return;
+  if (!regDrag || e.pointerId !== regDrag.pointerId) return;
   const d = regDrag;
-  regDragRemoveListeners(d.srcEl);
   try { d.srcEl.releasePointerCapture(e.pointerId); } catch {}
   if (!d.moved) {                              // 沒移動 = 點擊 → 開編輯彈窗
     regDragCleanup();
@@ -182,34 +189,44 @@ function onRegPointerUp(e) {
     return;
   }
   const slot = d.dropSlot;
+  // 拖放後吞掉緊接的合成 click，避免落點空格的 click 綁定又開登錄彈窗
+  regSuppressClick = true;
+  setTimeout(() => { regSuppressClick = false; }, 0);
   regDragCleanup();
   if (slot) doDragReschedule(d.id, slot);     // 落在空格 → 改時段；否則無動作（自動還原）
 }
 
 function onRegPointerCancel(e) {
-  if (!regDrag) return;
-  regDragRemoveListeners(regDrag.srcEl);
+  if (!regDrag || e.pointerId !== regDrag.pointerId) return;
   try { regDrag.srcEl.releasePointerCapture(e.pointerId); } catch {}
   regDragCleanup();
 }
 
 async function doDragReschedule(bookingId, startAt) {
+  regRescheduleInFlight = true;
   try {
     await api(`/api/coach/bookings/${bookingId}/reschedule`, { method: 'PATCH', body: { startAt } });
     toast('已改期', 'success');
   } catch (e) {
-    const m = { slot_taken: '該時段已被預約', forbidden: '無權限改此預約', invalid_start_at: '時間格式錯', already_cancelled: '預約已取消' };
+    const m = { slot_taken: '該時段已被預約', forbidden: '無權限改此預約', invalid_start_at: '時間格式錯', already_cancelled: '預約已取消', booking_not_found: '查無此預約' };
     toast(m[e.data?.error] || `改期失敗：${e.message}`, 'error');
+  } finally {
+    regRescheduleInFlight = false;
   }
   renderRegister();                            // 成功＝移到新格；失敗＝視覺還原
 }
 ```
 
-- [ ] **Step 4：重接 `.reg-bk` 綁定（click → 拖曳控制器）**
+- [ ] **Step 4：重接綁定（`.reg-open` 加 suppress 守門、`.reg-bk` click → 拖曳控制器）**
 
-在 `public/coach.js` 把第 629–633 行：
+在 `public/coach.js` 把第 624–633 行整段：
 
 ```js
+  // 空格登錄
+  $('reg-grid').querySelectorAll('.reg-open[data-slot]').forEach(c => c.addEventListener('click', () => {
+    if (!canRegister) { toast('請先於上方選擇要登錄的教練', 'error'); return; }
+    openRegisterModal(c.dataset.slot);
+  }));
   // 預約格 → 編輯
   $('reg-grid').querySelectorAll('.reg-bk[data-bk]').forEach(c => c.addEventListener('click', () => {
     const all = data.bookings.find(b => b.id === Number(c.dataset.bk));
@@ -220,6 +237,12 @@ async function doDragReschedule(bookingId, startAt) {
 替換為：
 
 ```js
+  // 空格登錄（拖放後吞掉緊接的合成 click，避免改期同時又開登錄彈窗）
+  $('reg-grid').querySelectorAll('.reg-open[data-slot]').forEach(c => c.addEventListener('click', () => {
+    if (regSuppressClick) { regSuppressClick = false; return; }
+    if (!canRegister) { toast('請先於上方選擇要登錄的教練', 'error'); return; }
+    openRegisterModal(c.dataset.slot);
+  }));
   // 預約格 → 拖拉改時段（tap 仍開編輯彈窗）
   $('reg-grid').querySelectorAll('.reg-bk[data-bk]').forEach(c => {
     const booking = data.bookings.find(b => b.id === Number(c.dataset.bk));
@@ -227,14 +250,20 @@ async function doDragReschedule(bookingId, startAt) {
   });
 ```
 
-> 空格登錄綁定（第 624–628 行）**保持不變**。
+- [ ] **Step 5：`renderRegister()` 開頭清除陳舊拖曳狀態**
 
-- [ ] **Step 5：語法檢查**
+在 `public/coach.js` 第 535 行 `async function renderRegister() {` 的下一行（即第 536 行 `const panel = $('tab-register');` 之前）插入一行，避免拖曳中途切換週/教練重繪後 `regDrag` 卡住非 null：
+
+```js
+  regDragCleanup(); // 重繪前清掉任何進行中的拖曳狀態，避免卡死
+```
+
+- [ ] **Step 6：語法檢查**
 
 Run: `node --check public/coach.js`
 Expected: 無輸出、exit 0（語法正確）。CSS 無語法檢查工具，靠人工/瀏覽器 smoke 確認。
 
-- [ ] **Step 6：Commit**
+- [ ] **Step 7：Commit**
 
 ```bash
 git add public/coach.js public/style.css
@@ -249,13 +278,16 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 實作 Task 1 並通過 task review 後，由控制者執行瀏覽器 smoke（本機 `npm start` + Chrome MCP；登入教練/管理者帳號）：
 
-1. **桌機滑鼠拖曳改時段**：登錄分頁，將某預約塊用滑鼠拖到同教練的空整點格 → 放開 → toast「已改期」、塊出現在新格、舊格變空。重新整理頁面後仍在新格（確認落 DB）。可另以 API/`GET /api/coach/week` 或 DB 查該 booking `start_at` 已更新。
-2. **觸控拖曳**：Chrome DevTools 裝置模擬（或 dispatch `PointerEvent` with `pointerType:'touch'`）down→move(過 8px)→up 於目標空格 → 同樣落 DB。
+1. **桌機滑鼠拖曳改時段**：登錄分頁，將某預約塊用滑鼠拖到同教練的空整點格 → 放開 → toast「已改期」、塊出現在新格、舊格變空、**且不得另外彈出登錄彈窗**（驗證合成 click 已被吞掉）。重新整理頁面後仍在新格（確認落 DB）。可另以 API/`GET /api/coach/week` 或 DB 查該 booking `start_at` 已更新。
+2. **觸控拖曳**：以 Chrome DevTools 裝置模擬（真實觸控手勢）為主驗證手段，拖某塊到目標空格 → 同樣落 DB、且不彈登錄彈窗。
+   - 註：合成 `PointerEvent` 自動化不可靠——控制器以 `isPrimary` 守門且用 `setPointerCapture`；若要用 JS dispatch 模擬，事件**必須帶 `isPrimary:true`**，且流程不能依賴 `setPointerCapture` 成功（非真實指標常失敗並被 `try/catch` 吞），故優先用真實裝置模擬手動拖。
 3. **衝突還原**：拖到同教練已被佔用的時段（落在非空格 → 本就不可放，無動作）；或併發情境下後端回 409 → toast「該時段已被預約」且塊回原位（renderRegister 還原）。
 4. **tap 回歸**：快速點一下預約塊（未移動）→ 開既有編輯彈窗（改時段/改客人/取消三鈕在）。
 5. **空格登錄回歸**：點空格 → 開登錄彈窗（一般教練在全覽時點空格仍提示「請先選教練」）。
 6. **全覽拖曳（管理者）**：切「全部教練」，拖任一教練的塊到空格 → 改期成功且**保留原教練**（重繪後塊仍標該教練、coach_name 不變）。
-7. 控制台無錯誤；錄一小段 GIF 供業主預覽。
+7. **觸控捲動回歸**：在預約密集（高密度）週曆上，手指由空白格／時間欄處仍能垂直捲動週曆（`touch-action:none` 只套在 `.reg-bk`）。
+8. **重繪不卡死**：拖曳中途按上一週/下一週/切教練（觸發重繪）後，預約塊仍可正常拖／tap（驗證 `renderRegister` 開頭的 `regDragCleanup()`）。
+9. 控制台無錯誤；錄一小段 GIF 供業主預覽。
 
 > 拖曳互動無對應前端單元測試框架（專案無 jsdom）；reschedule 後端行為已由 PR3 `tests/booking-edit.test.js`＋`tests/booking-edit-api.test.js` 覆蓋，本 PR 不重測、不新增後端測試。
 
