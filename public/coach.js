@@ -506,6 +506,9 @@ function escapeAttr(s) { return escapeHtml(s); }
 let regWeekOffset = 0; // 0=本週
 let regViewCoachId = 'all'; // 管理者登錄分頁檢視：'all' 或 coachId 字串；一般教練不使用
 let regCoachOptionsCache = null; // 教練選單 options HTML 快取（避免每次重繪重撈 /api/admin/coaches）
+let regDrag = null; // 拖拉改時段中的狀態：{ id, booking, srcEl, startX, startY, pointerId, moved, ghost, dropSlot }
+let regRescheduleInFlight = false; // reschedule PATCH 飛行中，擋拖曳重入
+let regSuppressClick = false; // 拖放結束後吞掉緊接的合成 click（避免落點空格又開登錄彈窗）
 let regDiscountCodesCache = null; // [{code,discount_type,discount_value}]
 async function getDiscountCodes() {
   if (regDiscountCodesCache) return regDiscountCodesCache;
@@ -533,6 +536,7 @@ function regWeekRange(offset) {
 }
 
 async function renderRegister() {
+  regDragCleanup(); // 重繪前清掉任何進行中的拖曳狀態，避免卡死
   const panel = $('tab-register');
   const { start, dates } = regWeekRange(regWeekOffset);
   // 工具列（管理者多一個「全部教練」選擇器）
@@ -621,16 +625,116 @@ async function renderRegister() {
     }
   }
   $('reg-grid').innerHTML = `<div class="reg-grid">${head}${rows}</div>`;
-  // 空格登錄
+  // 空格登錄（拖放後吞掉緊接的合成 click，避免改期同時又開登錄彈窗）
   $('reg-grid').querySelectorAll('.reg-open[data-slot]').forEach(c => c.addEventListener('click', () => {
+    if (regSuppressClick) { regSuppressClick = false; return; }
     if (!canRegister) { toast('請先於上方選擇要登錄的教練', 'error'); return; }
     openRegisterModal(c.dataset.slot);
   }));
-  // 預約格 → 編輯
-  $('reg-grid').querySelectorAll('.reg-bk[data-bk]').forEach(c => c.addEventListener('click', () => {
-    const all = data.bookings.find(b => b.id === Number(c.dataset.bk));
-    if (all) openBookingEditModal(all);
-  }));
+  // 預約格 → 拖拉改時段（tap 仍開編輯彈窗）
+  $('reg-grid').querySelectorAll('.reg-bk[data-bk]').forEach(c => {
+    const booking = data.bookings.find(b => b.id === Number(c.dataset.bk));
+    if (booking) bindBookingDrag(c, booking);
+  });
+}
+
+// ===== 登錄週曆：拖拉改時段（Pointer Events，桌機滑鼠＋手機觸控）=====
+function regClearDropHover() {
+  document.querySelectorAll('.reg-drop-hover').forEach(c => c.classList.remove('reg-drop-hover'));
+}
+
+function regDragRemoveListeners(el) {
+  el.removeEventListener('pointermove', onRegPointerMove);
+  el.removeEventListener('pointerup', onRegPointerUp);
+  el.removeEventListener('pointercancel', onRegPointerCancel);
+}
+
+function regDragCleanup() {
+  if (!regDrag) return;
+  if (regDrag.ghost) regDrag.ghost.remove();
+  if (regDrag.srcEl) {
+    regDrag.srcEl.classList.remove('reg-bk-dragging');
+    regDragRemoveListeners(regDrag.srcEl);
+  }
+  regClearDropHover();
+  regDrag = null;
+}
+
+// 對單一預約塊綁定 pointerdown：tap → 開編輯彈窗；拖過閾值 → 改時段
+function bindBookingDrag(el, booking) {
+  el.addEventListener('pointerdown', (e) => {
+    if (regDrag || regRescheduleInFlight) return; // 已在拖曳或改期飛行中 → 忽略
+    if (!e.isPrimary) return;                      // 只認主要指標
+    if (e.pointerType === 'mouse' && e.button !== 0) return; // 滑鼠只認左鍵
+    regDrag = {
+      id: booking.id, booking, srcEl: el,
+      startX: e.clientX, startY: e.clientY, pointerId: e.pointerId,
+      moved: false, ghost: null, dropSlot: null,
+    };
+    try { el.setPointerCapture(e.pointerId); } catch {}
+    el.addEventListener('pointermove', onRegPointerMove);
+    el.addEventListener('pointerup', onRegPointerUp);
+    el.addEventListener('pointercancel', onRegPointerCancel);
+  });
+}
+
+function onRegPointerMove(e) {
+  if (!regDrag || e.pointerId !== regDrag.pointerId) return; // 只回應啟動拖曳的那一指
+  const dx = e.clientX - regDrag.startX, dy = e.clientY - regDrag.startY;
+  if (!regDrag.moved) {
+    if (Math.hypot(dx, dy) < 8) return;        // 未過閾值 → 仍可能是 tap
+    regDrag.moved = true;
+    regDrag.srcEl.classList.add('reg-bk-dragging');
+    const g = document.createElement('div');
+    g.className = 'reg-drag-ghost';
+    g.textContent = regDrag.srcEl.textContent;
+    document.body.appendChild(g);
+    regDrag.ghost = g;
+  }
+  e.preventDefault();
+  regDrag.ghost.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 12}px)`;
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const cell = (under && under.closest) ? under.closest('.reg-open[data-slot]') : null;
+  regClearDropHover();
+  if (cell) { cell.classList.add('reg-drop-hover'); regDrag.dropSlot = cell.dataset.slot; }
+  else { regDrag.dropSlot = null; }
+}
+
+function onRegPointerUp(e) {
+  if (!regDrag || e.pointerId !== regDrag.pointerId) return;
+  const d = regDrag;
+  try { d.srcEl.releasePointerCapture(e.pointerId); } catch {}
+  if (!d.moved) {                              // 沒移動 = 點擊 → 開編輯彈窗
+    regDragCleanup();
+    openBookingEditModal(d.booking);
+    return;
+  }
+  const slot = d.dropSlot;
+  // 拖放後吞掉緊接的合成 click，避免落點空格的 click 綁定又開登錄彈窗
+  regSuppressClick = true;
+  setTimeout(() => { regSuppressClick = false; }, 0);
+  regDragCleanup();
+  if (slot) doDragReschedule(d.id, slot);     // 落在空格 → 改時段；否則無動作（自動還原）
+}
+
+function onRegPointerCancel(e) {
+  if (!regDrag || e.pointerId !== regDrag.pointerId) return;
+  try { regDrag.srcEl.releasePointerCapture(e.pointerId); } catch {}
+  regDragCleanup();
+}
+
+async function doDragReschedule(bookingId, startAt) {
+  regRescheduleInFlight = true;
+  try {
+    await api(`/api/coach/bookings/${bookingId}/reschedule`, { method: 'PATCH', body: { startAt } });
+    toast('已改期', 'success');
+  } catch (e) {
+    const m = { slot_taken: '該時段已被預約', forbidden: '無權限改此預約', invalid_start_at: '時間格式錯', already_cancelled: '預約已取消', booking_not_found: '查無此預約' };
+    toast(m[e.data?.error] || `改期失敗：${e.message}`, 'error');
+  } finally {
+    regRescheduleInFlight = false;
+  }
+  renderRegister();                            // 成功＝移到新格；失敗＝視覺還原
 }
 
 let bkeditBooking = null;
