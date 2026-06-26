@@ -13,7 +13,7 @@
 - **只影響客人端「我的課表」(`getPublicSchedule`) 顯示**；後台登錄/改方案選單與所有扣抵路徑仍用嚴格 `listValidPackagesForMember`（`remaining_sessions>0`）——**不得更動**。
 - 顯示條件（per package，非作廢）：`upcoming>0` **或**（`remaining_sessions>0` 且未過期）。全部上完(`completed==total` 且無 upcoming)＝已結束→不顯示。
 - `completed`＝該方案 confirmed 預約且 `start_at < now`；`upcoming`＝confirmed 且 `start_at >= now`（與既有 `is_past = start_at < now` 一致）。
-- 投影**安全欄位**：`{ session_type, total_sessions, completed_sessions, remaining_sessions(=total−completed), expires_at }`（移除 `used_sessions`；`remaining_sessions` 在此投影重新定義為「尚餘＝共−已上完」，只供我的課表卡片）。不洩 amount/id/discount_code/member_id。
+- 投影**安全欄位**：`{ session_type, total_sessions, completed_sessions, remaining_sessions, expires_at }`（移除 `used_sessions`）。`remaining_sessions`＝**尚餘**＝`upcoming + (未過期 ? 未登錄remaining : 0)`（永遠 ≥0；正常流程下恰等於「共−已上完」；過期方案的未登錄堂視為已 forfeit 不計）。**不用 `total−completed`**（因 `adjustRemaining` 可回補 remaining 後再扣抵，使 `completed` 超過 `total` 而為負）。不洩 amount/id/discount_code/member_id。
 - 卡片：meta「已上完 X · 共 N 堂」、進度條＝completed/total、右側大字＝remaining_sessions(尚餘)、標籤「尚餘」。
 - 無 schema 變更；不改扣抵/回補。
 - **既有兩支方案測試斷言舊投影、且用 `deductOne` 無實際 bookings → 本 PR 依 spec 決策一併遷移到新語意（插入真實 bookings 驅動 completed/upcoming）。** 這是刻意的行為變更，非「改測試遷就」。
@@ -70,20 +70,23 @@
 - [ ] **Step 1：遷移單元測試（先失敗）— 整檔覆寫 `tests/my-schedule-packages.test.js`**
 
 ```js
-// getPublicSchedule.packages：方案顯示到「課全上完」才消失；投影 共/已上完/尚餘(=共-已上完)、安全欄位。
+// getPublicSchedule.packages：方案顯示到「課全上完」才消失；投影 共/已上完/尚餘(永遠≥0)、安全欄位。
 import assert from 'node:assert/strict';
 const { db } = await import('../src/db/connection.js');
-const { createPackage, deductOne, archivePackage } = await import('../src/services/packageService.js');
+const { createPackage, deductOne, archivePackage, adjustRemaining } = await import('../src/services/packageService.js');
 const { getPublicSchedule } = await import('../src/services/groupOrderService.js');
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 console.log('[my-schedule-packages test] start');
 const clean=()=>db.exec("DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'msp-%'); DELETE FROM customer_packages WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'msp-%'); DELETE FROM users WHERE email LIKE 'msp-%'");
 clean();
 const coachId = db.prepare('SELECT id FROM coaches ORDER BY id LIMIT 1').get().id;
-const PAST='2020-01-01T10:00:00', PASTE='2020-01-01T11:00:00';
-const FUT='2099-01-01T10:00:00', FUTE='2099-01-01T11:00:00';
+// 每筆 confirmed booking 需 (coach_id,start_at) 唯一（schema: bookings_coach_start_confirmed）→ 用遞增分鐘產不同 start_at。
+let seq = 0;
 const mkUser=()=>Number(db.prepare("INSERT INTO users (name,email,role,phone) VALUES ('方案客','msp-m@x.com','user','0994000001')").run().lastInsertRowid);
-const mkBooking=(m,pkg,s,e,st='confirmed')=>db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,status,session_type,package_id) VALUES (?,?,?,?,?,?,?)").run(coachId,m,s,e,st,'1on1',pkg);
+const mkBooking=(m,pkg,day,st='confirmed')=>{ const t=String(seq++).padStart(2,'0');
+  return db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,status,session_type,package_id) VALUES (?,?,?,?,?,?,?)")
+    .run(coachId,m,`${day}T10:${t}:00`,`${day}T11:${t}:00`,st,'1on1',pkg); };
+const PAST='2020-01-01', FUT='2099-01-01';
 const sched=()=>getPublicSchedule({ phone:'0994000001', name:'方案客' });
 
 expect('無方案 → packages 為 []', () => { mkUser(); assert.deepEqual(sched().packages, []); });
@@ -91,12 +94,12 @@ expect('無方案 → packages 為 []', () => { mkUser(); assert.deepEqual(sched
 expect('全部登錄完但課在未來 → 仍顯示、已上完0、尚餘=總、安全欄位', () => {
   clean(); const u=mkUser();
   const p=createPackage({ memberId:u, sessionType:'1on1', totalSessions:4, expiresAt:'2099-12-31' });
-  for(let i=0;i<4;i++){ deductOne(p.id); mkBooking(u,p.id,FUT,FUTE); } // remaining=0, 4 未來課
+  for(let i=0;i<4;i++){ deductOne(p.id); mkBooking(u,p.id,FUT); } // remaining=0, 4 未來課
   const pk=sched().packages;
   assert.equal(pk.length,1);
   assert.equal(pk[0].total_sessions,4);
   assert.equal(pk[0].completed_sessions,0);
-  assert.equal(pk[0].remaining_sessions,4);
+  assert.equal(pk[0].remaining_sessions,4);  // upcoming4 + 未登錄0
   assert.equal(pk[0].expires_at,'2099-12-31');
   assert.ok(!('amount' in pk[0]) && !('id' in pk[0]) && !('member_id' in pk[0]) && !('used_sessions' in pk[0]) && !('discount_code' in pk[0]));
 });
@@ -104,41 +107,54 @@ expect('全部登錄完但課在未來 → 仍顯示、已上完0、尚餘=總�
 expect('部分已上完 → completed/尚餘正確', () => {
   clean(); const u=mkUser();
   const p=createPackage({ memberId:u, sessionType:'1on1', totalSessions:10 });
-  for(let i=0;i<3;i++){ deductOne(p.id); mkBooking(u,p.id,PAST,PASTE); } // 3 已上完
-  for(let i=0;i<2;i++){ deductOne(p.id); mkBooking(u,p.id,FUT,FUTE); }   // 2 待上
+  for(let i=0;i<3;i++){ deductOne(p.id); mkBooking(u,p.id,PAST); } // 3 已上完
+  for(let i=0;i<2;i++){ deductOne(p.id); mkBooking(u,p.id,FUT); }  // 2 待上 (remaining=5)
   const pk=sched().packages[0];
   assert.equal(pk.total_sessions,10);
   assert.equal(pk.completed_sessions,3);
-  assert.equal(pk.remaining_sessions,7);
+  assert.equal(pk.remaining_sessions,7);  // upcoming2 + 未登錄5
 });
 
 expect('全部已上完 → 不出現（已結束）', () => {
   clean(); const u=mkUser();
   const p=createPackage({ memberId:u, sessionType:'1on1', totalSessions:2 });
-  for(let i=0;i<2;i++){ deductOne(p.id); mkBooking(u,p.id,PAST,PASTE); }
+  for(let i=0;i<2;i++){ deductOne(p.id); mkBooking(u,p.id,PAST); }
   assert.deepEqual(sched().packages, []);
 });
 
-expect('過期但有未來課→顯示；過期且無未來課→不顯示', () => {
+expect('過期但有未來課→顯示(尚餘只算未來課)；過期且無未來課→不顯示', () => {
   clean(); const u=mkUser();
   const ewf=createPackage({ memberId:u, sessionType:'1on1', totalSessions:5, expiresAt:'2000-01-01' });
-  deductOne(ewf.id); mkBooking(u,ewf.id,FUT,FUTE);
+  deductOne(ewf.id); mkBooking(u,ewf.id,FUT);  // remaining(DB)=4 但已過期→未登錄不計
   createPackage({ memberId:u, sessionType:'1on2', totalSessions:5, expiresAt:'2000-01-01' }); // 過期無未來課
   const pk=sched().packages;
   assert.equal(pk.length,1);
   assert.equal(pk[0].session_type,'1on1');
+  assert.equal(pk[0].remaining_sessions,1);  // upcoming1 + 過期未登錄0
 });
 
 expect('取消的預約不計；作廢方案不出現', () => {
   clean(); const u=mkUser();
   const p=createPackage({ memberId:u, sessionType:'1on1', totalSessions:3 });
-  deductOne(p.id); mkBooking(u,p.id,FUT,FUTE,'confirmed'); // 1 待上
-  mkBooking(u,p.id,FUT,FUTE,'cancelled');                  // 取消不計
+  deductOne(p.id); mkBooking(u,p.id,FUT,'confirmed'); // 1 待上 (remaining=2)
+  mkBooking(u,p.id,FUT,'cancelled');                  // 取消不計（partial index 也只管 confirmed）
   const arch=createPackage({ memberId:u, sessionType:'1on2', totalSessions:5 }); archivePackage(arch.id);
   const pk=sched().packages;
   assert.equal(pk.length,1);
   assert.equal(pk[0].completed_sessions,0);
-  assert.equal(pk[0].remaining_sessions,3);
+  assert.equal(pk[0].remaining_sessions,3);  // upcoming1 + 未登錄2
+});
+
+expect('adjustRemaining 回補後再扣抵 → 尚餘≥0、不為負', () => {
+  clean(); const u=mkUser();
+  const p=createPackage({ memberId:u, sessionType:'1on1', totalSessions:2 });
+  for(let i=0;i<2;i++){ deductOne(p.id); mkBooking(u,p.id,PAST); } // 2 已上完, remaining=0
+  adjustRemaining({ packageId:p.id, remaining:2 });                // 管理者回補到 2
+  deductOne(p.id); mkBooking(u,p.id,FUT);                          // 再登 1 未來課, remaining=1
+  const pk=sched().packages[0];
+  assert.equal(pk.completed_sessions,2);            // 過去課 2（=total，不為負）
+  assert.equal(pk.remaining_sessions,2);            // upcoming1 + 未登錄1（≥0，未用 total−completed）
+  assert.ok(pk.remaining_sessions >= 0);
 });
 
 clean();
@@ -156,7 +172,8 @@ Expected: FAIL — getPublicSchedule 仍回舊投影（無 `completed_sessions`�
 /**
  * 我的課表顯示用：方案持續顯示直到所有課上完(已結束)。
  * now = 'YYYY-MM-DDTHH:MM:SS'。completed=該方案 confirmed 且 start_at<now；upcoming=confirmed 且 start_at>=now。
- * 顯示條件：upcoming>0 或 (remaining_sessions>0 且未過期)。投影 remaining_sessions=total−completed(尚餘)。
+ * 顯示條件：upcoming>0 或 (remaining_sessions>0 且未過期)。
+ * 投影 remaining_sessions(尚餘) = upcoming + (未過期 ? 未登錄remaining : 0)；永遠 ≥0，正常流程下＝共−已上完。
  */
 export function listScheduleViewPackages(memberId, now) {
   const today = String(now).slice(0, 10);
@@ -178,13 +195,13 @@ export function listScheduleViewPackages(memberId, now) {
   const out = [];
   for (const p of pkgs) {
     const c = byPkg.get(p.id) || { completed: 0, upcoming: 0 };
-    const expired = p.expires_at && p.expires_at < today;
+    const expired = !!(p.expires_at && p.expires_at < today);
     if (!(c.upcoming > 0 || (p.remaining_sessions > 0 && !expired))) continue;
     out.push({
       session_type: p.session_type,
       total_sessions: p.total_sessions,
       completed_sessions: c.completed,
-      remaining_sessions: p.total_sessions - c.completed,
+      remaining_sessions: c.upcoming + (expired ? 0 : p.remaining_sessions),
       expires_at: p.expires_at,
     });
   }
@@ -243,9 +260,11 @@ console.log('[my-schedule-packages-api] done');
 
 - [ ] **Step 7：重啟 server 後跑 api 測試**
 
-Node 無熱重載：`pkill -f 'node src/server.js'; sleep 1; PORT=3000 node src/server.js & sleep 2`（若無 admin/seed 先 `node src/db/seed-demo.js`）。
+Node 無熱重載，必須用**新碼**重啟後再跑（否則舊進程回舊投影、誤判失敗）：
+`pkill -f 'node src/server.js'; sleep 1; pgrep -f 'node src/server.js' || echo "no stale server"`（確認舊進程已死；若清不掉用 `lsof -ti :3000 | xargs kill -9`），再 `PORT=3000 node src/server.js & sleep 2`（若無 seed 先 `node src/db/seed-demo.js`）。
 Run: `node tests/my-schedule-packages-api.test.js`
 Expected: PASS（全 ✓）。
+> 註：fail-first 由單元測試（Step 2）覆蓋；本 api 測試僅端到端驗證，務必用新碼重啟後執行。
 > 注意：跑測試會動到本機 `data/app.db`；smoke 前需重新 `node src/db/seed-demo.js`。
 
 - [ ] **Step 8：Commit**
@@ -284,7 +303,7 @@ git commit -m "feat: 我的方案顯示到課全上完才消失（listScheduleVi
 改為：
 ```js
           const total = p.total_sessions, completed = p.completed_sessions, remain = p.remaining_sessions;
-          const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+          const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
           const exp = p.expires_at ? ` · 到期 ${escapeHtml(String(p.expires_at)).replace(/-/g, '/')}` : '';
           return `<div class="pk-card">
             <div class="pk-main">

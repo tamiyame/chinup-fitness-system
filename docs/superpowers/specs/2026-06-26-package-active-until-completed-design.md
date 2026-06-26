@@ -51,17 +51,17 @@
 - 投影只回安全欄位（同 PR5 慣例）。`getPublicSchedule` 身份驗證(phone+name)不變。
 
 ## 不動
-- `listValidPackagesForMember`（嚴格）與所有登錄/改方案/coach 方案清單路徑（仍 `remaining>0` 才可選/扣）。
+- `listValidPackagesForMember`（嚴格）與所有登錄/改方案/coach 方案清單路徑（coach register/reassign 走 `GET /api/coach/packages`＝`listPackagesForMember`，前端以 `p.is_valid` 過濾，is_valid 內含 `remaining_sessions>0`）——與 `getPublicSchedule` 無關，**不受本 PR 影響**。
 - `deductOne`/`refundOne`/扣抵時機、schema、其他頁面。
 
 ## 測試
-- `tests/my-schedule-packages.test.js` 延伸（或新 `package-schedule-view.test.js`）：建會員+方案+不同 booking 狀態，驗 `listScheduleViewPackages` / getPublicSchedule.packages：
+- `tests/my-schedule-packages.test.js` **改寫/遷移**（既有斷言的舊投影 used_sessions==3 等屬刻意行為變更，一併移除；不另開新檔）：建會員+方案+真實 bookings(不同狀態)，驗 `getPublicSchedule.packages`：
   - 全部登錄完(remaining=0)但預約都在**未來** → 方案仍出現，`completed_sessions=0`、`remaining_sessions=total`。
   - 部分已上完 → `completed_sessions`/`remaining_sessions(=total−completed)` 正確。
   - 全部已上完(預約都過去) → 方案**不出現**（已結束）。
   - 過期且無未來課 → 不出現；過期但有未來課 → 出現。
   - 取消的預約不計入 completed/upcoming。
-- `tests/my-schedule-packages-api.test.js` 延伸：api 回傳含上述欄位/情境。
+- `tests/my-schedule-packages-api.test.js` **改寫/遷移**：api 回傳含上述新欄位/情境（移除舊 used_sessions 斷言）。
 - 前端 `node --check public/my-schedule.js`；瀏覽器 smoke（建方案→登錄未來課→我的課表查詢→方案仍在、尚餘正確；課過去後→消失）。
 
 ## 不做（YAGNI）
