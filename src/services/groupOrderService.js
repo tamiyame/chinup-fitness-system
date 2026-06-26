@@ -4,7 +4,7 @@ import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js
 import { notify, notifyCourseCoach, notifyAdmins } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl, getGroupOrderExpiryHours } from './discountService.js';
-import { listValidPackagesForMember } from './packageService.js';
+import { listScheduleViewPackages } from './packageService.js';
 
 // 一般 pending 訂單的付款期限改由 app_settings 的 group_order_expiry_hours 控制（預設 72h，後台可調）。
 const PROMOTED_TTL_MS = 24 * 60 * 60 * 1000;     // 候補遞補後 24h（固定：遞補名額要快速流轉）
@@ -514,13 +514,7 @@ export function getPublicSchedule({ phone, name }) {
   const group_remaining = regs.filter((r) => r.status === 'confirmed' && !r.is_past && !r.on_leave).length;
 
   const items = [...bookings, ...regs].sort((a, b) => b.start_at.localeCompare(a.start_at));
-  const packages = listValidPackagesForMember(user.id).map((p) => ({
-    session_type: p.session_type,
-    total_sessions: p.total_sessions,
-    used_sessions: p.total_sessions - p.remaining_sessions,
-    remaining_sessions: p.remaining_sessions,
-    expires_at: p.expires_at,
-  }));
+  const packages = listScheduleViewPackages(user.id, now);
   return {
     user: { name: user.name, phone: user.phone },
     items, one_on_one_remaining, group_remaining,

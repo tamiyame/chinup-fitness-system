@@ -82,6 +82,45 @@ export function listValidPackagesForMember(memberId, sessionType = null) {
   ).all(...params);
 }
 
+/**
+ * 我的課表顯示用：方案持續顯示直到所有課上完(已結束)。
+ * now = 'YYYY-MM-DDTHH:MM:SS'。completed=該方案 confirmed 且 start_at<now；upcoming=confirmed 且 start_at>=now。
+ * 顯示條件：upcoming>0 或 (remaining_sessions>0 且未過期)。
+ * 投影 remaining_sessions(尚餘) = upcoming + (未過期 ? 未登錄remaining : 0)；永遠 ≥0，正常流程下＝共−已上完。
+ */
+export function listScheduleViewPackages(memberId, now) {
+  const today = String(now).slice(0, 10);
+  const pkgs = db.prepare(
+    `SELECT * FROM customer_packages
+      WHERE member_id = ? AND archived_at IS NULL
+      ORDER BY (expires_at IS NULL) ASC, expires_at ASC, created_at ASC`
+  ).all(memberId);
+  if (!pkgs.length) return [];
+  const counts = db.prepare(
+    `SELECT package_id,
+            SUM(CASE WHEN start_at <  ? THEN 1 ELSE 0 END) AS completed,
+            SUM(CASE WHEN start_at >= ? THEN 1 ELSE 0 END) AS upcoming
+       FROM bookings
+      WHERE member_id = ? AND status = 'confirmed' AND package_id IS NOT NULL
+      GROUP BY package_id`
+  ).all(now, now, memberId);
+  const byPkg = new Map(counts.map((c) => [c.package_id, c]));
+  const out = [];
+  for (const p of pkgs) {
+    const c = byPkg.get(p.id) || { completed: 0, upcoming: 0 };
+    const expired = !!(p.expires_at && p.expires_at < today);
+    if (!(c.upcoming > 0 || (p.remaining_sessions > 0 && !expired))) continue;
+    out.push({
+      session_type: p.session_type,
+      total_sessions: p.total_sessions,
+      completed_sessions: c.completed,
+      remaining_sessions: c.upcoming + (expired ? 0 : p.remaining_sessions),
+      expires_at: p.expires_at,
+    });
+  }
+  return out;
+}
+
 export function adjustRemaining({ packageId, remaining, note = null }) {
   return tx(() => {
     const p = db.prepare('SELECT * FROM customer_packages WHERE id = ?').get(packageId);
