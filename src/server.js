@@ -543,6 +543,16 @@ app.post('/api/admin/line/reset-all', requireAdmin, asyncHandler((req, res) => {
   res.json(resetAllLineBindings());
 }));
 
+// 管理用：解除『單一』使用者的 LINE 綁定（清 line_user_id + 進行中的綁定碼）。冪等。
+app.delete('/api/admin/users/:id/line', requireAdmin, asyncHandler((req, res) => {
+  const id = Number(req.params.id);
+  const u = db.prepare('SELECT id, line_user_id FROM users WHERE id = ?').get(id);
+  if (!u) return res.status(404).json({ error: 'user_not_found' });
+  const was_bound = !!u.line_user_id;
+  unbindByUserId(id);
+  res.json({ ok: true, was_bound });
+}));
+
 // 變更角色與管理者標籤（requireAdmin = 有管理者標籤的教練）。
 // role ∈ {user, coach}；is_admin 標籤只在 coach 有效（設為 user 一律清為 0）。
 // 守門：不可改自己（避免自我降權鎖死）；變更後系統至少保留 1 位管理者（last_admin）。
