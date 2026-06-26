@@ -102,7 +102,7 @@ async function loadNotifs() {
           <td data-label="收件者">${escapeHtml(r.email)}</td>
           <td data-label="類型"><span class="badge badge-${typeBadge(r.type)}">${typeLabel(r.type)}</span></td>
           <td data-label="通道">${escapeHtml(r.channel)}</td>
-          <td data-label="主旨">${escapeHtml(r.subject)}</td>
+          <td data-label="主旨" class="cell-span">${escapeHtml(r.subject)}</td>
         </tr>`).join('') + '</tbody></table>';
   } catch (e) {
     document.getElementById('notifs').innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
@@ -517,17 +517,15 @@ function renderUserRow(r) {
 
   return `
     <tr class="user-row${archived ? ' is-archived' : ''}" data-user-id="${r.id}"${archived ? ' style="opacity:0.55;"' : ''}>
-      <td data-label="ID" class="subtle">#${r.id}</td>
-      <td data-label="姓名"><span class="font-medium">${escapeHtml(r.name)}</span>${archBadge}</td>
-      <td data-label="Email / 手機" class="subtle">
-        <div class="cell-stack">
-          <div>${escapeHtml(r.email)}</div>
-          <div style="font-size:12px;opacity:0.7;margin-top:2px;">${escapeHtml(r.phone)}</div>
-        </div>
+      <td data-label="ID" class="subtle cell-id">#${r.id}</td>
+      <td data-label="姓名" class="cell-name"><span class="font-medium">${escapeHtml(r.name)}</span>${archBadge}</td>
+      <td data-label="Email / 手機" class="subtle cell-emailphone">
+        <div class="cell-email hide-mobile">${escapeHtml(r.email)}</div>
+        <div class="cell-phone">${escapeHtml(r.phone)}</div>
       </td>
-      <td data-label="登入方式">${loginBadge}</td>
+      <td data-label="登入方式" class="hide-mobile">${loginBadge}</td>
       <td data-label="角色">${roleCell}</td>
-      <td data-label="加入時間" class="subtle">${fmtDate(r.created_at)}</td>
+      <td data-label="加入時間" class="subtle hide-mobile">${fmtDate(r.created_at)}</td>
     </tr>`;
 }
 
@@ -592,8 +590,8 @@ function renderLineTable() {
             ? `<button class="btn btn-danger btn-sm" data-line-unbind="${r.id}">解除綁定</button>`
             : '';
           return `<tr${archived ? ' style="opacity:0.55;"' : ''}>
-            <td data-label="ID" class="subtle">#${r.id}</td>
-            <td data-label="姓名"><span class="font-medium">${escapeHtml(r.name)}</span>${archBadge}</td>
+            <td data-label="ID" class="subtle cell-id">#${r.id}</td>
+            <td data-label="姓名" class="cell-name"><span class="font-medium">${escapeHtml(r.name)}</span>${archBadge}</td>
             <td data-label="角色">${lineRoleBadge(r)}</td>
             <td data-label="手機" class="subtle">${escapeHtml(r.phone || '')}</td>
             <td data-label="LINE 綁定">${statusBadge}</td>
@@ -907,10 +905,10 @@ async function loadCategories() {
         <tbody>
           ${categoriesCache.map(c => `
             <tr>
-              <td data-label="排序" class="subtle">#${c.sort_order}</td>
-              <td data-label="名稱"><span class="font-medium">${escapeHtml(c.name)}</span></td>
-              <td data-label="說明" class="subtle">${escapeHtml(c.description || '—')}</td>
-              <td data-label="操作">
+              <td data-label="排序" class="subtle cell-id">#${c.sort_order}</td>
+              <td data-label="名稱" class="cell-name"><span class="font-medium">${escapeHtml(c.name)}</span></td>
+              <td data-label="說明" class="subtle cell-span">${escapeHtml(c.description || '—')}</td>
+              <td data-label="操作" class="cell-span">
                 <div class="row-actions">
                   <button class="btn btn-ghost btn-sm cat-edit" data-id="${c.id}">編輯</button>
                   <button class="btn btn-danger btn-sm cat-del" data-id="${c.id}">刪除</button>
