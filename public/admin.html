@@ -132,11 +132,12 @@ body { visibility: hidden; }
     border: 0;
     text-align: left;
     overflow-wrap: anywhere;
-    font-size: 13px;
+    font-size: 15px;
+    font-weight: 600;
   }
   .data-table td::before {
     content: attr(data-label);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -147,15 +148,15 @@ body { visibility: hidden; }
   /* 名稱＝標題：左上、放大、與徽章同列、無小標 */
   .data-table td.cell-name { grid-column: 1; grid-row: 1; flex-direction: row; align-items: center; gap: 6px; flex-wrap: wrap; }
   .data-table td.cell-name::before { display: none; }
-  .data-table td.cell-name .font-medium { font-family: "Archivo","Noto Sans TC",sans-serif; font-size: 15px; font-weight: 700; }
+  .data-table td.cell-name .font-medium { font-family: "Archivo","Noto Sans TC",sans-serif; font-size: 17px; font-weight: 800; }
   /* ID/排序＝標題右側小字、無小標 */
-  .data-table td.cell-id { grid-column: 2; grid-row: 1; align-self: center; justify-self: end; color: var(--ink-mute); font-weight: 700; font-size: 12px; }
+  .data-table td.cell-id { grid-column: 2; grid-row: 1; align-self: center; justify-self: end; color: var(--ink-mute); font-weight: 700; font-size: 13px; }
   .data-table td.cell-id::before { display: none; }
   /* 長值/動作橫跨整列 */
   .data-table td.cell-span { grid-column: 1 / -1; }
   /* Email/手機 合併格：手機為主、桌機才顯 email */
   .data-table td.cell-emailphone::before { content: "手機"; }
-  .data-table td.cell-emailphone .cell-phone { font-size: 13px; opacity: 1; margin-top: 0; }
+  .data-table td.cell-emailphone .cell-phone { font-size: 15px; opacity: 1; margin-top: 0; }
   .data-table .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 }
 
