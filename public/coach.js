@@ -876,9 +876,8 @@ function renderRegmBody() {
     t = setTimeout(async () => {
       try {
         const list = await api(`/api/coach/customers/search?q=${encodeURIComponent(q)}`);
-        $('regm-results').innerHTML = list.length
-          ? list.map(u => `<div class="regm-result" data-id="${u.id}" data-name="${escapeHtml(u.name)}" data-phone="${escapeHtml(u.phone || '')}">${escapeHtml(u.name)} <span class="regm-sub">${escapeHtml(u.phone || '')}</span></div>`).join('')
-          : '<div class="regm-sub" style="padding:6px;">查無客人</div>';
+        if (!list.length) { renderRegmNewCustomer(q); return; }
+        $('regm-results').innerHTML = list.map(u => `<div class="regm-result" data-id="${u.id}" data-name="${escapeHtml(u.name)}" data-phone="${escapeHtml(u.phone || '')}">${escapeHtml(u.name)} <span class="regm-sub">${escapeHtml(u.phone || '')}</span></div>`).join('');
         $('regm-results').querySelectorAll('.regm-result').forEach(r => r.addEventListener('click', () => {
           regmCustomer = list.find(u => u.id === Number(r.dataset.id));
           $('regm-results').innerHTML = ''; search.value = regmCustomer.name;
@@ -898,6 +897,35 @@ async function loadRegmPackages() {
   regmPackages = all.filter(p => p.is_valid);
   regmPackageId = regmPackages.length ? regmPackages[0].id : null;
   renderRegmPicked();
+}
+
+function renderRegmNewCustomer(query) {
+  const isDigits = /^\d+$/.test(query);
+  const nameVal = isDigits ? '' : query;
+  const phoneVal = isDigits ? query : '';
+  $('regm-results').innerHTML = `
+    <div style="display:grid;gap:6px;padding:6px 0;">
+      <div class="regm-sub">查無此客人，可直接新增：</div>
+      <input id="regm-newc-name" class="form-input" placeholder="姓名" value="${escapeHtml(nameVal)}" autocomplete="off" />
+      <input id="regm-newc-phone" class="form-input" placeholder="電話" value="${escapeHtml(phoneVal)}" inputmode="numeric" autocomplete="off" />
+      <button id="regm-newc-create" class="btn-primary">新增客人</button>
+    </div>`;
+  $('regm-newc-create').onclick = async () => {
+    const name = $('regm-newc-name').value.trim();
+    const phone = $('regm-newc-phone').value.trim();
+    if (!name) { toast('請填姓名', 'error'); return; }
+    if (!phone) { toast('請填電話', 'error'); return; }
+    try {
+      const u = await api('/api/coach/customers', { method: 'POST', body: { name, phone } });
+      regmCustomer = u;
+      $('regm-results').innerHTML = '';
+      $('regm-search').value = u.name;
+      loadRegmPackages();
+    } catch (e) {
+      const m = { missing_name: '請填姓名', invalid_phone: '電話格式須 8–15 碼數字', phone_unavailable: '此電話為員工帳號，不可用於客人' };
+      toast(m[e.data?.error] || `新增失敗：${e.message}`, 'error');
+    }
+  };
 }
 
 function renderRegmPicked() {

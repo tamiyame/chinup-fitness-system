@@ -81,7 +81,7 @@ import { runBackup, listBackups, safeBackupPath } from './services/backupService
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours, listActiveDiscountCodes } from './services/discountService.js';
-import { isValidPhone } from './services/userService.js';
+import { isValidPhone, findOrCreateUserByPhone } from './services/userService.js';
 import { syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
 import {
   createPackage as svcCreatePackage,
@@ -874,6 +874,12 @@ app.get('/api/coach/week', requireCoach, asyncHandler((req, res) => {
 
 app.get('/api/coach/customers/search', requireCoach, asyncHandler((req, res) => {
   res.json(svcSearchCustomers(req.query.q));
+}));
+
+app.post('/api/coach/customers', requireCoach, asyncHandler((req, res) => {
+  const { name, phone } = req.body || {};
+  const u = findOrCreateUserByPhone({ name, phone });
+  res.json({ id: u.id, name: u.name, phone: u.phone });
 }));
 
 app.post('/api/coach/register/preview', requireCoach, asyncHandler((req, res) => {
