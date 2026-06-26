@@ -453,12 +453,15 @@ async function loadUsers() {
   if (!usersWired) {
     document.getElementById('user-search')?.addEventListener('input', renderUsersTable);
     document.getElementById('show-archived')?.addEventListener('change', renderUsersTable);
+    document.getElementById('line-search')?.addEventListener('input', renderLineTable);
+    document.getElementById('line-filter')?.addEventListener('change', renderLineTable);
     usersWired = true;
   }
 
   try {
     allUsers = await api('/api/admin/users');
     renderUsersTable();
+    renderLineTable();
   } catch (e) {
     document.getElementById('users-table').innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
   }
@@ -544,6 +547,75 @@ function bindUserRowLongPress(container) {
     tr.addEventListener('mouseup', cancel);
     tr.addEventListener('mouseleave', cancel);
   });
+}
+
+function lineRoleBadge(r) {
+  const kind = r.is_admin ? 'confirmed' : (ROLE_BADGE[r.role] || 'open');
+  const label = r.is_admin ? '管理者' : (ROLE_LABEL[r.role] || r.role);
+  return `<span class="badge badge-${kind}">${escapeHtml(label)}</span>`;
+}
+
+function renderLineTable() {
+  const el = document.getElementById('line-table');
+  if (!el) return;
+  const q = (document.getElementById('line-search')?.value || '').trim().toLowerCase();
+  const filter = document.getElementById('line-filter')?.value || 'all';
+
+  let rows = allUsers || [];
+  if (q) rows = rows.filter(r => (r.name || '').toLowerCase().includes(q) || (r.phone || '').toLowerCase().includes(q));
+  if (filter === 'bound') rows = rows.filter(r => !!r.line_user_id);
+  else if (filter === 'unbound') rows = rows.filter(r => !r.line_user_id);
+
+  if (!rows.length) { el.innerHTML = `<div class="p-6 subtle text-center">無符合的使用者</div>`; return; }
+
+  el.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:60px;">ID</th>
+        <th>姓名</th>
+        <th>角色</th>
+        <th>手機</th>
+        <th>LINE 綁定</th>
+        <th style="width:120px;"></th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => {
+          const archived = !!r.archived_at;
+          const archBadge = archived ? ' <span class="badge badge-cancelled" style="font-size:10px;">已封存</span>' : '';
+          const bound = !!r.line_user_id;
+          const statusBadge = bound
+            ? '<span class="badge badge-open">已綁定</span>'
+            : '<span class="badge badge-completed">未綁定</span>';
+          const action = bound
+            ? `<button class="btn btn-danger btn-sm" data-line-unbind="${r.id}">解除綁定</button>`
+            : '';
+          return `<tr${archived ? ' style="opacity:0.55;"' : ''}>
+            <td class="subtle">#${r.id}</td>
+            <td><span class="font-medium">${escapeHtml(r.name)}</span>${archBadge}</td>
+            <td>${lineRoleBadge(r)}</td>
+            <td class="subtle">${escapeHtml(r.phone || '')}</td>
+            <td>${statusBadge}</td>
+            <td>${action}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+
+  el.querySelectorAll('[data-line-unbind]').forEach(btn => btn.addEventListener('click', () => doLineUnbind(Number(btn.dataset.lineUnbind))));
+}
+
+async function doLineUnbind(id) {
+  const u = (allUsers || []).find(x => x.id === id);
+  if (!u) return;
+  if (!confirm(`確定解除「${u.name}」（${u.phone || '無電話'}）的 LINE 綁定？\n解除後請該使用者用正確號碼重新綁定。`)) return;
+  try {
+    await api(`/api/admin/users/${id}/line`, { method: 'DELETE' });
+    u.line_user_id = null;
+    toast('已解除 LINE 綁定', 'success');
+    renderLineTable();
+  } catch (e) {
+    toast(`解除失敗：${e.data?.error || e.message}`, 'error');
+  }
 }
 
 function ensureUserEditOverlay() {
