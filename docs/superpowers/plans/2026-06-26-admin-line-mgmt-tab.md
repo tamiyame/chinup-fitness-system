@@ -159,10 +159,12 @@ app.delete('/api/admin/users/:id/line', requireAdmin, asyncHandler((req, res) =>
 }));
 ```
 
-- [ ] **Step 4：跑測試確認通過**
+- [ ] **Step 4：重啟 server 後跑測試確認通過**
 
-Run: `node tests/admin-user-line-unbind-api.test.js`
-Expected: PASS（4 個 ✓，無 ✗）。
+Node 無熱重載——剛改的 `src/server.js` 不會被既有 running server 載入，必須**先重啟**：
+Run: `pkill -f 'node src/server.js'; sleep 1; PORT=3000 node src/server.js & sleep 2`
+再 Run: `node tests/admin-user-line-unbind-api.test.js`
+Expected: PASS（前置 2 ✓ + 案例 6 ✓，無 ✗）。
 
 > 注意：`npm test` / 跑測試會清掉本機 `data/app.db` 共用資料；smoke 前需 `node src/db/seed-demo.js` 重新 seed。勿與其他背景跑測試的工作並行。
 
