@@ -137,7 +137,7 @@ console.log('[coach-add-customer-api] done');
 
 需 running server（測試用 seed admin）。若未跑：`PORT=3000 node src/server.js & sleep 2`（先 `node src/db/seed-demo.js` 確保有 admin）。
 Run: `node tests/coach-add-customer-api.test.js`
-Expected: FAIL — 端點不存在，`POST /api/coach/customers` 落 404 fallback，r1.status 非 200（✗）。
+Expected: FAIL — 端點尚不存在，`POST /api/coach/customers` 全落 Express 404 fallback，**所有 POST 斷言（r1 建立／r2 missing_name／r3 invalid_phone／r4 409／r5 find）皆 FAIL**（admin 登入 ✓）。
 
 - [ ] **Step 3：實作端點**
 
