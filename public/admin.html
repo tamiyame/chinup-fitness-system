@@ -77,14 +77,14 @@ body { visibility: hidden; }
   font-weight:900; letter-spacing:-.01em;
 }
 
-/* 總覽 stat 卡：大數字 Archivo 900 tabular、小標大寫 */
-#apanel-overview .grid .card{ padding:16px; }
-#apanel-overview .card .subtle{
+/* 總覽 stat 卡：大數字 Archivo 900 tabular、小標大寫（搬到課程頁，改以 .stat-grid 定位） */
+.stat-grid .card{ padding:16px; }
+.stat-grid .card .subtle{
   font-family:"Archivo",sans-serif; font-weight:700;
   font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
   color:var(--ink-mute);
 }
-#apanel-overview .card .text-3xl{
+.stat-grid .card .text-3xl{
   font-family:"Archivo",sans-serif; font-weight:900;
   font-variant-numeric:tabular-nums; letter-spacing:-.02em;
   font-size:32px; line-height:1; margin-top:8px;
@@ -277,8 +277,7 @@ details.session-row summary .font-semibold{
 
   <!-- ===== 後台分頁 ===== -->
   <div id="admin-tabs" class="flex gap-1 border-b mb-6 overflow-x-auto">
-    <button data-atab="overview" class="tab tab-active" style="white-space:nowrap;">總覽</button>
-    <button data-atab="courses" class="tab" style="white-space:nowrap;">課程</button>
+    <button data-atab="courses" class="tab tab-active" style="white-space:nowrap;">課程</button>
     <button data-atab="orders" class="tab" style="white-space:nowrap;">報名作業</button>
     <button data-atab="members" class="tab" style="white-space:nowrap;">會員</button>
     <button data-atab="coaches" class="tab" style="white-space:nowrap;">教練</button>
@@ -287,28 +286,7 @@ details.session-row summary .font-semibold{
     <button data-atab="line" class="tab" style="white-space:nowrap;">LINE 管理</button>
   </div>
 
-  <div id="apanel-overview" class="tab-panel">
-
-  <!-- stats -->
-  <section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-    <div class="card"><div class="subtle">課程範本</div><div class="text-3xl font-bold mt-1" id="stat-templates">—</div></div>
-    <div class="card"><div class="subtle">總場次</div><div class="text-3xl font-bold mt-1" id="stat-sessions">—</div></div>
-    <div class="card"><div class="subtle">報名總人次</div><div class="text-3xl font-bold mt-1" id="stat-regs">—</div></div>
-    <div class="card"><div class="subtle">候補人次</div><div class="text-3xl font-bold mt-1" id="stat-waitlist" style="color:#a16207">—</div></div>
-  </section>
-
-  <!-- ops: backup status bar -->
-  <section class="card mb-10 flex items-center gap-3">
-    <svg class="nk-ico" style="width:22px;height:22px;flex:none;color:var(--ink-mute);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></svg>
-    <div class="flex-1 min-w-0">
-      <div id="backup-summary" class="text-sm">資料備份：載入中…</div>
-      <div id="backup-summary-error" class="hidden text-xs text-red-700 mt-0.5"></div>
-    </div>
-    <button id="btn-backup-manage" class="btn btn-sm">管理</button>
-  </section>
-  </div>
-
-  <div id="apanel-courses" class="tab-panel hidden">
+  <div id="apanel-courses" class="tab-panel">
 
   <!-- categories -->
   <section class="mb-10">
@@ -328,6 +306,24 @@ details.session-row summary .font-semibold{
       <button id="new-btn" class="btn btn-primary">＋ 新增範本</button>
     </div>
     <div id="templates" class="grid gap-3"></div>
+  </section>
+
+  <!-- stats -->
+  <section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10 stat-grid">
+    <div class="card"><div class="subtle">課程範本</div><div class="text-3xl font-bold mt-1" id="stat-templates">—</div></div>
+    <div class="card"><div class="subtle">總場次</div><div class="text-3xl font-bold mt-1" id="stat-sessions">—</div></div>
+    <div class="card"><div class="subtle">報名總人次</div><div class="text-3xl font-bold mt-1" id="stat-regs">—</div></div>
+    <div class="card"><div class="subtle">候補人次</div><div class="text-3xl font-bold mt-1" id="stat-waitlist" style="color:#a16207">—</div></div>
+  </section>
+
+  <!-- ops: backup status bar -->
+  <section class="card mb-10 flex items-center gap-3">
+    <svg class="nk-ico" style="width:22px;height:22px;flex:none;color:var(--ink-mute);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></svg>
+    <div class="flex-1 min-w-0">
+      <div id="backup-summary" class="text-sm">資料備份：載入中…</div>
+      <div id="backup-summary-error" class="hidden text-xs text-red-700 mt-0.5"></div>
+    </div>
+    <button id="btn-backup-manage" class="btn btn-sm">管理</button>
   </section>
   </div>
 
