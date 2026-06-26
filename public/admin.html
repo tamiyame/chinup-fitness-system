@@ -103,6 +103,63 @@ body { visibility: hidden; }
 /* ID / 加入時間等數字欄走 tabular（用 .subtle 標的近似命中數字格）*/
 .data-table td.subtle{ font-variant-numeric:tabular-nums; }
 
+/* 會員 Email/手機 合併格：手機為次行（桌機）；用 class 取代 inline style 以便手機覆寫 */
+.data-table .cell-phone { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+
+/* 後台表格手機(<768px)重排成「標題＋雙欄標籤」卡片（桌機不受影響；放在 .data-table overlay 之後以勝出） */
+@media (max-width: 767px) {
+  .data-table thead { display: none; }
+  .data-table, .data-table tbody { display: block; width: 100%; }
+  .data-table tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+    align-items: start;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 10px;
+    background: #fff;
+  }
+  .data-table tr:hover td { background: transparent; }
+  .data-table td {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .data-table td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+  .data-table td:empty { display: none; }
+  .data-table .hide-mobile { display: none; }
+  /* 名稱＝標題：左上、放大、與徽章同列、無小標 */
+  .data-table td.cell-name { grid-column: 1; grid-row: 1; flex-direction: row; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .data-table td.cell-name::before { display: none; }
+  .data-table td.cell-name .font-medium { font-family: "Archivo","Noto Sans TC",sans-serif; font-size: 17px; font-weight: 800; }
+  /* ID/排序＝標題右側小字、無小標 */
+  .data-table td.cell-id { grid-column: 2; grid-row: 1; align-self: center; justify-self: end; color: var(--ink-mute); font-weight: 700; font-size: 13px; }
+  .data-table td.cell-id::before { display: none; }
+  /* 長值/動作橫跨整列 */
+  .data-table td.cell-span { grid-column: 1 / -1; }
+  /* Email/手機 合併格：手機為主、桌機才顯 email */
+  .data-table td.cell-emailphone::before { content: "手機"; }
+  .data-table td.cell-emailphone .cell-phone { font-size: 15px; opacity: 1; margin-top: 0; }
+  .data-table .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+}
+
 /* 備份 modal 內表格同步 Nike 化 */
 #backup-modal table thead th{
   font-family:"Archivo","Noto Sans TC",sans-serif;
