@@ -29,11 +29,12 @@
 - `GET /api/admin/users`（行 530）回所有 user 含 `id,name,email,phone,role,is_admin,has_google,line_user_id,birthday,address,archived_at,created_at`。
 
 `public/admin.html`：
-- 頁籤列 `#admin-tabs`（行 280–287）：`<button data-atab="overview" class="tab tab-active">總覽</button>` … `<button data-atab="notifs" class="tab">通知</button>`。
-- 總覽面板 `#apanel-overview`（行 289–309）：統計卡 `<section class="grid ...">`（含 `#stat-templates` 等）＋備份列 `<section class="card mb-10 flex ...">`（含 `#backup-summary`/`#btn-backup-manage`），面板於行 309 `</div>` 收尾。
-- 課程面板 `#apanel-courses`（行 310 開、課程分類+課程範本兩 section，於行 331 `</div>` 收尾）。
+- 頁籤列 `#admin-tabs`：按鈕在**行 280–286**（`overview`(280)/`courses`(281)/`orders`/`members`/`coaches`/`discounts`/`notifs`(286)），`#admin-tabs` 收尾 `</div>` 在**行 287**。
+- 總覽面板 `#apanel-overview`（**行 289–308**）：統計卡 `<section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">`（**行 292–297**，含 `#stat-templates/#stat-sessions/#stat-regs/#stat-waitlist`）＋備份列 `<section class="card mb-10 flex items-center gap-3">`（**行 300–307**，含 `#backup-summary/#backup-summary-error/#btn-backup-manage`），面板於**行 308** `</div>` 收尾。
+- **`#apanel-overview` 專屬 CSS**（`<style>`，**行 80–91**）：`#apanel-overview .grid .card{padding:16px}`、`#apanel-overview .card .subtle{Archivo 大寫小標}`、`#apanel-overview .card .text-3xl{Archivo 900 32px tabular 大數字}`——**統計卡的視覺全靠這三條**，搬家後選擇器會失配（見 Task 3）。
+- 課程面板 `#apanel-courses`（**行 310** 開、課程分類+課程範本兩 section，於**行 331** `</div>` 收尾）。
 - 會員面板搜尋範本（行 374–386）：`#user-search`（search input）＋`#show-archived`（checkbox）＋`#users-table`。
-- notifs 面板 `#apanel-notifs`（行 573–582，於行 582 `</div>` 收尾）；行 586 起為 `<!-- Modal -->`。**新面板 `#apanel-line` 插在行 582 之後、586 之前。**
+- notifs 面板 `#apanel-notifs`（**行 573–582**，於**行 582** `</div>` 收尾）；**行 584** 是 `</main>`（所有 `#apanel-*` 都在 `<main>` 內）、行 586 才是 `<!-- Modal -->`/`#modal`（在 `<main>` 外）。**新面板 `#apanel-line` 必須插在行 582 之後、`</main>`（行 584）之前**，作為 `<main>` 內最後一個面板。
 
 `public/admin.js`：
 - imports（行 1）：`api, toast, fmtDate, dow, bootAuth, escapeHtml`；`const user = await bootAuth(...)`（目前管理者）。
@@ -52,7 +53,7 @@
 
 - **Modify `src/server.js`**（Task 1）：reset-all 端點後加 `DELETE /api/admin/users/:id/line`。
 - **Create `tests/admin-user-line-unbind-api.test.js`**（Task 1）+ **Modify `package.json`**（test:api 串接）。
-- **Modify `public/admin.html`**（Task 2：加 LINE 頁籤+面板；Task 3：移除總覽頁籤、搬內容到課程、預設課程）。
+- **Modify `public/admin.html`**（Task 2：加 LINE 頁籤+面板；Task 3：移除總覽頁籤、搬統計卡+備份列到課程面板底、預設課程、`<style>` 內總覽專屬 CSS 改 `.stat-grid` 定位）。
 - **Modify `public/admin.js`**（Task 2：`renderLineTable` + 解綁 + 一次性綁定 + loadUsers 加呼叫）。
 
 任務切分：Task 1 後端（自帶 api 測試循環）；Task 2 LINE 管理前端（node --check 把關）；Task 3 合併總覽（node --check 把關）。三者各自可獨立審查。
@@ -75,9 +76,11 @@
 建立 `tests/admin-user-line-unbind-api.test.js`：
 
 ```js
-// API test: 管理者單一使用者解除 LINE 綁定（DELETE /api/admin/users/:id/line）。需 running server + seed admin/coach。
+// API test: 管理者單一使用者解除 LINE 綁定（DELETE /api/admin/users/:id/line）。需 running server。
+// 自行建立測試管理者(is_admin=1)與測試教練(is_admin=0)，不依賴 seed 的 admin/coach，避免 seed 種類與角色遷移時序造成的 403。
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
+import { hashPassword } from '../src/services/auth.js';
 
 const BASE = process.env.BASE || 'http://localhost:3000';
 async function req(method, path, { body, token } = {}) {
@@ -94,13 +97,20 @@ console.log('[admin-user-line-unbind-api] start');
 const clean = () => db.exec("DELETE FROM users WHERE email LIKE 'lub-%'");
 clean();
 
-const adminLogin = await req('POST', '/api/auth/login', { body: { email: 'admin@chinup.local', password: 'admin1234' } });
+// 自建測試管理者(coach+is_admin=1)與教練(coach+is_admin=0)，皆可登入後台。
+const PW = hashPassword('lubpw1234');
+db.prepare("INSERT INTO users (name,email,role,is_admin,password_hash) VALUES ('LUB Admin','lub-admin@x.com','coach',1,?)").run(PW);
+db.prepare("INSERT INTO users (name,email,role,is_admin,password_hash) VALUES ('LUB Coach','lub-coach@x.com','coach',0,?)").run(PW);
+const adminLogin = await req('POST', '/api/auth/login', { body: { email: 'lub-admin@x.com', password: 'lubpw1234' } });
 const adminToken = adminLogin.data?.token;
-const coachLogin = await req('POST', '/api/auth/login', { body: { email: 'coach1@chinup.local', password: 'coachpass1234' } });
+const coachLogin = await req('POST', '/api/auth/login', { body: { email: 'lub-coach@x.com', password: 'lubpw1234' } });
 const coachToken = coachLogin.data?.token;
+expect('前置：admin token 取得且 is_admin', () => { assert.equal(adminLogin.status, 200); assert.equal(adminLogin.data.user.is_admin, 1); });
+expect('前置：coach token 取得且非 admin', () => { assert.equal(coachLogin.status, 200); assert.equal(coachLogin.data.user.is_admin, 0); });
 
-// 一位已綁定 + 一位未綁定
-const boundId = Number(db.prepare("INSERT INTO users (name,email,role,line_user_id,line_bind_code,line_bind_expires_at) VALUES ('LUB Bound','lub-bound@x.com','user','Uxxx999','c1','2099-01-01T00:00:00')").run().lastInsertRowid);
+// 一位已綁定 + 一位未綁定（line_user_id 用唯一值避開 UNIQUE partial index 殘列衝突）
+const LUID = 'Ulub' + Date.now();
+const boundId = Number(db.prepare("INSERT INTO users (name,email,role,line_user_id,line_bind_code,line_bind_expires_at) VALUES ('LUB Bound','lub-bound@x.com','user',?,'c1','2099-01-01T00:00:00')").run(LUID).lastInsertRowid);
 const unboundId = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('LUB Unbound','lub-unbound@x.com','user')").run().lastInsertRowid);
 
 // 1) admin 解綁已綁定者 → 200 was_bound:true，DB line_user_id/code/expires 全清
@@ -129,9 +139,9 @@ console.log('[admin-user-line-unbind-api] done');
 
 - [ ] **Step 2：跑測試確認失敗**
 
-先啟動 server（背景）：`PORT=3000 node src/server.js &`（若尚未跑）。先確保有 seed：`node src/db/seed-demo.js`。
+需要 running server（測試自行建立 admin/coach，不依賴 seed 帳號；DB schema 由 `import connection.js` 確保）。若 server 未跑：`PORT=3000 node src/server.js &`（背景）。
 Run: `node tests/admin-user-line-unbind-api.test.js`
-Expected: FAIL — 解綁端點不存在，`DELETE /api/admin/users/:id/line` 會落到既有路由或 404 fallback，`r1.status` 非 200（測試 ✗）。
+Expected: FAIL — 解綁端點尚不存在，`DELETE /api/admin/users/:id/line` 落到 404 fallback（Express 對未匹配路由回 404），`r1.status` 非 200 → 測試 ✗。（前置兩條 admin/coach token 斷言應為 ✓。）
 
 - [ ] **Step 3：實作端點**
 
@@ -181,7 +191,7 @@ git commit -m "feat: admin 單一使用者 LINE 解綁端點 DELETE /api/admin/u
 
 - [ ] **Step 1：admin.html — 加「LINE 管理」頁籤按鈕**
 
-在 `#admin-tabs`（行 287）`<button data-atab="notifs" class="tab" style="white-space:nowrap;">通知</button>` **之後**、`</div>`（行 288）之前插入：
+在 `#admin-tabs` 的 `<button data-atab="notifs" class="tab" style="white-space:nowrap;">通知</button>`（**行 286**）**之後**、`#admin-tabs` 收尾 `</div>`（**行 287**）之前插入：
 
 ```html
     <button data-atab="line" class="tab" style="white-space:nowrap;">LINE 管理</button>
@@ -189,7 +199,7 @@ git commit -m "feat: admin 單一使用者 LINE 解綁端點 DELETE /api/admin/u
 
 - [ ] **Step 2：admin.html — 加 `#apanel-line` 面板**
 
-在 `#apanel-notifs` 面板收尾 `</div>`（行 582）**之後**、`<!-- Modal -->`（行 586）之前插入：
+在 `#apanel-notifs` 面板收尾 `</div>`（**行 582**）**之後**、`</main>`（**行 584**）之前插入（務必在 `</main>` 之內，與其他 `#apanel-*` 同層；勿放到行 586 `<!-- Modal -->` 那側）：
 
 ```html
   <div id="apanel-line" class="tab-panel hidden">
@@ -349,31 +359,56 @@ git commit -m "feat: 後台 LINE 管理頁籤（列全部使用者綁定狀況+�
     <button data-atab="courses" class="tab tab-active" style="white-space:nowrap;">課程</button>
 ```
 
-- [ ] **Step 2：admin.html — 把總覽內容搬進課程面板最下方**
+- [ ] **Step 2：admin.html — 把總覽內容搬進課程面板最下方（統計卡 section 加 `stat-grid` class）**
 
-將原 `#apanel-overview`（行 289–309）內的**兩個 section**（統計卡 `<section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">…</section>` 與備份列 `<section class="card mb-10 flex items-center gap-3">…</section>`）整段**剪下**，貼到 `#apanel-courses` 內、課程範本 section 之後（即 `#apanel-courses` 收尾 `</div>`（行 331）**之前**）。貼上的兩個 section 內容**原封不動**（所有 id 保留：`#stat-templates`/`#stat-sessions`/`#stat-regs`/`#stat-waitlist`/`#backup-summary`/`#backup-summary-error`/`#btn-backup-manage`）。
+將原 `#apanel-overview`（**行 289–308**）內的**兩個 section**整段**剪下**，貼到 `#apanel-courses` 內、課程範本 section 之後（即 `#apanel-courses` 收尾 `</div>`（**行 331**）**之前**）：
+- 統計卡 section（**行 292–297**）：把 class 從 `<section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">` 改為 **`<section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10 stat-grid">`**（加 `stat-grid`，供 CSS 重新定位，見 Step 4）；內含 `#stat-templates/#stat-sessions/#stat-regs/#stat-waitlist`，其餘原封不動。
+- 備份列 section（**行 300–307**）：`<section class="card mb-10 flex items-center gap-3">…</section>` 原封不動（含 `#backup-summary/#backup-summary-error/#btn-backup-manage`）。
 
-- [ ] **Step 3：admin.html — 刪除清空後的總覽面板容器**
+- [ ] **Step 3：admin.html — 刪除清空後的總覽面板容器、課程面板改預設顯示**
 
-把已被掏空的 `<div id="apanel-overview" class="tab-panel">` 與其對應 `</div>`（原行 289 與 309）刪除（含中間殘留註解），確保不留空的 `#apanel-overview`。`#apanel-courses` 仍須移除 `hidden`（預設顯示）：把 `<div id="apanel-courses" class="tab-panel hidden">`（行 310）改為 `<div id="apanel-courses" class="tab-panel">`。
+把已被掏空的 `<div id="apanel-overview" class="tab-panel">`（**行 289**）與其對應收尾 `</div>`（**行 308**）刪除（含中間殘留 `<!-- stats -->`/`<!-- ops -->` 註解與空行），確保檔內**不再有 `id="apanel-overview"`**。並把 `<div id="apanel-courses" class="tab-panel hidden">`（**行 310**）改為 `<div id="apanel-courses" class="tab-panel">`（移除 `hidden` → 預設顯示）。
 
-- [ ] **Step 4：admin.js — 確認無 overview 殘留引用**
+- [ ] **Step 4：admin.html — 重新定位總覽專屬 CSS（否則統計卡大數字樣式失配）**
+
+`<style>` 內**行 80–91** 有三條 scope 在 `#apanel-overview` 的規則，搬家後會失配。把這三條的選擇器前綴 `#apanel-overview` 改為 `.stat-grid`（搭配 Step 2 加的 class，精準命中、不波及課程面板其他 `.card`）。改後：
+
+```css
+/* 總覽 stat 卡：大數字 Archivo 900 tabular、小標大寫（搬到課程頁，改以 .stat-grid 定位） */
+.stat-grid .card{ padding:16px; }
+.stat-grid .card .subtle{
+  font-family:"Archivo",sans-serif; font-weight:700;
+  font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--ink-mute);
+}
+.stat-grid .card .text-3xl{
+  font-family:"Archivo",sans-serif; font-weight:900;
+  font-variant-numeric:tabular-nums; letter-spacing:-.02em;
+  font-size:32px; line-height:1; margin-top:8px;
+}
+```
+
+> 註：原 `#apanel-overview .grid .card` 的 `.grid` 限定可省略——`.stat-grid` 已是該 section，且 `.stat-grid .card` 只命中統計卡，不會誤中備份列（備份列 section 自身是 `.card`、非 `.stat-grid` 的子孫，但保險起見備份列**不要**加 `stat-grid`）。
+
+- [ ] **Step 5：admin.js — 確認無 overview 殘留引用**
 
 Run: `grep -nE "apanel-overview|data-atab=.overview.|'overview'|\"overview\"" public/admin.js`
 Expected: 無輸出（admin.js 不曾硬引用 overview；頁籤切換為通用、統計/備份 loader 抓的是 `#stat-*`/`#backup-*` id，與面板位置無關）。**若有輸出**：逐處改為對應課程面板邏輯後再繼續。
 
-- [ ] **Step 5：語法檢查 + 結構檢查**
+- [ ] **Step 6：語法檢查 + 結構檢查**
 
 Run: `node --check public/admin.js`
 Expected: 無輸出、exit 0。
 Run: `grep -c 'data-atab="overview"' public/admin.html`
 Expected: `0`（總覽頁籤已移除）。
-Run: `grep -c 'id="apanel-overview"' public/admin.html`
-Expected: `0`（總覽面板已移除）。
+Run: `grep -c 'apanel-overview' public/admin.html`
+Expected: `0`（總覽面板＋其專屬 CSS 選擇器皆已移除/改名）。
+Run: `grep -c 'stat-grid' public/admin.html`
+Expected: `4`（統計卡 section class 1 處 + 三條 CSS 選擇器 3 處）。
 Run: `grep -c 'id="stat-templates"' public/admin.html`
 Expected: `1`（統計卡仍在，已搬到課程面板）。
 
-- [ ] **Step 6：Commit**
+- [ ] **Step 7：Commit**
 
 ```bash
 git add public/admin.html public/admin.js
@@ -389,8 +424,10 @@ git commit -m "refactor: 合併後台總覽到課程頁（移除總覽頁籤、�
 2. **瀏覽器 smoke**（本機 `npm start`，管理者登入 `admin@chinup.local/admin1234`）：
    - 「LINE 管理」頁籤出現在最末；面板列出全部使用者（角色徽章、已綁/未綁、封存徽章）。
    - 搜尋姓名/電話即時過濾；狀態篩選全部/已綁/未綁正確。
+   - **未綁定者列**：顯示「未綁定」灰徽章且**無**「解除綁定」按鈕。
+   - **封存使用者預設即顯示**在 LINE 表（帶「已封存」徽章+列淡化），毋需任何「顯示封存」切換（與會員頁刻意分歧——動機案例 id 38 即可能被封存）。
    - 對一位已綁定者按「解除綁定」→ confirm → 狀態翻為「未綁定」、按鈕消失；重整後仍未綁定（DB 已清）。
-   - 「總覽」頁籤已不存在；統計卡＋備份列出現在「課程」頁最下方；進後台**預設停在「課程」**；其他頁籤（報名作業/會員/教練/折扣碼/通知/LINE 管理）切換正常。
+   - 「總覽」頁籤已不存在；統計卡＋備份列出現在「課程」頁最下方、**統計卡大數字維持 Archivo 大字樣式**（確認 CSS 重定位生效）；進後台**預設停在「課程」**；其他頁籤（報名作業/會員/教練/折扣碼/通知/LINE 管理）切換正常。
    - 控制台無錯誤。
 3. （上線後，prod）用本工具解除陳怡君 id 38（0628685158）綁定，請她以 0928685158（id 12）重綁；空帳號 id 38 可封存。
 

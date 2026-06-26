@@ -43,7 +43,7 @@ app.delete('/api/admin/users/:id/line', requireAdmin, asyncHandler((req, res) =>
 - 新增面板 `<div id="apanel-line" class="tab-panel hidden">`：標題「LINE 綁定管理」＋ 搜尋框 `#line-search`（姓名/電話）＋ 狀態篩選 `#line-filter`（select：全部/已綁定/未綁定）＋ `#line-table`（`.data-table` 容器）。沿用會員頁排版。
 
 **前端 `admin.js`**：
-- 新增 `renderLineTable()`：以 `allUsers` 為來源，依 `#line-search`（name/phone, lowercase includes）+ `#line-filter`（all/bound/unbound，bound=`!!line_user_id`）過濾；畫 `.data-table`：欄＝ID｜姓名（封存加「已封存」徽章+列淡化）｜角色徽章（重用 is_admin/ROLE_LABEL/ROLE_BADGE 規則）｜電話｜LINE 狀態（已綁定 badge-confirmed 綠／未綁定 badge-completed 灰）｜操作（已綁定列才有 `.btn-danger.btn-sm` 「解除綁定」，`data-line-uid`）。**列出全部使用者（含封存）**。
+- 新增 `renderLineTable()`：以 `allUsers` 為來源，依 `#line-search`（name/phone, lowercase includes）+ `#line-filter`（all/bound/unbound，bound=`!!line_user_id`）過濾；畫 `.data-table`：欄＝ID｜姓名（封存加「已封存」徽章+列淡化）｜角色徽章（重用 is_admin/ROLE_LABEL/ROLE_BADGE 規則）｜電話｜LINE 狀態（已綁定 `badge-open` 綠／未綁定 `badge-completed` 灰；注意 `badge-confirmed` 其實是藍色、與「管理者」角色徽章同色，故綁定狀態用綠色 `badge-open`）｜操作（已綁定列才有 `.btn-danger.btn-sm` 「解除綁定」，`data-line-unbind`）。**列出全部使用者（含封存）**。
 - 解綁互動：表格用事件委派監聽「解除綁定」→ `confirm('確定解除「<姓名>」(<電話>) 的 LINE 綁定？')` → `await api('/api/admin/users/'+id+'/line',{method:'DELETE'})` → toast 成功 → 就地把 `allUsers.find(id).line_user_id=null` → `renderLineTable()`。失敗 toast。
 - 搜尋 `input`、篩選 `change` → `renderLineTable()`（一次性綁定，仿 `usersWired`）。
 - 資料來源：在 `loadUsers()` 取得 `allUsers` 後，於 `renderUsersTable()` 旁**加呼叫 `renderLineTable()`**（同一份 fetch 餵兩張表，零額外請求）。
