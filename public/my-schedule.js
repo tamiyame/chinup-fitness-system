@@ -359,7 +359,7 @@ function filterItems(items, filter) {
 }
 
 function render() {
-  // 我的方案（有效套餐）· Nike 卡片：Archivo 大字剩餘數 + 已登錄/共 + 進度條（取代舊「剩 N 堂」膠囊）
+  // 我的方案（有效套餐）· Nike 卡片：Archivo 大字尚餘數 + 已上完/共（顯示到課全上完） + 進度條（取代舊「剩 N 堂」膠囊）
   const PKG_TYPE = { '1on1': '一對一', '1on2': '一對二' };
   const pkgSec = document.getElementById('packages-section');
   if (pkgSec) {
@@ -373,16 +373,16 @@ function render() {
         '<div class="section-label">我的方案</div>' +
         pkgs.map((p) => {
           const t = PKG_TYPE[p.session_type] || escapeHtml(p.session_type);
-          const total = p.total_sessions, used = p.used_sessions, remain = p.remaining_sessions;
-          const pct = total > 0 ? Math.round((used / total) * 100) : 0;
+          const total = p.total_sessions, completed = p.completed_sessions, remain = p.remaining_sessions;
+          const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
           const exp = p.expires_at ? ` · 到期 ${escapeHtml(String(p.expires_at)).replace(/-/g, '/')}` : '';
           return `<div class="pk-card">
             <div class="pk-main">
               <div class="pk-type">${t}</div>
-              <div class="pk-meta">已登錄 ${used} · 共 ${total} 堂${exp}</div>
+              <div class="pk-meta">已上完 ${completed} · 共 ${total} 堂${exp}</div>
               <div class="pk-bar"><div class="pk-bar-fill" style="width:${pct}%"></div></div>
             </div>
-            <div class="pk-remain"><span class="pk-rtop">剩餘</span><span class="pk-rnum">${remain}</span><span class="pk-rlabel">堂</span></div>
+            <div class="pk-remain"><span class="pk-rtop">尚餘</span><span class="pk-rnum">${remain}</span><span class="pk-rlabel">堂</span></div>
           </div>`;
         }).join('');
     }
