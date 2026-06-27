@@ -134,11 +134,28 @@ export function adjustRemaining({ packageId, remaining, note = null }) {
   });
 }
 
-export function archivePackage(packageId) {
-  const p = db.prepare('SELECT id FROM customer_packages WHERE id = ?').get(packageId);
-  if (!p) throw new ApiError(404, 'package_not_found');
-  db.prepare('UPDATE customer_packages SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(nowLocal(), packageId);
-  return getPackage(packageId);
+// 作廢連動取消：列出/取消該方案名下所有 confirmed 預約（inline SQL，不 import bookingService 以免循環依賴）。
+const listConfirmedBookingsByPackageStmt = db.prepare(
+  `SELECT id FROM bookings WHERE package_id = ? AND status = 'confirmed' ORDER BY id ASC`
+);
+const cancelBookingsByPackageStmt = db.prepare(
+  `UPDATE bookings SET status='cancelled', cancelled_at=?, cancelled_by=?, cancel_reason=?
+   WHERE package_id = ? AND status = 'confirmed'`
+);
+
+// 作廢方案 → 連動取消名下所有未取消預約（含過去；靜默、不回補堂數）。
+// 回傳含 cancelledBookingIds 供 route 端逐筆刪 Google 日曆事件。天然冪等（再作廢→空陣列）。
+export function archivePackage(packageId, actorId = null) {
+  return tx(() => {
+    const p = db.prepare('SELECT id FROM customer_packages WHERE id = ?').get(packageId);
+    if (!p) throw new ApiError(404, 'package_not_found');
+    db.prepare('UPDATE customer_packages SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(nowLocal(), packageId);
+    const cancelledBookingIds = listConfirmedBookingsByPackageStmt.all(packageId).map((r) => r.id);
+    if (cancelledBookingIds.length) {
+      cancelBookingsByPackageStmt.run(nowLocal(), actorId, '方案作廢連動取消', packageId);
+    }
+    return { ...getPackage(packageId), cancelledBookingIds };
+  });
 }
 
 export function restorePackage(packageId) {

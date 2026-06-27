@@ -143,5 +143,38 @@ expect('已取消的方案預約再走退款 → 不重複回補（扣兩次起�
   refundBookingAdmin({ bookingId: bid, actorId: admin }); // 已 cancelled → wasConfirmed=false → 不再回補
   assert.equal(getPackage(p.id).remaining_sessions, 4);    // 仍是 4；若重複回補會變 5 → 測試失敗
 });
+// 作廢連動取消：取消名下所有 confirmed 預約（含過去）、不回補、回 cancelledBookingIds
+let cascadePkgId;
+expect('archivePackage：連動取消名下所有 confirmed 預約、不回補、回 cancelledBookingIds', () => {
+  db.exec("DELETE FROM bookings WHERE member_id="+mid+"; DELETE FROM customer_packages WHERE member_id="+mid);
+  const cu = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('pk連動教練','pk-cascade@x.com','coach')").run().lastInsertRowid);
+  const cid = Number(db.prepare("INSERT INTO coaches (user_id,display_name,is_active) VALUES (?, 'pk-cascade',1)").run(cu).lastInsertRowid);
+  const pkg = createPackage({ memberId: mid, sessionType: '1on1', totalSessions: 10, createdBy: admin });
+  cascadePkgId = pkg.id;
+  deductOne(pkg.id); deductOne(pkg.id); deductOne(pkg.id); // 先扣到 remaining=7(<total)，避免「不回補」斷言被 total 封頂遮蔽
+  const past = Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,package_id) VALUES (?,?,?,?,'1on1',?)").run(cid,mid,'2000-01-01T09:00:00','2000-01-01T10:00:00',pkg.id).lastInsertRowid);
+  const future = Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,package_id) VALUES (?,?,?,?,'1on1',?)").run(cid,mid,'2099-01-01T09:00:00','2099-01-01T10:00:00',pkg.id).lastInsertRowid);
+  Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,package_id,status,cancelled_at) VALUES (?,?,?,?,'1on1',?, 'cancelled','2026-01-01T00:00:00')").run(cid,mid,'2099-02-01T09:00:00','2099-02-01T10:00:00',pkg.id).lastInsertRowid);
+  const before = getPackage(pkg.id).remaining_sessions;
+  const r = archivePackage(pkg.id, admin);
+  assert.deepEqual([...r.cancelledBookingIds].sort((a,b)=>a-b), [past, future].sort((a,b)=>a-b));
+  assert.equal(db.prepare('SELECT status FROM bookings WHERE id=?').get(past).status, 'cancelled');
+  assert.equal(db.prepare('SELECT status FROM bookings WHERE id=?').get(future).status, 'cancelled');
+  const fr = db.prepare('SELECT cancel_reason,cancelled_by FROM bookings WHERE id=?').get(future);
+  assert.equal(fr.cancel_reason, '方案作廢連動取消');
+  assert.equal(fr.cancelled_by, admin);
+  assert.equal(getPackage(pkg.id).remaining_sessions, before); // 不回補
+  assert.ok(getPackage(pkg.id).archived_at);
+});
+expect('archivePackage：冪等（再作廢回空）、還原不復原已取消預約', () => {
+  const r2 = archivePackage(cascadePkgId, admin);
+  assert.deepEqual(r2.cancelledBookingIds, []);
+  restorePackage(cascadePkgId);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM bookings WHERE package_id=? AND status='confirmed'").get(cascadePkgId).n, 0);
+});
+expect('archivePackage：方案不存在 → 404', () => {
+  assert.throws(() => archivePackage(999999, admin), /package_not_found/);
+});
+
 db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'pk-%'); DELETE FROM point_transactions WHERE related_booking_id IS NOT NULL; DELETE FROM bookings; DELETE FROM customer_packages; DELETE FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'pk-%'); DELETE FROM users WHERE email LIKE 'pk-%'");
 console.log('[package-service test] done');
