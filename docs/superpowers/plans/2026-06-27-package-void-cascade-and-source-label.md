@@ -121,15 +121,17 @@ Expected: 全 `✓`（含既有「有效判定：…作廢」案例仍通過—�
 
 - [ ] **Step 5: 改 `src/server.js` archive route（含 actorId + 日曆同步）**
 
-`src/server.js:850-852` 改為：
+`src/server.js:850-852` 改為（守門改 `requireAdmin`，見對抗式審查結論；restore 對稱改）：
 
 ```js
-app.post('/api/coach/packages/:id/archive', requireCoach, asyncHandler((req, res) => {
+app.post('/api/coach/packages/:id/archive', requireAdmin, asyncHandler((req, res) => {
   const r = svcArchivePackage(Number(req.params.id), req.user.id);
   for (const id of r.cancelledBookingIds) syncBookingCancel(id); // commit 後副作用：刪日曆事件、不 await
   res.json(r);
 }));
 ```
+
+審查強化：因作廢現在會「靜默、不可逆、跨教練」連動取消預約並刪日曆，archive/restore 守門由 `requireCoach` 改 `requireAdmin`（合法入口本就 admin-only，零 UX 影響）。package-api 加非 admin 教練 →403 回歸測試。
 
 - [ ] **Step 6: 在 `tests/package-api.test.js` 加 API 層測試**
 

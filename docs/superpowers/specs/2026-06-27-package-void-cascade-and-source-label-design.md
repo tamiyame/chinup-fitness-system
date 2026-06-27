@@ -71,7 +71,7 @@ export function archivePackage(packageId, actorId = null) {
 ### 後端 route `src/server.js`
 
 ```js
-app.post('/api/coach/packages/:id/archive', requireCoach, asyncHandler((req, res) => {
+app.post('/api/coach/packages/:id/archive', requireAdmin, asyncHandler((req, res) => {
   const r = svcArchivePackage(Number(req.params.id), req.user.id);
   for (const id of r.cancelledBookingIds) syncBookingCancel(id); // commit 後副作用：刪日曆事件、不 await
   res.json(r);
@@ -79,6 +79,8 @@ app.post('/api/coach/packages/:id/archive', requireCoach, asyncHandler((req, res
 ```
 
 （沿用既有 `for (const id of r.cancelled) syncBookingCancel(id)` 模式；`syncBookingCancel` 已 import。）
+
+**授權強化（對抗式審查發現）**：archive 與 restore 端點守門由 `requireCoach` 改為 **`requireAdmin`**。原因：作廢現在會「靜默、不可逆、跨教練」批次取消方案名下所有 confirmed 預約並刪日曆事件；若維持 `requireCoach`，任一非管理者教練可直接打 API 取消任意會員/別教練的預約，違反 codebase 既有「非 admin 教練只能動自己預約」(cancelBooking/reschedule/reassign 皆 403) 的不變量。合法 UI 入口本就只有後台會員管理 (`admin.html` requireAdmin；`coach.js` 無 archive/restore UI)，故改 `requireAdmin` 零 UX 影響、且符合需求語境「後台會員資料」。`create`/`GET`/`PATCH(adjustRemaining)` 維持 `requireCoach`（登錄流程要用）。
 
 ### 前端 `public/admin.js`（`renderMemberPackages` 的 archive 分支）
 
