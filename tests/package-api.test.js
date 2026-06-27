@@ -54,6 +54,32 @@ expect('作廢 → 200 archived_at 有值 + is_valid=false', () => { assert.equa
 const re = await req('POST', `/api/coach/packages/${pkgId}/restore`, { token });
 expect('還原 → 200 archived_at=null + is_valid=true', () => { assert.equal(re.status, 200); assert.equal(re.data.archived_at, null); assert.equal(re.data.is_valid, true); });
 
+// 作廢連動取消：archive 連動取消名下 confirmed 預約、回 cancelledBookingIds
+const cu = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('PKAPI教練','pkapi-coach@x.com','coach')").run().lastInsertRowid);
+const cid = Number(db.prepare("INSERT INTO coaches (user_id,display_name,is_active) VALUES (?, 'pkapi-coach',1)").run(cu).lastInsertRowid);
+const cc = await req('POST', '/api/coach/packages', { token, body: { memberId: mid, sessionType: '1on1', totalSessions: 6 } });
+const cascadePkg = cc.data.id;
+const bid = Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,package_id) VALUES (?,?,?,?, '1on1', ?)").run(cid, mid, '2099-03-01T09:00:00', '2099-03-01T10:00:00', cascadePkg).lastInsertRowid);
+const arc = await req('POST', `/api/coach/packages/${cascadePkg}/archive`, { token });
+expect('作廢連動取消 → 200 + cancelledBookingIds 含該預約 + DB 變 cancelled', () => {
+  assert.equal(arc.status, 200);
+  assert.ok(Array.isArray(arc.data.cancelledBookingIds) && arc.data.cancelledBookingIds.includes(bid));
+  assert.equal(db.prepare('SELECT status FROM bookings WHERE id=?').get(bid).status, 'cancelled');
+});
+db.prepare('DELETE FROM bookings WHERE id=?').run(bid);
+db.prepare('DELETE FROM coaches WHERE id=?').run(cid);
+
+// 作廢/還原會連動取消（可跨教練）預約 → 非 admin 教練不可呼叫（requireAdmin）
+const coU = Number(db.prepare("INSERT INTO users (name,email,role,is_admin) VALUES ('PKAPI純教練','pkapi-coachonly@x.com','coach',0)").run().lastInsertRowid);
+const coTok = 'pkapi-coachtok-' + coU;
+db.prepare("INSERT OR REPLACE INTO auth_sessions (token, user_id, expires_at) VALUES (?, ?, '2099-01-01T00:00:00')").run(coTok, coU);
+const cgArchive = await req('POST', `/api/coach/packages/${cascadePkg}/archive`, { token: coTok });
+expect('非 admin 教練作廢方案 → 403 admin_only', () => { assert.equal(cgArchive.status, 403); assert.equal(cgArchive.data.error, 'admin_only'); });
+const cgRestore = await req('POST', `/api/coach/packages/${cascadePkg}/restore`, { token: coTok });
+expect('非 admin 教練還原方案 → 403 admin_only', () => { assert.equal(cgRestore.status, 403); assert.equal(cgRestore.data.error, 'admin_only'); });
+db.prepare("DELETE FROM auth_sessions WHERE token=?").run(coTok);
+db.prepare("DELETE FROM users WHERE id=?").run(coU);
+
 const noAuth = await req('POST', '/api/coach/packages', { body: { memberId: mid, sessionType: '1on1', totalSessions: 5 } });
 expect('未登入 → 401', () => assert.equal(noAuth.status, 401));
 

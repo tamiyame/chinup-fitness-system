@@ -39,5 +39,23 @@ expect('all + coachId：仍回全部 bookings、availableSlots 為該教練', ()
   assert.ok(w.bookings.some(b=>b.coach_id===c2)); // 仍全部
   assert.ok(Array.isArray(w.availableSlots));
 });
-db.exec("DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'cw-%'); DELETE FROM coaches WHERE display_name LIKE 'cw-%'; DELETE FROM users WHERE email LIKE 'cw-%'");
+expect('week：方案預約帶 pkg_* 欄位、非方案預約為 null', () => {
+  const pid = Number(db.prepare("INSERT INTO customer_packages (member_id,session_type,total_sessions,remaining_sessions,note,created_at) VALUES (?, '1on1',10,7,'測試備註','2026-01-12 08:00:00')").run(m).lastInsertRowid);
+  const d3=`${start}T11:00:00`;
+  db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,package_id) VALUES (?,?,?,?, '1on1', ?)").run(c1,m,d3,`${start}T12:00:00`,pid);
+  const w=getCoachWeek({coachId:c1,start});
+  const pb=w.bookings.find(b=>b.package_id===pid);
+  assert.ok(pb);
+  assert.equal(pb.pkg_session_type,'1on1');
+  assert.equal(pb.pkg_remaining,7);
+  assert.equal(pb.pkg_total,10);
+  assert.equal(pb.pkg_created_at,'2026-01-12 08:00:00');
+  assert.equal(pb.pkg_note,'測試備註');
+  const nb=w.bookings.find(b=>b.package_id==null);
+  assert.ok(nb);
+  assert.equal(nb.pkg_session_type,null);
+  assert.equal(nb.pkg_total,null);
+});
+
+db.exec("DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'cw-%'); DELETE FROM customer_packages WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'cw-%'); DELETE FROM coaches WHERE display_name LIKE 'cw-%'; DELETE FROM users WHERE email LIKE 'cw-%'");
 console.log('[coach-week-all test] done');

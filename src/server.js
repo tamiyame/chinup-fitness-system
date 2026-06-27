@@ -847,11 +847,15 @@ app.patch('/api/coach/packages/:id', requireCoach, asyncHandler((req, res) => {
   res.json(svcAdjustRemaining({ packageId: Number(req.params.id), remaining, note: note ?? null }));
 }));
 
-app.post('/api/coach/packages/:id/archive', requireCoach, asyncHandler((req, res) => {
-  res.json(svcArchivePackage(Number(req.params.id)));
+// 作廢會連動取消該方案名下（可跨教練）所有預約並刪日曆事件 → 守門用 requireAdmin（合法入口本就只有後台會員管理）。
+// restore 對稱改 requireAdmin 保持一致。create/GET/PATCH 仍 requireCoach（登錄流程要用）。
+app.post('/api/coach/packages/:id/archive', requireAdmin, asyncHandler((req, res) => {
+  const r = svcArchivePackage(Number(req.params.id), req.user.id);
+  for (const id of r.cancelledBookingIds) syncBookingCancel(id); // commit 後副作用：刪日曆事件、不 await
+  res.json(r);
 }));
 
-app.post('/api/coach/packages/:id/restore', requireCoach, asyncHandler((req, res) => {
+app.post('/api/coach/packages/:id/restore', requireAdmin, asyncHandler((req, res) => {
   res.json(svcRestorePackage(Number(req.params.id)));
 }));
 
