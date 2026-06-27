@@ -840,9 +840,9 @@ async function renderMemberPackages(memberId, mountEl) {
         await api(`/api/coach/packages/${id}`, { method: 'PATCH', body: { remaining: r } });
         toast('已調整剩餘堂數', 'success');
       } else if (act === 'archive') {
-        if (!confirm('確定作廢此方案？作廢後不可再扣抵（剩餘堂數保留紀錄）。')) return;
-        await api(`/api/coach/packages/${id}/archive`, { method: 'POST' });
-        toast('已作廢', 'success');
+        if (!confirm('確定作廢此方案？此方案名下所有未取消的預約將一併取消（不可復原），剩餘堂數保留紀錄。')) return;
+        const r = await api(`/api/coach/packages/${id}/archive`, { method: 'POST' });
+        toast(r.cancelledBookingIds?.length ? `已作廢，連動取消 ${r.cancelledBookingIds.length} 筆預約` : '已作廢', 'success');
       } else if (act === 'restore') {
         await api(`/api/coach/packages/${id}/restore`, { method: 'POST' });
         toast('已還原', 'success');

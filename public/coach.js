@@ -750,10 +750,19 @@ function openBookingEditModal(booking) {
 
 function bkSlotLabel(iso) { return String(iso).slice(0, 16).replace('T', ' ').replace(/-/g, '/'); }
 
+// 方案來源標示：列出是哪一個方案（客人可能有多個）。格式 方案登錄 · 一對一 剩3/10 · 建立2026/01/12 ·「備註」
+function pkgSourceLabel(b) {
+  if (!b.pkg_session_type) return '方案登錄';
+  const t = PKG_TYPE[b.pkg_session_type] || b.pkg_session_type;
+  const created = b.pkg_created_at ? ` · 建立${String(b.pkg_created_at).slice(0, 10).replace(/-/g, '/')}` : '';
+  const note = b.pkg_note ? ` ·「${escapeHtml(b.pkg_note)}」` : '';
+  return `方案登錄 · ${escapeHtml(t)} 剩${escapeHtml(String(b.pkg_remaining))}/${escapeHtml(String(b.pkg_total))}${created}${note}`;
+}
+
 function renderBkeditBody() {
   const b = bkeditBooking;
   const tag = b.session_type === '1on2' ? '1對2' : '1對1';
-  const source = b.package_id ? '方案登錄' : (b.discount_code ? `折扣碼 ${escapeHtml(b.discount_code)}` : '一般預約');
+  const source = b.package_id ? pkgSourceLabel(b) : (b.discount_code ? `折扣碼 ${escapeHtml(b.discount_code)}` : '一般預約');
   const paid = b.paid_at ? '已核對' : '待核對';
   const body = $('bkedit-body');
   body.innerHTML = `
