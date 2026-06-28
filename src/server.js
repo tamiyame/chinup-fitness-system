@@ -42,6 +42,7 @@ import {
   createCoachRegister as svcCreateRegister,
   rescheduleBooking as svcRescheduleBooking,
   reassignBooking as svcReassignBooking,
+  cancelCoachGroup as svcCancelCoachGroup,
 } from './services/bookingService.js';
 import {
   createGroupOrder as svcCreateGroupOrder,
@@ -911,6 +912,14 @@ app.patch('/api/coach/bookings/:id/reassign', requireCoach, asyncHandler((req, r
   const { memberId, packageId } = req.body || {};
   const r = svcReassignBooking({ bookingId: Number(req.params.id), newMemberId: Number(memberId), newPackageId: Number(packageId), actorUserId: req.user.id, isAdmin: !!req.user.is_admin });
   syncBookingCancel(r.bookingId).then(() => syncBookingCreate(r.bookingId));
+  res.json(r);
+}));
+
+// 取消全部預約：取消該筆所屬循環群組（同教練、含過去）的全部預約。requireCoach + service 內擁有權守門。
+app.post('/api/coach/bookings/:id/cancel-group', requireCoach, asyncHandler((req, res) => {
+  const { reason } = req.body || {};
+  const r = svcCancelCoachGroup({ bookingId: Number(req.params.id), actorUserId: req.user.id, isAdmin: !!req.user.is_admin, reason: (reason || '').trim() || null });
+  for (const id of r.cancelled) syncBookingCancel(id); // commit 後副作用：逐筆刪日曆事件、不 await
   res.json(r);
 }));
 

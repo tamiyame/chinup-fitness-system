@@ -659,6 +659,39 @@ export function confirmBookingPaymentGroup({ groupId, actorId }) {
 }
 
 /** 整批取消（待核對卡片）：只取消「未收款」的預約；已收款的留在已核對卡走退款。 */
+// 取消「全部預約」：取消該筆所屬循環群組、同教練名下、所有 confirmed 預約（含過去）。
+// 每筆回補堂數；整批彙整一則通知。授權：非管理者只能取消自己名下（比照 reschedule/reassign）。
+// 無 recurring_group_id → 退化成只取消這一筆。回 { ok, cancelled:[ids] } 供 route 逐筆刪日曆。
+export function cancelCoachGroup({ bookingId, actorUserId, isAdmin = false, reason = null }) {
+  return tx(() => {
+    const b = getBookingStmt.get(bookingId);
+    if (!b) throw new ApiError(404, 'booking_not_found');
+    const coach = getCoachStmt.get(b.coach_id);
+    if (!isAdmin && (!coach || coach.user_id !== actorUserId)) throw new ApiError(403, 'forbidden');
+    const rows = b.recurring_group_id
+      ? db.prepare("SELECT * FROM bookings WHERE recurring_group_id=? AND coach_id=? AND status='confirmed' ORDER BY start_at ASC").all(b.recurring_group_id, b.coach_id)
+      : (b.status === 'confirmed' ? [b] : []);
+    if (!rows.length) throw new ApiError(409, 'already_cancelled');
+    const now = nowLocal();
+    for (const r of rows) {
+      cancelBookingStmt.run(now, actorUserId, reason, r.id);
+      refundPackageForBooking(r);                       // 含過去筆也回補（業主拍板）
+      releaseRedemption({ kind: 'booking', refId: r.id });
+    }
+    const memberRow = getUserNameStmt.get(rows[0].member_id);
+    if (coach && memberRow) {
+      const startFmt = `${fmtDateForLine(rows[0].start_at)} 起共 ${rows.length} 堂`;
+      notify({ userId: rows[0].member_id, sessionId: null, type: 'booking_cancelled_by_shop',
+        vars: { coach_display_name: coach.display_name, start_at: startFmt, reason_suffix: '' } });
+      if (coach.user_id !== actorUserId) {
+        notify({ userId: coach.user_id, sessionId: null, type: 'booking_cancelled_by_shop_coach',
+          vars: { member_name: memberRow.name, start_at: startFmt } });
+      }
+    }
+    return { ok: true, cancelled: rows.map((r) => r.id) };
+  });
+}
+
 export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
   return tx(() => {
     const rows = db.prepare(
