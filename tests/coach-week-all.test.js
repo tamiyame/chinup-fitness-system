@@ -57,5 +57,18 @@ expect('week：方案預約帶 pkg_* 欄位、非方案預約為 null', () => {
   assert.equal(nb.pkg_total,null);
 });
 
+expect('week：預約帶 member_phone / recurring_group_id（非循環為 null）', () => {
+  const d4=`${start}T13:00:00`;
+  db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,recurring_group_id) VALUES (?,?,?,?, '1on1', 7777)").run(c1,m,d4,`${start}T14:00:00`);
+  const w=getCoachWeek({coachId:c1,start});
+  const rb=w.bookings.find(b=>b.recurring_group_id===7777);
+  assert.ok(rb);
+  assert.equal(rb.member_phone,'0980000001'); // m 客 phone（檔頭建立）
+  assert.equal(rb.member_id,m);
+  const nonRec=w.bookings.find(b=>b.recurring_group_id==null);
+  assert.ok(nonRec);
+  assert.equal(nonRec.member_phone,'0980000001');
+});
+
 db.exec("DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'cw-%'); DELETE FROM customer_packages WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'cw-%'); DELETE FROM coaches WHERE display_name LIKE 'cw-%'; DELETE FROM users WHERE email LIKE 'cw-%'");
 console.log('[coach-week-all test] done');

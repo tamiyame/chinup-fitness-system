@@ -12,7 +12,7 @@ function addDays(dateStr, n) {
 }
 
 const BK_COLS = `b.id, b.coach_id, b.start_at, b.end_at, b.session_type, b.package_id, b.paid_at, b.discount_code,
-       u.name AS member_name, c.display_name AS coach_name,
+       u.name AS member_name, u.phone AS member_phone, b.member_id, b.recurring_group_id, c.display_name AS coach_name,
        cp.session_type AS pkg_session_type, cp.remaining_sessions AS pkg_remaining,
        cp.total_sessions AS pkg_total, cp.created_at AS pkg_created_at, cp.note AS pkg_note`;
 const weekBookings = db.prepare(`
