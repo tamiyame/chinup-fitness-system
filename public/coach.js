@@ -767,7 +767,7 @@ function renderBkeditBody() {
   const body = $('bkedit-body');
   body.innerHTML = `
     <div class="bke-detail">
-      <div><b>客人：</b>${escapeHtml(b.member_name)}</div>
+      <div><b>客人：</b>${escapeHtml(b.member_name)}${b.member_phone ? `　${escapeHtml(b.member_phone)}` : ''}</div>
       <div><b>教練：</b>${escapeHtml(b.coach_name || '')}</div>
       <div><b>時段：</b>${bkSlotLabel(b.start_at)}（${tag}）</div>
       <div><b>付款：</b>${paid}　<b>來源：</b>${source}</div>
@@ -776,11 +776,13 @@ function renderBkeditBody() {
       <button id="bke-resched-btn" class="btn-secondary">改時段</button>
       <button id="bke-reassign-btn" class="btn-secondary">改客人/方案</button>
       <button id="bke-cancel-btn" class="btn-danger">取消預約</button>
+      ${b.recurring_group_id ? '<button id="bke-cancel-group-btn" class="btn-danger">取消全部預約</button>' : ''}
     </div>
     <div id="bke-panel"></div>`;
   $('bke-cancel-btn').onclick = doBkCancel;
   $('bke-resched-btn').onclick = renderBkResched;
   $('bke-reassign-btn').onclick = renderBkReassign;
+  const cg = $('bke-cancel-group-btn'); if (cg) cg.onclick = doBkCancelGroup;
 }
 
 async function doBkCancel() {
@@ -792,6 +794,19 @@ async function doBkCancel() {
     await api(`/api/bookings/${b.id}${qs}`, { method: 'DELETE', body: { reason: '後台取消' } });
     toast('已取消預約', 'success'); bkeditClose(); renderRegister();
   } catch (e) { toast(`取消失敗：${e.data?.error || e.message}`, 'error'); }
+}
+
+// 取消全部預約：取消這筆所屬循環群組（同教練、含過去）的全部預約。
+async function doBkCancelGroup() {
+  const b = bkeditBooking;
+  if (!confirm(`確定取消「${b.member_name}」這筆所屬循環的全部預約？此循環（含已過去）的所有未取消預約將一併取消，並回補方案堂數。`)) return;
+  try {
+    const r = await api(`/api/coach/bookings/${b.id}/cancel-group`, { method: 'POST', body: { reason: '後台取消（全部）' } });
+    toast(`已取消全部預約（${r.cancelled?.length || 0} 筆）`, 'success'); bkeditClose(); renderRegister();
+  } catch (e) {
+    const m = { forbidden: '無權限取消此預約', booking_not_found: '查無此預約', already_cancelled: '此循環已無可取消預約' };
+    toast(m[e.data?.error] || `取消失敗：${e.data?.error || e.message}`, 'error');
+  }
 }
 
 function renderBkResched() {
