@@ -61,5 +61,36 @@ db.prepare("DELETE FROM auth_sessions WHERE token=?").run(utok);
 
 const noAuth=await req('PATCH',`/api/coach/bookings/${bid}/reschedule`,{body:{startAt:`${D}T17:00:00`}});
 expect('未登入改時段 → 401',()=>assert.equal(noAuth.status,401));
+
+// 取消全部預約（循環群組）：建 3 筆同 group → cancel-group → 全取消 + 回補堂數
+const pkgG=await req('POST','/api/coach/packages',{token,body:{memberId:m1,sessionType:'1on1',totalSessions:5,amount:7500}});
+const pgid=pkgG.data.id;
+db.prepare('UPDATE customer_packages SET remaining_sessions=2 WHERE id=?').run(pgid); // 模擬已登錄 3 堂
+const insG=db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,package_id,paid_at,recurring_group_id) VALUES (?,?,?,?, '1on1', ?, '2026-06-24T00:00:00', ?)");
+const gids=[
+  Number(insG.run(coachId,m1,`${D}T08:00:00`,`${D}T09:00:00`,pgid,88001).lastInsertRowid),
+  Number(insG.run(coachId,m1,`${D}T13:00:00`,`${D}T14:00:00`,pgid,88001).lastInsertRowid),
+  Number(insG.run(coachId,m1,`${D}T14:00:00`,`${D}T15:00:00`,pgid,88001).lastInsertRowid),
+];
+const cg=await req('POST',`/api/coach/bookings/${gids[0]}/cancel-group`,{token,body:{reason:'測試全取消'}});
+expect('取消全部預約 → 200 + cancelled 含全部 + DB 取消 + 回補',()=>{
+  assert.equal(cg.status,200);
+  assert.deepEqual([...cg.data.cancelled].sort((a,b)=>a-b),[...gids].sort((a,b)=>a-b));
+  for(const id of gids) assert.equal(db.prepare('SELECT status FROM bookings WHERE id=?').get(id).status,'cancelled');
+  assert.equal(db.prepare('SELECT remaining_sessions FROM customer_packages WHERE id=?').get(pgid).remaining_sessions,5); // 2+3
+});
+
+// 非該筆教練的一般教練取消全部 → 403 forbidden
+const ocu=Number(db.prepare("INSERT INTO users (name,email,role,is_admin) VALUES ('BEA他教練','bea-oc@x.com','coach',0)").run().lastInsertRowid);
+db.prepare("INSERT INTO coaches (user_id,display_name,is_active) VALUES (?, 'bea-other',1)").run(ocu);
+const otok='bea-octok-'+ocu;
+db.prepare("INSERT OR REPLACE INTO auth_sessions (token,user_id,expires_at) VALUES (?,?, '2099-01-01T00:00:00')").run(otok,ocu);
+const g403=Number(insG.run(coachId,m1,`${D}T15:30:00`,`${D}T16:30:00`,pgid,88002).lastInsertRowid);
+const cgF=await req('POST',`/api/coach/bookings/${g403}/cancel-group`,{token:otok,body:{reason:'x'}});
+expect('非該教練的一般教練取消全部 → 403 forbidden',()=>assert.equal(cgF.status,403));
+db.prepare("DELETE FROM bookings WHERE id=?").run(g403);
+db.prepare("DELETE FROM coaches WHERE display_name='bea-other'").run();
+db.prepare("DELETE FROM auth_sessions WHERE token=?").run(otok);
+
 clean();
 console.log('[booking-edit-api] done');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 process.env.LINE_MOCK = '1';
 const { db } = await import('../src/db/connection.js');
 const { createPackage, getPackage, deductOne } = await import('../src/services/packageService.js');
-const { rescheduleBooking, reassignBooking } = await import('../src/services/bookingService.js');
+const { rescheduleBooking, reassignBooking, cancelCoachGroup } = await import('../src/services/bookingService.js');
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 console.log('[booking-edit test] start');
 const clean=()=>db.exec("DELETE FROM discount_redemptions WHERE code_id IN (SELECT id FROM discount_codes WHERE code LIKE 'BE%'); DELETE FROM discount_codes WHERE code LIKE 'BE%'; DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'be-%'); DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'be-%'); DELETE FROM customer_packages WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'be-%'); DELETE FROM coaches WHERE display_name LIKE 'be-%'; DELETE FROM users WHERE email LIKE 'be-%'");
@@ -78,6 +78,50 @@ expect('reassign 折扣碼非方案預約 → 釋放舊折扣 redemption', () =>
   const pNew=createPackage({memberId:m2,sessionType:'1on1',totalSessions:3,amount:3000});
   reassignBooking({ bookingId:bid, newMemberId:m2, newPackageId:pNew.id, actorUserId:admin, isAdmin:true });
   assert.equal(db.prepare("SELECT COUNT(*) c FROM discount_redemptions WHERE kind='booking' AND ref_id=?").get(bid).c, 0); // 已釋放
+});
+expect('cancelCoachGroup：循環群組(含過去)全部取消、回補堂數、回 cancelled', () => {
+  const p=createPackage({memberId:m1,sessionType:'1on1',totalSessions:10,amount:10000});
+  deductOne(p.id); deductOne(p.id); deductOne(p.id); // 剩7
+  const G=7001;
+  const mkG=(s,e)=>Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,package_id,paid_at,recurring_group_id) VALUES (?,?,?,?, '1on1', ?, '2026-06-24T00:00:00', ?)").run(coach,m1,s,e,p.id,G).lastInsertRowid);
+  const past=mkG('2000-01-01T09:00:00','2000-01-01T10:00:00');
+  const future=mkG(`${D}T08:00:00`,`${D}T09:00:00`);
+  const before=getPackage(p.id).remaining_sessions; // 7
+  const nMemBefore=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop'").get(m1).c;
+  const nCoachBefore=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop_coach'").get(cu).c;
+  const r=cancelCoachGroup({ bookingId:future, actorUserId:cu, isAdmin:false });
+  assert.deepEqual([...r.cancelled].sort((a,b)=>a-b),[past,future].sort((a,b)=>a-b));
+  assert.equal(db.prepare('SELECT status FROM bookings WHERE id=?').get(past).status,'cancelled');
+  assert.equal(db.prepare('SELECT status FROM bookings WHERE id=?').get(future).status,'cancelled');
+  assert.equal(getPackage(p.id).remaining_sessions, before+2); // 兩筆都回補
+  // 彙整：取消 2 筆 → member 只新增 1 則通知；actor 為教練本人 → coach 通知不新增
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop'").get(m1).c, nMemBefore+1);
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop_coach'").get(cu).c, nCoachBefore);
+});
+expect('cancelCoachGroup：非該教練的一般教練 → 403；範圍鎖教練不誤殺他教練同 group', () => {
+  const G2=7002;
+  const mine=Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,recurring_group_id) VALUES (?,?,?,?, '1on1', ?)").run(coach,m1,`${D}T07:00:00`,`${D}T08:00:00`,G2).lastInsertRowid);
+  const other=Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,recurring_group_id) VALUES (?,?,?,?, '1on1', ?)").run(coach2,m1,`${D}T07:30:00`,`${D}T08:30:00`,G2).lastInsertRowid);
+  assert.throws(()=>cancelCoachGroup({ bookingId:mine, actorUserId:cu2, isAdmin:false }),/forbidden/); // cu2 非該筆教練
+  const mNB=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop'").get(m1).c;
+  const cNB=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop_coach'").get(cu).c;
+  const r=cancelCoachGroup({ bookingId:mine, actorUserId:admin, isAdmin:true });           // 管理者代理
+  assert.deepEqual(r.cancelled,[mine]);
+  assert.equal(db.prepare('SELECT status FROM bookings WHERE id=?').get(other).status,'confirmed'); // 他教練不受影響
+  // 管理者代理 → member 1 則 + 該教練(cu) 1 則
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop'").get(m1).c, mNB+1);
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop_coach'").get(cu).c, cNB+1);
+});
+expect('cancelCoachGroup：無 recurring_group_id → 只取消這一筆', () => {
+  const single=mkBk(m2,'23');
+  const r=cancelCoachGroup({ bookingId:single, actorUserId:cu, isAdmin:false });
+  assert.deepEqual(r.cancelled,[single]);
+  assert.equal(db.prepare('SELECT status FROM bookings WHERE id=?').get(single).status,'cancelled');
+});
+expect('cancelCoachGroup：群組已全取消 → 409 already_cancelled', () => {
+  const G3=7003;
+  const bid=Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,status,cancelled_at,recurring_group_id) VALUES (?,?,?,?, '1on1','cancelled','2026-01-01T00:00:00', ?)").run(coach,m1,`${D}T06:00:00`,`${D}T07:00:00`,G3).lastInsertRowid);
+  assert.throws(()=>cancelCoachGroup({ bookingId:bid, actorUserId:cu, isAdmin:false }),/already_cancelled/);
 });
 clean();
 console.log('[booking-edit test] done');
