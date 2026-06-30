@@ -176,14 +176,16 @@ export async function renderAuthBar(user) {
   });
 
   // 將「綁定 LINE」放進 nav 連結群（教練後台/管理後台之後）。renderAuthBar 只在登入時呼叫，
-  // 故僅登入者看得到；desktop 與 mobile 兩份 nav 的「教練後台」連結後各插一顆，重複呼叫以守門避免重插。
-  document.querySelectorAll('a[href="/coach.html"]').forEach((coachLink) => {
-    if (coachLink.nextElementSibling?.classList?.contains('line-bind-link')) return;
+  // 故僅登入者看得到；desktop 與 mobile 兩份 nav 的「管理後台」連結後各插一顆（錨點放最後一個頁籤，
+  // 讓順序維持 教練後台 → 管理後台 → 綁定 LINE；純教練看不到管理後台時錨點隱藏、按鈕緊接教練後台），
+  // 重複呼叫以守門避免重插。
+  document.querySelectorAll('a[href="/admin.html"]').forEach((adminLink) => {
+    if (adminLink.nextElementSibling?.classList?.contains('line-bind-link')) return;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-ghost btn-sm line-bind-link';
     btn.textContent = '綁定 LINE';
-    coachLink.after(btn);
+    adminLink.after(btn);
   });
 
   const el = document.getElementById('auth-bar');
