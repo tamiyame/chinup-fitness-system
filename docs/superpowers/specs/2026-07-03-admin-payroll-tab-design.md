@@ -96,7 +96,7 @@
 
 ## 前端（admin.html + admin.js）
 
-1. **頁籤**：`#admin-tabs` 尾端（LINE 管理之後）加 `<button data-atab="payroll">薪資計算</button>`；新 `#apanel-payroll` panel。切到該頁籤時載入（lazy，比照其他頁籤慣例）。
+1. **頁籤**：`#admin-tabs` 尾端（LINE 管理之後）加 `<button data-atab="payroll">薪資計算</button>`；新 `#apanel-payroll` panel。開機隨其他 panel 一次載入（比照 admin.js 現有慣例，切頁籤只切換顯示）。
 2. **期別導覽列**：`◀ 上一期｜2026年7月期（06/06 – 07/05）｜下一期 ▶`＋「本期」按鈕。切換即重新抓 API。
 3. **抽成設定卡**（可收合）：門檻堂數、低%、高%、團課% 四欄＋儲存（PATCH settings 後重算重繪）。
 4. **教練彙總表**（`.data-table`）：
