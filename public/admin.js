@@ -1802,8 +1802,8 @@ function prExportCsv() {
   URL.revokeObjectURL(a.href);
 }
 
-document.getElementById('pr-prev').addEventListener('click', () => { prPeriod = prShift(prPeriod, -1); loadPayroll(); });
-document.getElementById('pr-next').addEventListener('click', () => { prPeriod = prShift(prPeriod, 1); loadPayroll(); });
+document.getElementById('pr-prev').addEventListener('click', () => { if (!prPeriod) return; prPeriod = prShift(prPeriod, -1); loadPayroll(); });
+document.getElementById('pr-next').addEventListener('click', () => { if (!prPeriod) return; prPeriod = prShift(prPeriod, 1); loadPayroll(); });
 document.getElementById('pr-current').addEventListener('click', () => { prPeriod = prDefaultPeriod; loadPayroll(); });
 document.getElementById('pr-export').addEventListener('click', prExportCsv);
 document.getElementById('pr-settings-toggle').addEventListener('click', () => {
