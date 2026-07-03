@@ -81,5 +81,9 @@ expect('無電話客人不合併（不同 id）', () => assert.notEqual(r6.data.
 const r9 = await req('POST', '/api/coach/customers', { token, body: { name: '' } });
 expect('無電話且缺名 → 400 missing_name', () => { assert.equal(r9.status, 400); assert.equal(r9.data.error, 'missing_name'); });
 
+// 10) 前後空白的合法電話 → 仍走「有電話」路徑 → invalid_phone（固化 trim 分流不誤放行 padded 電話）
+const r10 = await req('POST', '/api/coach/customers', { token, body: { name: 'CAC無話三', phone: ' 0973099001 ' } });
+expect('padded 電話 → 400 invalid_phone（不誤入無電話路徑）', () => { assert.equal(r10.status, 400); assert.equal(r10.data.error, 'invalid_phone'); });
+
 clean();
 console.log('[coach-add-customer-api] done');
