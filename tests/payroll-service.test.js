@@ -159,8 +159,8 @@ expect('團課比例不受一對一級距影響（groupPct 40 生效）', () => 
   setSetting('payroll_group_pct', '40');
   const b = find(computePayroll({ period: '2031-02' }), coachB);
   assert.equal(b.group.salary, 480);
-  setSetting('payroll_group_pct', '50');                    // 還原
 });
+setSetting('payroll_group_pct', '50');                      // 還原（放 expect 外，斷言失敗也保證執行）
 // 零報名場次建在上面 details.length===1 斷言之後，該斷言維持不變
 const s0 = mkSession('2031-01-27T19:00:00');                      // 期內、open、零報名
 expect('零報名場次：列於明細（headcount=0/revenue=0）、不白計範本價營收', () => {
@@ -172,6 +172,31 @@ expect('零報名場次：列於明細（headcount=0/revenue=0）、不白計範
   assert.equal(b.group.details.length, 2);                  // s1 + 零報名場次
   assert.equal(b.group.revenue, 1200);                      // 不因零報名場次增加
   assert.equal(b.group.salary, 600);                        // groupPct 50 維持原值
+});
+// ── 覆蓋補強：捨入、實收下限、future、方案來源（都掛在 coachD 上，不影響前面斷言）──
+expect('salary 四捨五入（1250.5 → 1251，floor 會是 1250）', () => {
+  addBooking({ coach: coachD, member: m2, startAt: '2031-01-15T10:00:00', orig: 1001 });
+  const d = find(computePayroll({ period: '2031-02' }), coachD);
+  assert.equal(d.oneOnOne.revenue, 2501);                   // 1500 + 1001
+  assert.equal(d.oneOnOne.salary, 1251);                    // Math.round(2501 × 50%)
+});
+expect('折扣大於原價 → 實收下限 0', () => {
+  addBooking({ coach: coachD, member: m2, startAt: '2031-01-16T10:00:00', orig: 100, disc: 200 });
+  const d = find(computePayroll({ period: '2031-02' }), coachD);
+  assert.equal(d.oneOnOne.sessions, 3);
+  assert.equal(d.oneOnOne.revenue, 2501);                   // +0，不得為負
+});
+expect('future = 全部堂數（2031 皆未上課）；方案登錄 source=package', () => {
+  const pkgId = Number(db.prepare(
+    "INSERT INTO customer_packages (member_id, session_type, total_sessions, remaining_sessions, amount) VALUES (?, '1on1', 10, 9, 10000)"
+  ).run(m2).lastInsertRowid);
+  addBooking({ coach: coachD, member: m2, startAt: '2031-01-17T10:00:00', orig: 1000, pkg: pkgId });
+  const d = find(computePayroll({ period: '2031-02' }), coachD);
+  assert.equal(d.oneOnOne.future, d.oneOnOne.sessions);     // 每筆 detail 的 future 加總
+  const pk = d.oneOnOne.details.find((x) => x.source === 'package');
+  assert.ok(pk);
+  assert.equal(pk.amount, 1000);
+  assert.ok(d.oneOnOne.details.every((x) => x.future === true));
 });
 expect('totals = 各教練加總', () => {
   const r = computePayroll({ period: '2031-02' });
