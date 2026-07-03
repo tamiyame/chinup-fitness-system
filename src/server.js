@@ -1255,6 +1255,10 @@ function settingsPayload() {
     gcal_calendar_id: getGcalCalendarId(),
     booking_hourly_capacity: getBookingHourlyCapacity(),
     group_order_expiry_hours: getGroupOrderExpiryHours(),
+    payroll_tier_threshold: Number(getSetting('payroll_tier_threshold') || '40'),
+    payroll_pct_low: Number(getSetting('payroll_pct_low') || '50'),
+    payroll_pct_high: Number(getSetting('payroll_pct_high') || '60'),
+    payroll_group_pct: Number(getSetting('payroll_group_pct') || '50'),
   };
 }
 app.get('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
@@ -1297,6 +1301,19 @@ app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
     const n = Number(b.group_order_expiry_hours);
     if (!Number.isInteger(n) || n < 1 || n > 720) return res.status(400).json({ error: 'invalid_expiry_hours' });
     writes.push(['group_order_expiry_hours', String(n)]);
+  }
+  // 薪資抽成參數：整數；門檻 0–999、比例 0–100
+  for (const [key, min, max] of [
+    ['payroll_tier_threshold', 0, 999],
+    ['payroll_pct_low', 0, 100],
+    ['payroll_pct_high', 0, 100],
+    ['payroll_group_pct', 0, 100],
+  ]) {
+    if (b[key] !== undefined) {
+      const n = Number(b[key]);
+      if (!Number.isInteger(n) || n < min || n > max) return res.status(400).json({ error: `invalid_${key}` });
+      writes.push([key, String(n)]);
+    }
   }
   tx(() => { for (const [k, v] of writes) setSetting(k, v); });
   res.json(settingsPayload());
