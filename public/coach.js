@@ -912,14 +912,16 @@ function renderRegmBody() {
   });
 }
 
-async function loadRegmPackages() {
+async function loadRegmPackages(selectId = null) {
   const picked = $('regm-picked');
   picked.innerHTML = '<p class="regm-sub">載入方案中…</p>';
   let all = [];
   try { all = await api(`/api/coach/packages?memberId=${regmCustomer.id}`); }
   catch (e) { picked.innerHTML = `<p class="regm-sub" style="color:#dc2626;">${escapeHtml(e.message)}</p>`; return; }
   regmPackages = all.filter(p => p.is_valid);
-  regmPackageId = regmPackages.length ? regmPackages[0].id : null;
+  regmPackageId = selectId && regmPackages.some(p => p.id === selectId)
+    ? selectId
+    : (regmPackages.length ? regmPackages[0].id : null);
   renderRegmPicked();
 }
 
@@ -951,11 +953,9 @@ function renderRegmNewCustomer(query) {
   };
 }
 
-function renderRegmPicked() {
-  const picked = $('regm-picked');
-  if (!regmPackages.length) {
-    picked.innerHTML = `
-      <div class="regm-nopkg">此客人沒有可用方案，請先開一個：</div>
+/** 開方案表單（無方案直出 &「＋ 新增方案」展開共用）。onCreated(pkg) 於建立成功後呼叫。 */
+function regmNewPkgFormHtml() {
+  return `
       <div class="regm-newpkg">
         <select id="regm-np-type" class="form-select"><option value="1on1">一對一</option><option value="1on2">一對二</option></select>
         <input id="regm-np-total" class="form-input" type="number" min="1" placeholder="堂數" />
@@ -964,21 +964,41 @@ function renderRegmPicked() {
         <select id="regm-np-discount" class="form-select"></select>
         <button id="regm-np-create" class="btn-primary">建立方案</button>
       </div>`;
-    getDiscountCodes().then(codes => { const el = document.getElementById('regm-np-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
-    $('regm-np-create').onclick = async () => {
-      const total = Number($('regm-np-total').value);
-      if (!Number.isInteger(total) || total <= 0) { toast('請填正確堂數', 'error'); return; }
-      const amt = $('regm-np-amount').value;
-      try {
-        await api('/api/coach/packages', { method: 'POST', body: { memberId: regmCustomer.id, sessionType: $('regm-np-type').value, totalSessions: total, amount: amt === '' ? null : Number(amt), expiresAt: $('regm-np-expiry').value || null, discountCode: document.getElementById('regm-np-discount')?.value || null } });
-        toast('方案已建立', 'success'); loadRegmPackages();
-      } catch (e) { toast(`建立失敗：${e.message}`, 'error'); }
-    };
+}
+function bindRegmNewPkgForm(onCreated) {
+  getDiscountCodes().then(codes => { const el = document.getElementById('regm-np-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
+  $('regm-np-create').onclick = async () => {
+    const total = Number($('regm-np-total').value);
+    if (!Number.isInteger(total) || total <= 0) { toast('請填正確堂數', 'error'); return; }
+    const amt = $('regm-np-amount').value;
+    try {
+      const pkg = await api('/api/coach/packages', { method: 'POST', body: { memberId: regmCustomer.id, sessionType: $('regm-np-type').value, totalSessions: total, amount: amt === '' ? null : Number(amt), expiresAt: $('regm-np-expiry').value || null, discountCode: document.getElementById('regm-np-discount')?.value || null } });
+      toast('方案已建立', 'success');
+      onCreated(pkg);
+    } catch (e) { toast(`建立失敗：${e.message}`, 'error'); }
+  };
+}
+
+function renderRegmPicked() {
+  const picked = $('regm-picked');
+  if (!regmPackages.length) {
+    picked.innerHTML = `
+      <div class="regm-nopkg">此客人沒有可用方案，請先開一個：</div>` + regmNewPkgFormHtml();
+    bindRegmNewPkgForm((pkg) => loadRegmPackages(pkg.id));
     return;
   }
-  const opts = regmPackages.map(p => `<option value="${p.id}">${PKG_TYPE[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}${p.expires_at ? '・到期 ' + escapeHtml(p.expires_at) : ''}</option>`).join('');
+  const opts = regmPackages.map(p => {
+    const unit = p.amount != null
+      ? `單價 NT$${Math.round(p.amount / p.total_sessions).toLocaleString('zh-TW')}`
+      : '無單價';
+    return `<option value="${p.id}">${PKG_TYPE[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}・${unit}${p.expires_at ? '・到期 ' + escapeHtml(p.expires_at) : ''}</option>`;
+  }).join('');
   picked.innerHTML = `
-    <label class="regm-label">選擇方案</label>
+    <div class="regm-pkg-head">
+      <label class="regm-label">選擇方案</label>
+      <button id="regm-np-toggle" class="btn-secondary btn-sm" type="button">＋ 新增方案</button>
+    </div>
+    <div id="regm-np-box" class="hidden">${regmNewPkgFormHtml()}</div>
     <select id="regm-pkg" class="form-select">${opts}</select>
     <label class="regm-check"><input id="regm-rec-on" type="checkbox" /> 開啟循環</label>
     <div id="regm-rec" class="regm-rec hidden">
@@ -1005,8 +1025,12 @@ function renderRegmPicked() {
       <button id="regm-preview-btn" class="btn-secondary">預覽</button>
       <button id="regm-submit" class="btn-primary">確認登錄</button>
     </div>`;
-  $('regm-pkg').onchange = () => { regmPackageId = Number($('regm-pkg').value); };
-  regmPackageId = Number($('regm-pkg').value);
+  const sel = $('regm-pkg');
+  if (regmPackageId && regmPackages.some(p => p.id === regmPackageId)) sel.value = String(regmPackageId);
+  sel.onchange = () => { regmPackageId = Number(sel.value); };
+  regmPackageId = Number(sel.value);
+  $('regm-np-toggle').onclick = () => $('regm-np-box').classList.toggle('hidden');
+  bindRegmNewPkgForm((pkg) => loadRegmPackages(pkg.id));
   // 週幾勾選（預設循環起始日的星期）
   const wdWrap = $('regm-weekdays');
   wdWrap.innerHTML = ['一','二','三','四','五','六','日'].map((lab, i) => {
