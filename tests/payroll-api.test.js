@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 const BASE = process.env.BASE || 'http://localhost:3000';
 async function req(method, path, { body, token } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+  // 獨立假 IP：避免整條 test:api 鏈共用預設 IP 撞 login 限流（比照 rate-limit.test.js 慣例）
+  const headers = { 'Content-Type': 'application/json', 'X-Forwarded-For': '10.99.2.2' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const text = await res.text(); let data; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
