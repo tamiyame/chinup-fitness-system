@@ -931,16 +931,15 @@ function renderRegmNewCustomer(query) {
     <div style="display:grid;gap:6px;padding:6px 0;">
       <div class="regm-sub">查無此客人，可直接新增：</div>
       <input id="regm-newc-name" class="form-input" placeholder="姓名" value="${escapeHtml(nameVal)}" autocomplete="off" />
-      <input id="regm-newc-phone" class="form-input" placeholder="電話" value="${escapeHtml(phoneVal)}" inputmode="numeric" autocomplete="off" />
+      <input id="regm-newc-phone" class="form-input" placeholder="電話（選填，可之後再補）" value="${escapeHtml(phoneVal)}" inputmode="numeric" autocomplete="off" />
       <button id="regm-newc-create" class="btn-primary">新增客人</button>
     </div>`;
   $('regm-newc-create').onclick = async () => {
     const name = $('regm-newc-name').value.trim();
     const phone = $('regm-newc-phone').value.trim();
     if (!name) { toast('請填姓名', 'error'); return; }
-    if (!phone) { toast('請填電話', 'error'); return; }
     try {
-      const u = await api('/api/coach/customers', { method: 'POST', body: { name, phone } });
+      const u = await api('/api/coach/customers', { method: 'POST', body: phone ? { name, phone } : { name } });
       regmCustomer = u;
       $('regm-results').innerHTML = '';
       $('regm-search').value = u.name;

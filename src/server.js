@@ -82,7 +82,7 @@ import { runBackup, listBackups, safeBackupPath } from './services/backupService
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours, listActiveDiscountCodes } from './services/discountService.js';
-import { isValidPhone, findOrCreateUserByPhone } from './services/userService.js';
+import { isValidPhone, findOrCreateUserByPhone, createCustomerNoPhone } from './services/userService.js';
 import { syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
 import {
   createPackage as svcCreatePackage,
@@ -884,7 +884,9 @@ app.get('/api/coach/customers/search', requireCoach, asyncHandler((req, res) => 
 
 app.post('/api/coach/customers', requireCoach, asyncHandler((req, res) => {
   const { name, phone } = req.body || {};
-  const u = findOrCreateUserByPhone({ name, phone });
+  // 電話選填：留空 → 建無電話客人（之後於後台會員管理補）；有帶 → 原 find-or-create（驗證/員工守門不變）
+  const hasPhone = phone != null && String(phone).trim() !== '';
+  const u = hasPhone ? findOrCreateUserByPhone({ name, phone }) : createCustomerNoPhone({ name });
   res.json({ id: u.id, name: u.name, phone: u.phone });
 }));
 
