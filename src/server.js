@@ -93,6 +93,7 @@ import {
 } from './services/packageService.js';
 import { getCoachWeek as svcGetCoachWeek, searchCustomers as svcSearchCustomers } from './services/coachCalendarService.js';
 import { sendBookingConfirmation } from './services/emailService.js';
+import { computePayroll } from './services/payrollService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1244,6 +1245,11 @@ app.get('/api/admin/discount-codes', requireAdmin, asyncHandler((req, res) => re
 app.post('/api/admin/discount-codes', requireAdmin, asyncHandler((req, res) => res.status(201).json(createDiscountCode(req.body || {}))));
 app.patch('/api/admin/discount-codes/:id', requireAdmin, asyncHandler((req, res) => res.json(updateDiscountCode(Number(req.params.id), req.body || {}))));
 app.delete('/api/admin/discount-codes/:id', requireAdmin, asyncHandler((req, res) => res.json(deleteDiscountCode(Number(req.params.id)))));
+
+// --- Admin: Payroll（薪資計算，即時報表）---
+app.get('/api/admin/payroll', requireAdmin, asyncHandler((req, res) => {
+  res.json(computePayroll({ period: req.query.period ? String(req.query.period) : undefined }));
+}));
 
 // --- Admin: Settings ---
 function settingsPayload() {
