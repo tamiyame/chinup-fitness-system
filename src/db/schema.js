@@ -254,6 +254,10 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('line_official_url', '')
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('gcal_calendar_id', '');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('booking_hourly_capacity', '3');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('group_order_expiry_hours', '72');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payroll_tier_threshold', '40');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payroll_pct_low', '50');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payroll_pct_high', '60');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payroll_group_pct', '50');
 
 CREATE TABLE IF NOT EXISTS point_transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
