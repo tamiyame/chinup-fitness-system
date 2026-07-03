@@ -14,7 +14,7 @@ function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){con
 
 console.log('[coach-add-customer-api] start');
 const PHONES = ['0973099001','0973099002','0973099003'];
-const clean = () => db.exec(`DELETE FROM users WHERE phone IN ('${PHONES.join("','")}') OR email LIKE 'cac-%'`);
+const clean = () => db.exec(`DELETE FROM users WHERE phone IN ('${PHONES.join("','")}') OR email LIKE 'cac-%' OR name LIKE 'CAC無話%'`);
 clean();
 
 const login = await req('POST', '/api/auth/login', { body: { email: 'admin@chinup.local', password: 'admin1234' } });
@@ -56,6 +56,34 @@ expect('既有電話 → 回同一 id、不重複建', () => {
   const cnt = db.prepare("SELECT COUNT(*) c FROM users WHERE phone='0973099002'").get().c;
   assert.equal(cnt, 1);
 });
+
+// 6) 無電話 → 200 phone:null；DB phone IS NULL、role=user
+const r6 = await req('POST', '/api/coach/customers', { token, body: { name: 'CAC無話一' } });
+expect('無電話建立 → 200 + phone null', () => {
+  assert.equal(r6.status, 200);
+  assert.ok(Number.isInteger(r6.data.id));
+  assert.equal(r6.data.phone, null);
+});
+expect('DB phone IS NULL 且 role=user', () => {
+  const u = db.prepare('SELECT phone, role FROM users WHERE id=?').get(r6.data.id);
+  assert.equal(u.phone, null);
+  assert.equal(u.role, 'user');
+});
+
+// 7) 空白字串電話 → 視為未帶
+const r7 = await req('POST', '/api/coach/customers', { token, body: { name: 'CAC無話二', phone: '  ' } });
+expect('空白電話 → 視為未帶、建立成功', () => { assert.equal(r7.status, 200); assert.equal(r7.data.phone, null); });
+
+// 8) 兩個無電話客人並存（不合併）
+expect('無電話客人不合併（不同 id）', () => assert.notEqual(r6.data.id, r7.data.id));
+
+// 9) 無電話且缺名 → 400 missing_name
+const r9 = await req('POST', '/api/coach/customers', { token, body: { name: '' } });
+expect('無電話且缺名 → 400 missing_name', () => { assert.equal(r9.status, 400); assert.equal(r9.data.error, 'missing_name'); });
+
+// 10) 前後空白的合法電話 → 仍走「有電話」路徑 → invalid_phone（固化 trim 分流不誤放行 padded 電話）
+const r10 = await req('POST', '/api/coach/customers', { token, body: { name: 'CAC無話三', phone: ' 0973099001 ' } });
+expect('padded 電話 → 400 invalid_phone（不誤入無電話路徑）', () => { assert.equal(r10.status, 400); assert.equal(r10.data.error, 'invalid_phone'); });
 
 clean();
 console.log('[coach-add-customer-api] done');

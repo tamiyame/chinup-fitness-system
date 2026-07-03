@@ -49,6 +49,13 @@ export function findOrCreateUserByPhone({ phone, name }) {
   });
 }
 
+/** 無電話客人：直接新增（無電話可比對故不 find；登錄彈窗搜尋已先列同名既有客人）。之後可於後台會員管理補電話。 */
+export function createCustomerNoPhone({ name }) {
+  if (!name || !name.trim()) throw new ApiError(400, 'missing_name');
+  const info = insertUser.run(name.trim(), null);
+  return getById.get(info.lastInsertRowid);
+}
+
 /** 查詢用：電話完全相符 + 姓名 trim/大小寫不敏感相符。找不到回 null。 */
 export function getUserByPhoneAndName({ phone, name }) {
   if (!validatePhone(phone) || !name || !name.trim()) return null;
