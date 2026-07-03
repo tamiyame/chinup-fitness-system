@@ -45,7 +45,7 @@ const bookingsStmt = db.prepare(`
 const groupSessionsStmt = db.prepare(`
   SELECT s.id, s.coach_id, s.start_at, t.name AS course_name,
          COUNT(r.id) AS headcount,
-         COALESCE(SUM(COALESCE(r.amount_due, t.price_per_session)), 0) AS revenue
+         COALESCE(SUM(CASE WHEN r.id IS NULL THEN 0 ELSE COALESCE(r.amount_due, t.price_per_session) END), 0) AS revenue
   FROM course_sessions s
   JOIN course_templates t ON t.id = s.template_id
   LEFT JOIN registrations r ON r.session_id = s.id AND r.status = 'confirmed' AND r.on_leave = 0

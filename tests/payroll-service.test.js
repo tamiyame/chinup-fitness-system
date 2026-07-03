@@ -161,6 +161,18 @@ expect('團課比例不受一對一級距影響（groupPct 40 生效）', () => 
   assert.equal(b.group.salary, 480);
   setSetting('payroll_group_pct', '50');                    // 還原
 });
+// 零報名場次建在上面 details.length===1 斷言之後，該斷言維持不變
+const s0 = mkSession('2031-01-27T19:00:00');                      // 期內、open、零報名
+expect('零報名場次：列於明細（headcount=0/revenue=0）、不白計範本價營收', () => {
+  const b = find(computePayroll({ period: '2031-02' }), coachB);
+  const d0 = b.group.details.find((d) => d.sessionId === s0);
+  assert.ok(d0);                                            // 誠實呈現：仍列於明細
+  assert.equal(d0.headcount, 0);
+  assert.equal(d0.revenue, 0);
+  assert.equal(b.group.details.length, 2);                  // s1 + 零報名場次
+  assert.equal(b.group.revenue, 1200);                      // 不因零報名場次增加
+  assert.equal(b.group.salary, 600);                        // groupPct 50 維持原值
+});
 expect('totals = 各教練加總', () => {
   const r = computePayroll({ period: '2031-02' });
   const sum = r.coaches.reduce((s, c) => s + c.total, 0);
