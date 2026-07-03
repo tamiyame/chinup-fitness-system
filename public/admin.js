@@ -1659,6 +1659,177 @@ document.getElementById('discount-code-form')?.addEventListener('submit', async 
   }
 });
 
+// ─── 薪資計算頁籤 ───────────────────────────────────────────
+let prPeriod = null;   // 'YYYY-MM'；null=後端預設本期
+let prData = null;
+let prDefaultPeriod = null;
+const prNT = (n) => 'NT$' + Number(n || 0).toLocaleString('zh-TW');
+const prDT = (s) => `${s.slice(5, 10).replace('-', '/')} ${s.slice(11, 16)}`;   // 'MM/DD HH:MM'
+
+function prShift(period, delta) {
+  const [y, m] = period.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+async function loadPayroll() {
+  const box = document.getElementById('pr-table');
+  box.innerHTML = '<div class="p-4 subtle">計算中…</div>';
+  try {
+    const q = prPeriod ? `?period=${encodeURIComponent(prPeriod)}` : '';
+    prData = await api(`/api/admin/payroll${q}`);
+    prPeriod = prData.period;
+    if (!prDefaultPeriod && !q) prDefaultPeriod = prData.period;
+    renderPayroll();
+  } catch (e) {
+    box.innerHTML = `<div class="p-4 text-sm" style="color:#b91c1c;">載入失敗：${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderPayroll() {
+  const d = prData;
+  const [py, pm] = d.period.split('-');
+  document.getElementById('pr-period-label').textContent =
+    `${py} 年 ${Number(pm)} 月期（${d.range.start.replace(/-/g, '/')} – ${d.range.end.replace(/-/g, '/')}）`;
+  const s = d.settings;
+  document.getElementById('pr-settings-summary').textContent =
+    `一對一：${s.threshold} 堂（含）以內抽 ${s.pctLow}%，超過 ${s.threshold} 堂全部堂數抽 ${s.pctHigh}%；團體課固定抽 ${s.groupPct}%（不併入級距）。`;
+  document.getElementById('pr-threshold').value = s.threshold;
+  document.getElementById('pr-pct-low').value = s.pctLow;
+  document.getElementById('pr-pct-high').value = s.pctHigh;
+  document.getElementById('pr-group-pct').value = s.groupPct;
+
+  const box = document.getElementById('pr-table');
+  if (!d.coaches.length) {
+    box.innerHTML = '<div class="empty-state"><p>本期沒有教練資料</p></div>';
+    return;
+  }
+  const t = d.totals;
+  box.innerHTML = `
+    <table class="w-full text-sm data-table">
+      <thead><tr>
+        <th class="text-left p-3">教練</th>
+        <th class="text-right p-3">1對1堂數</th>
+        <th class="text-right p-3">1對1實收</th>
+        <th class="text-right p-3">適用％</th>
+        <th class="text-right p-3">1對1薪資</th>
+        <th class="text-right p-3">團課人次</th>
+        <th class="text-right p-3">團課實收</th>
+        <th class="text-right p-3">團課薪資</th>
+        <th class="text-right p-3">應發合計</th>
+      </tr></thead>
+      <tbody>
+        ${d.coaches.map((c, i) => {
+          const o = c.oneOnOne;
+          const badges =
+            (c.isActive ? '' : '<span class="pr-info-badge">已停用</span>') +
+            (o.unpriced ? `<span class="pr-warn-badge">${o.unpriced} 堂無單價</span>` : '') +
+            (o.future ? `<span class="pr-info-badge">${o.future} 堂未上課</span>` : '');
+          return `
+          <tr class="pr-row" data-idx="${i}">
+            <td class="p-3 cell-name"><span class="font-medium">${escapeHtml(c.displayName)}</span>${badges}</td>
+            <td class="p-3 text-right pr-c-sess">${o.sessions}</td>
+            <td class="p-3 text-right pr-c-rev subtle">${prNT(o.revenue)}</td>
+            <td class="p-3 text-right pr-c-pct">${o.pct}%</td>
+            <td class="p-3 text-right pr-c-sal">${prNT(o.salary)}</td>
+            <td class="p-3 text-right pr-c-ghead">${c.group.headcount}</td>
+            <td class="p-3 text-right pr-c-grev subtle">${prNT(c.group.revenue)}</td>
+            <td class="p-3 text-right pr-c-gsal">${prNT(c.group.salary)}</td>
+            <td class="p-3 text-right pr-c-total pr-total-cell">${prNT(c.total)}</td>
+          </tr>`;
+        }).join('')}
+        <tr class="pr-grand">
+          <td class="p-3 cell-name"><span class="font-medium">全店總計</span></td>
+          <td class="p-3 text-right pr-c-sess">${t.oneOnOneSessions}</td>
+          <td class="p-3 text-right pr-c-rev">${prNT(t.oneOnOneRevenue)}</td>
+          <td class="p-3 text-right pr-c-pct">—</td>
+          <td class="p-3 text-right pr-c-sal">${prNT(t.oneOnOneSalary)}</td>
+          <td class="p-3 text-right pr-c-ghead">${t.groupHeadcount}</td>
+          <td class="p-3 text-right pr-c-grev">${prNT(t.groupRevenue)}</td>
+          <td class="p-3 text-right pr-c-gsal">${prNT(t.groupSalary)}</td>
+          <td class="p-3 text-right pr-c-total pr-total-cell">${prNT(t.total)}</td>
+        </tr>
+      </tbody>
+    </table>`;
+
+  box.querySelectorAll('tr.pr-row').forEach((tr) => tr.addEventListener('click', () => prToggleDetail(tr)));
+}
+
+const SRC_LABEL = { package: '方案', walkin: '散客' };
+const TYPE_LABEL = { '1on1': '1對1', '1on2': '1對2' };
+
+function prToggleDetail(tr) {
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains('pr-detail-row')) { next.remove(); return; }
+  tr.closest('tbody').querySelectorAll('.pr-detail-row').forEach((r) => r.remove());
+  const c = prData.coaches[Number(tr.dataset.idx)];
+  const o = c.oneOnOne;
+  const oneRows = o.details.map((x) => `
+    <tr><td>${prDT(x.startAt)}${x.future ? '<span class="pr-info-badge">未上課</span>' : ''}</td>
+        <td>${escapeHtml(x.memberName)}</td>
+        <td>${TYPE_LABEL[x.sessionType] || x.sessionType}·${SRC_LABEL[x.source]}</td>
+        <td class="text-right">${x.unpriced ? '<span class="pr-warn-badge">無單價</span>' : prNT(x.amount)}</td></tr>`).join('');
+  const grpRows = c.group.details.map((x) => `
+    <tr><td>${prDT(x.startAt)}</td>
+        <td>${escapeHtml(x.courseName)}</td>
+        <td>${x.headcount} 人</td>
+        <td class="text-right">${prNT(x.revenue)}</td></tr>`).join('');
+  const row = document.createElement('tr');
+  row.className = 'pr-detail-row';
+  row.innerHTML = `<td colspan="9" class="cell-span"><div class="pr-detail-block">
+      <h4>一對一明細（${o.sessions} 堂・實收 ${prNT(o.revenue)}）</h4>
+      ${oneRows ? `<table><tbody>${oneRows}</tbody></table>` : '<div class="subtle text-sm">本期無一對一堂數</div>'}
+      <h4>團體課明細（${c.group.headcount} 人次・實收 ${prNT(c.group.revenue)}）</h4>
+      ${grpRows ? `<table><tbody>${grpRows}</tbody></table>` : '<div class="subtle text-sm">本期無授課團課場次</div>'}
+    </div></td>`;
+  tr.after(row);
+}
+
+function prExportCsv() {
+  if (!prData) return;
+  const rows = [['教練', '1對1堂數', '1對1實收', '適用%', '1對1薪資', '團課人次', '團課實收', '團課薪資', '應發合計']];
+  for (const c of prData.coaches) {
+    rows.push([c.displayName, c.oneOnOne.sessions, c.oneOnOne.revenue, c.oneOnOne.pct + '%',
+      c.oneOnOne.salary, c.group.headcount, c.group.revenue, c.group.salary, c.total]);
+  }
+  const t = prData.totals;
+  rows.push(['全店總計', t.oneOnOneSessions, t.oneOnOneRevenue, '', t.oneOnOneSalary, t.groupHeadcount, t.groupRevenue, t.groupSalary, t.total]);
+  const csv = '﻿' + rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');   // BOM：Excel 中文相容
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `薪資_${prData.period}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+document.getElementById('pr-prev').addEventListener('click', () => { prPeriod = prShift(prPeriod, -1); loadPayroll(); });
+document.getElementById('pr-next').addEventListener('click', () => { prPeriod = prShift(prPeriod, 1); loadPayroll(); });
+document.getElementById('pr-current').addEventListener('click', () => { prPeriod = prDefaultPeriod; loadPayroll(); });
+document.getElementById('pr-export').addEventListener('click', prExportCsv);
+document.getElementById('pr-settings-toggle').addEventListener('click', () => {
+  document.getElementById('pr-settings-form').classList.toggle('hidden');
+});
+document.getElementById('pr-settings-cancel').addEventListener('click', () => {
+  document.getElementById('pr-settings-form').classList.add('hidden');
+  if (prData) renderPayroll();   // 還原輸入值
+});
+document.getElementById('pr-settings-save').addEventListener('click', async () => {
+  const body = {
+    payroll_tier_threshold: Number(document.getElementById('pr-threshold').value),
+    payroll_pct_low: Number(document.getElementById('pr-pct-low').value),
+    payroll_pct_high: Number(document.getElementById('pr-pct-high').value),
+    payroll_group_pct: Number(document.getElementById('pr-group-pct').value),
+  };
+  try {
+    await api('/api/admin/settings', { method: 'PATCH', body });
+    toast('抽成設定已儲存');
+    document.getElementById('pr-settings-form').classList.add('hidden');
+    loadPayroll();
+  } catch (e) {
+    toast(`儲存失敗：${e.message}`);
+  }
+});
+
 loadCategories();
 loadCoachesForForm();
 loadTemplates();
@@ -1671,6 +1842,7 @@ loadPendingOrders();
 loadConfirmedPayments();
 loadDiscountCodes();
 loadOneOnOnePrice();
+loadPayroll();
 
 // 後台分頁切換：點頁籤只顯示對應 panel（各區塊資料已於上方一次載入）。
 document.querySelectorAll('#admin-tabs .tab').forEach((t) => {

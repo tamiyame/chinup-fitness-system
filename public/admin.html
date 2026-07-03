@@ -160,6 +160,34 @@ body { visibility: hidden; }
   .data-table .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 }
 
+/* 薪資彙總表：手機卡片化欄位標籤（沿用 .data-table RWD 機制） */
+.pr-warn-badge{ display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px;
+  background:#fffbeb; color:#a16207; border:1px solid #fcd34d; margin-left:6px; white-space:nowrap; }
+.pr-info-badge{ display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px;
+  background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; margin-left:6px; white-space:nowrap; }
+.pr-total-cell{ font-weight:800; color:var(--brand-700); }
+#pr-table tr.pr-row{ cursor:pointer; }
+#pr-table tr.pr-grand td{ font-weight:800; background:#f8fafc; }
+#pr-table tr.pr-detail-row > td{ background:#f8fafc; cursor:default; }
+.pr-detail-block{ padding:10px 4px; }
+.pr-detail-block h4{ font-size:12px; font-weight:800; letter-spacing:.06em; color:var(--ink-mute); margin:10px 0 6px; }
+.pr-detail-block table{ width:100%; font-size:13px; }
+.pr-detail-block td{ padding:4px 8px; border-bottom:1px dashed var(--line); }
+@media (max-width: 767.98px) {
+  #pr-table td.pr-c-sess::before{ content:"1對1堂數"; }
+  #pr-table td.pr-c-rev::before{ content:"1對1實收"; }
+  #pr-table td.pr-c-pct::before{ content:"適用％"; }
+  #pr-table td.pr-c-sal::before{ content:"1對1薪資"; }
+  #pr-table td.pr-c-ghead::before{ content:"團課人次"; }
+  #pr-table td.pr-c-grev::before{ content:"團課實收"; }
+  #pr-table td.pr-c-gsal::before{ content:"團課薪資"; }
+  #pr-table td.pr-c-total::before{ content:"應發合計"; }
+  #pr-table tr.pr-detail-row{ display:block; }
+  .pr-detail-block table, .pr-detail-block tbody, .pr-detail-block tr{ display:table; width:100%; }
+  .pr-detail-block td{ display:table-cell; }
+  .pr-detail-block td::before{ content:none; }
+}
+
 /* 備份 modal 內表格同步 Nike 化 */
 #backup-modal table thead th{
   font-family:"Archivo","Noto Sans TC",sans-serif;
@@ -341,6 +369,7 @@ details.session-row summary .font-semibold{
     <button data-atab="discounts" class="tab" style="white-space:nowrap;">折扣碼</button>
     <button data-atab="notifs" class="tab" style="white-space:nowrap;">通知</button>
     <button data-atab="line" class="tab" style="white-space:nowrap;">LINE 管理</button>
+    <button data-atab="payroll" class="tab" style="white-space:nowrap;">薪資計算</button>
   </div>
 
   <div id="apanel-courses" class="tab-panel">
@@ -653,6 +682,66 @@ details.session-row summary .font-semibold{
       <div id="line-table"></div>
     </div>
   </section>
+  </div>
+
+  <div id="apanel-payroll" class="tab-panel hidden">
+
+  <!-- 期別導覽 -->
+  <section class="mb-6">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <h2 class="section-title">薪資計算</h2>
+        <div id="pr-period-label" class="subtle text-sm mt-1">—</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="pr-prev" class="btn btn-ghost btn-sm">◀ 上一期</button>
+        <button id="pr-current" class="btn btn-ghost btn-sm">本期</button>
+        <button id="pr-next" class="btn btn-ghost btn-sm">下一期 ▶</button>
+      </div>
+    </div>
+    <p class="subtle text-sm mt-2">薪資週期為上月 6 號至當月 5 號；依教練預約行事曆即時計算，非結算存檔。</p>
+  </section>
+
+  <!-- 抽成設定 -->
+  <section class="card mb-6">
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold">抽成設定</h3>
+      <button id="pr-settings-toggle" class="btn btn-ghost btn-sm">編輯</button>
+    </div>
+    <div id="pr-settings-summary" class="subtle text-sm mt-1">載入中…</div>
+    <div id="pr-settings-form" class="hidden mt-4">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <label class="text-sm">級距門檻（堂）
+          <input id="pr-threshold" type="number" min="0" max="999" class="form-input mt-1">
+        </label>
+        <label class="text-sm">門檻內抽成 %
+          <input id="pr-pct-low" type="number" min="0" max="100" class="form-input mt-1">
+        </label>
+        <label class="text-sm">超過門檻抽成 %
+          <input id="pr-pct-high" type="number" min="0" max="100" class="form-input mt-1">
+        </label>
+        <label class="text-sm">團課抽成 %
+          <input id="pr-group-pct" type="number" min="0" max="100" class="form-input mt-1">
+        </label>
+      </div>
+      <div class="mt-3 flex gap-2">
+        <button id="pr-settings-save" class="btn btn-primary btn-sm">儲存並重算</button>
+        <button id="pr-settings-cancel" class="btn btn-ghost btn-sm">取消</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 彙總表 -->
+  <section class="mb-10">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="section-title">教練薪資彙總</h2>
+      <button id="pr-export" class="btn btn-ghost btn-sm">匯出 CSV</button>
+    </div>
+    <div class="card p-0 overflow-hidden">
+      <div id="pr-table"><div class="p-4 subtle">載入中…</div></div>
+    </div>
+  </section>
+
   </div>
 
 </main>
