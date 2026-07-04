@@ -5,6 +5,7 @@ import { getCalendarToken } from './googleAuth.js';
 
 const BASE = 'https://www.googleapis.com/calendar/v3';
 export const __mockCalls = []; // 測試專用：GCAL_MOCK=1 時記錄 { fn, args }
+export const __mockListQueue = []; // 測試專用：GCAL_MOCK=1 時 listEvents 依序 shift 假回應
 
 async function authedFetch(url, options = {}) {
   const t = await getCalendarToken();
@@ -69,4 +70,36 @@ export async function deleteEvent(calendarId, eventId) {
   );
   if (r.ok || r.status === 404 || r.status === 410) return { ok: true };
   return r;
+}
+
+/** 列事件（反向同步用）。params 為 query 物件（syncToken/pageToken/timeMin/showDeleted/maxResults…）。
+ *  回 { ok, items, nextPageToken, nextSyncToken }；410（syncToken 過期）由 status 辨識。 */
+export async function listEvents(calendarId, params = {}) {
+  if (process.env.GCAL_MOCK === '1') {
+    const result = __mockListQueue.length
+      ? __mockListQueue.shift()
+      : { ok: true, items: [], nextPageToken: null, nextSyncToken: 'mock-token' };
+    return mock('listEvents', { calendarId, params }, result);
+  }
+  if (process.env.GCAL_MOCK === 'fail') return { ok: false, error: 'mock_fail' };
+  const qs = new URLSearchParams(params).toString();
+  const r = await authedFetch(`${BASE}/calendars/${encodeURIComponent(calendarId)}/events?${qs}`);
+  if (!r.ok) return r;
+  return {
+    ok: true,
+    items: r.data?.items || [],
+    nextPageToken: r.data?.nextPageToken || null,
+    nextSyncToken: r.data?.nextSyncToken || null,
+  };
+}
+
+/** 更新事件（退回移動／理論復活用）。body 併 status:'confirmed'。 */
+export async function updateEvent(calendarId, eventId, event) {
+  if (process.env.GCAL_MOCK === '1') return mock('updateEvent', { calendarId, eventId, event });
+  if (process.env.GCAL_MOCK === 'fail') return { ok: false, error: 'mock_fail' };
+  const r = await authedFetch(
+    `${BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    { method: 'PUT', body: JSON.stringify({ ...event, status: 'confirmed' }) }
+  );
+  return r.ok ? { ok: true } : r;
 }
