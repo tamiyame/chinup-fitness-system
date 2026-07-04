@@ -197,6 +197,23 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
   });
 }
 
+/** gcal 刪除事件 → 自動取消（對客人與教練皆靜默；管理者通知由呼叫端 gcalPull 發）。
+ *  回補方案、釋放折扣；cancel_reason 供稽核；事件已不存在故清 gcal_event_id（免 reconcile 再刪）。 */
+export function cancelBookingFromGcal(bookingId) {
+  return tx(() => {
+    const b = getBookingStmt.get(bookingId);
+    if (!b || b.status === 'cancelled') return { ok: false };
+    const coach = getCoachStmt.get(b.coach_id);
+    cancelBookingStmt.run(nowLocal(), null, 'gcal_event_deleted', bookingId);
+    refundPackageForBooking(b);
+    releaseRedemption({ kind: 'booking', refId: bookingId });
+    db.prepare('UPDATE bookings SET gcal_event_id = NULL WHERE id = ?').run(bookingId);
+    const memberRow = getUserNameStmt.get(b.member_id);
+    return { ok: true, coachName: coach?.display_name || '', memberName: memberRow?.name || '',
+             startAt: b.start_at, refunded: !!b.package_id };
+  });
+}
+
 export function cancelBookingAnon({ bookingId, phone, name }) {
   return tx(() => {
     const b = getBookingStmt.get(bookingId);
