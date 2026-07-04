@@ -82,11 +82,13 @@ export async function syncBookingUpdate(bookingId) {
     if (!body) return;
     const r = await updateEvent(getGcalCalendarId(), body.id, body);
     if (r.ok) { setEventId.run(body.id, bookingId); return; }
+    let err = r.error;
     if (r.status === 404) {
       const i = await insertEvent(getGcalCalendarId(), body);
       if (i.ok) { setEventId.run(body.id, bookingId); return; }
+      err = i.error;
     }
-    console.error('[gcal] syncBookingUpdate failed:', bookingId, r.error);
+    console.error('[gcal] syncBookingUpdate failed:', bookingId, err);
     setEventId.run(null, bookingId);
   } catch (e) { console.error('[gcal] syncBookingUpdate threw:', e); }
 }
