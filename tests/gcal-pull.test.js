@@ -3,13 +3,14 @@ process.env.GCAL_MOCK = '1';
 import assert from 'node:assert/strict';
 const { db } = await import('../src/db/connection.js');
 const { setSetting, getSetting } = await import('../src/services/discountService.js');
-const { __mockCalls, __mockListQueue } = await import('../src/services/gcalClient.js');
+const { __mockCalls, __mockListQueue, __mockUpdateQueue } = await import('../src/services/gcalClient.js');
 const { processEvent, pullChanges } = await import('../src/services/gcalPull.js');
-const { eventIdForBooking } = await import('../src/services/gcalSync.js');
+const { eventIdForBooking, syncBookingUpdate } = await import('../src/services/gcalSync.js');
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 const CAL = 'gp-test-cal';
 console.log('[gcal-pull test] start');
+const origCalId = getSetting('gcal_calendar_id') || ''; // 收尾要還原，這份 app.db 是長期共用 dev DB
 
 // ── 清理＋建資料 ──
 db.exec(`
@@ -43,7 +44,7 @@ const callsOf = (fn) => __mockCalls.filter((c) => c.fn === fn);
 const notifCount = (type, userId = null) => db.prepare(
   `SELECT COUNT(*) c FROM notifications WHERE type=? ${userId ? 'AND user_id=?' : ''}`
 ).get(...(userId ? [type, userId] : [type])).c;
-const reset = () => { __mockCalls.length = 0; __mockListQueue.length = 0; };
+const reset = () => { __mockCalls.length = 0; __mockListQueue.length = 0; __mockUpdateQueue.length = 0; };
 
 // ── 分類器 ──
 reset();
@@ -67,6 +68,16 @@ expect('合法移動 → 套用改時段＋客人收 booking_rescheduled、不 u
   assert.equal(b.end_at, '2032-03-02T15:00:00');
   assert.equal(callsOf('updateEvent').length, 0);
   assert.ok(notifCount('booking_rescheduled', memberId) >= 1);
+});
+
+// reschedule 後回聲守門：同一顆事件（新時間）再餵一次 processEvent，確保下一次輪詢不會
+// 因時間字串格式差異誤判成「新的移動」而重複改期轟炸客人。
+const rescheduledNotifsAfterMove = notifCount('booking_rescheduled', memberId);
+reset();
+await processEvent(evOf(bEcho, '2032-03-02T14:00:00+08:00', '2032-03-02T15:00:00+08:00'), CAL);
+expect('reschedule 後回聲（同一顆事件再餵一次）→ 零 API 呼叫、通知不增加', () => {
+  assert.equal(__mockCalls.length, 0);
+  assert.equal(notifCount('booking_rescheduled', memberId), rescheduledNotifsAfterMove);
 });
 
 const bOther = mkBooking('2032-03-03T09:00:00');
@@ -151,6 +162,36 @@ reset();
 await processEvent(evOf(bDel, '2032-04-01T10:00:00+08:00', '2032-04-01T11:00:00+08:00'), CAL);
 expect('已取消預約的事件被復原 → DB 贏，deleteEvent 再刪', () => assert.equal(callsOf('deleteEvent').length, 1));
 
+// ── syncBookingUpdate（Important 1 修復：改期/改派單一 PUT 原子刷新，避免「刪→建」窗口被 pull 誤判為刪除） ──
+const bUpd = mkBooking('2032-05-01T10:00:00');
+reset();
+await syncBookingUpdate(bUpd);
+expect('syncBookingUpdate 成功 → 單一 updateEvent（無 delete/insert）、事件時間與 DB 一致、gcal_event_id 維持', () => {
+  assert.equal(__mockCalls.length, 1);
+  assert.equal(callsOf('updateEvent').length, 1);
+  assert.equal(callsOf('deleteEvent').length, 0);
+  assert.equal(callsOf('insertEvent').length, 0);
+  assert.equal(callsOf('updateEvent')[0].args.event.start.dateTime, getB(bUpd).start_at + '+08:00');
+  assert.equal(getB(bUpd).gcal_event_id, eventIdForBooking(bUpd));
+});
+
+reset();
+__mockUpdateQueue.push({ ok: false, status: 404 });
+await syncBookingUpdate(bUpd);
+expect('syncBookingUpdate 404（事件不存在）→ 補建 insertEvent、gcal_event_id 為事件 id', () => {
+  assert.equal(__mockCalls.length, 2);
+  assert.equal(__mockCalls[0].fn, 'updateEvent');
+  assert.equal(__mockCalls[1].fn, 'insertEvent');
+  assert.equal(getB(bUpd).gcal_event_id, eventIdForBooking(bUpd));
+});
+
+reset();
+__mockUpdateQueue.push({ ok: false, status: 500, error: 'x' });
+await syncBookingUpdate(bUpd);
+expect('syncBookingUpdate 其他失敗 → 清 gcal_event_id 交 reconcile 補正', () => {
+  assert.equal(getB(bUpd).gcal_event_id, null);
+});
+
 // ── token 泵 ──
 setSetting('gcal_sync_token', '');
 reset();
@@ -197,7 +238,17 @@ setSetting('gcal_calendar_id', '');
 await pullChanges();
 expect('未設定日曆（isGcalEnabled=false）→ 不打 API', () => assert.equal(__mockCalls.length, 0));
 
-// ── 還原 ──
+// ── 還原（這份 app.db 是長期共用 dev DB：token/calendar id 設定與本檔建立的 gp-% 資料都要清乾淨）──
 setSetting('gcal_sync_token', '');
-db.exec("DELETE FROM discount_codes WHERE code='GPDEL'");
+setSetting('gcal_calendar_id', origCalId);
+db.exec(`
+  DELETE FROM notifications WHERE type IN ('gcal_move_rejected','gcal_delete_cancelled');
+  DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'gp-%');
+  DELETE FROM bookings WHERE start_at LIKE '2032-%' OR start_at LIKE '2020-%';
+  DELETE FROM discount_redemptions WHERE kind='booking' AND ref_id NOT IN (SELECT id FROM bookings);
+  DELETE FROM discount_codes WHERE code='GPDEL';
+  DELETE FROM customer_packages WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'gp-%');
+  DELETE FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'gp-%');
+  DELETE FROM users WHERE email LIKE 'gp-%';
+`);
 console.log('[gcal-pull test] done');

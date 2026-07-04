@@ -6,6 +6,7 @@ import { getCalendarToken } from './googleAuth.js';
 const BASE = 'https://www.googleapis.com/calendar/v3';
 export const __mockCalls = []; // 測試專用：GCAL_MOCK=1 時記錄 { fn, args }
 export const __mockListQueue = []; // 測試專用：GCAL_MOCK=1 時 listEvents 依序 shift 假回應
+export const __mockUpdateQueue = []; // 測試專用：GCAL_MOCK=1 時 updateEvent 依序 shift 假回應（空 → {ok:true}）
 
 async function authedFetch(url, options = {}) {
   const t = await getCalendarToken();
@@ -95,7 +96,10 @@ export async function listEvents(calendarId, params = {}) {
 
 /** 更新事件（退回移動／理論復活用）。body 併 status:'confirmed'。 */
 export async function updateEvent(calendarId, eventId, event) {
-  if (process.env.GCAL_MOCK === '1') return mock('updateEvent', { calendarId, eventId, event });
+  if (process.env.GCAL_MOCK === '1') {
+    const result = __mockUpdateQueue.length ? __mockUpdateQueue.shift() : { ok: true };
+    return mock('updateEvent', { calendarId, eventId, event }, result);
+  }
   if (process.env.GCAL_MOCK === 'fail') return { ok: false, error: 'mock_fail' };
   const r = await authedFetch(
     `${BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
