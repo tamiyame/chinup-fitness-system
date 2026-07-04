@@ -58,8 +58,8 @@ const p2 = mkPkg(m1, { remaining: 2, type: '1on2' });            // 續購新方
 run();
 expect('續購新方案降到門檻 → 再發（不同 ref）', () => {
   assert.equal(notifCount(m1, 'package_low_sessions'), 2);
-  const row = db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='package_low_sessions' ORDER BY id DESC").get(m1);
-  assert.ok(row.body.includes('1對2') && row.body.includes('2 堂'));
+  const cnt1on2 = db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='package_low_sessions' AND body LIKE '%1對2%' AND body LIKE '%2 堂%'").get(m1).c;
+  assert.equal(cnt1on2, 1);   // 不依賴掃描順序，直接斷言 1對2 方案的那則存在
 });
 
 const pDone = mkPkg(m2, { remaining: 0 });                       // 全上完：remaining 0、預約皆過去 → 尚餘 0 → 不發
@@ -109,6 +109,10 @@ db.prepare("UPDATE registrations SET status='cancelled' WHERE session_id=? AND u
 run();
 expect('降回 1 堂且最後一堂換場次（新 ref）→ 再發', () => assert.equal(notifCount(m3, 'group_last_session'), 2));
 
+expect('教練（員工）不收任何續約提醒', () => {
+  assert.equal(notifCount(coachUid, 'package_low_sessions'), 0);
+  assert.equal(notifCount(coachUid, 'group_last_session'), 0);
+});
 expect('marker 表（kind, member, ref）語意', () => {
   const c = db.prepare("SELECT COUNT(*) c FROM renewal_reminders WHERE kind='group' AND member_id=?").get(m3).c;
   assert.equal(c, 2);   // s1 一次、s2 一次

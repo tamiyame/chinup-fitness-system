@@ -15,6 +15,7 @@ db.exec(`
   DELETE FROM customer_packages;
   DELETE FROM course_sessions;
   DELETE FROM course_templates;
+  DELETE FROM renewal_reminders;
   DELETE FROM users;
 `);
 
