@@ -285,6 +285,15 @@ CREATE INDEX IF NOT EXISTS idx_point_tx_member_pool ON point_transactions(member
 CREATE INDEX IF NOT EXISTS idx_point_tx_created ON point_transactions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_point_tx_booking ON point_transactions(related_booking_id);
 CREATE INDEX IF NOT EXISTS idx_point_tx_registration ON point_transactions(related_registration_id);
+
+CREATE TABLE IF NOT EXISTS renewal_reminders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL CHECK (kind IN ('package','group')),
+  member_id INTEGER NOT NULL REFERENCES users(id),
+  ref_id INTEGER NOT NULL,
+  sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_renewal_reminders_key ON renewal_reminders(kind, member_id, ref_id);
 `;
 
 // Indexes for Phase 3C columns are kept OUT of the SCHEMA string so that

@@ -5,6 +5,7 @@ import { runBackup } from './services/backupService.js';
 import { expirePendingOrders } from './services/groupOrderService.js';
 import { reconcile } from './services/gcalSync.js';
 import { pullChanges } from './services/gcalPull.js';
+import { processRenewalReminders } from './services/renewalReminderService.js';
 
 export function startScheduler() {
   // 每小時整點跑截止判定
@@ -24,6 +25,16 @@ export function startScheduler() {
       if (r.length) console.log('[scheduler] reminders sent:', r);
     } catch (e) {
       console.error('[scheduler] reminder error:', e);
+    }
+  });
+
+  // 每天早上 9 點：堂數即將用完提醒（方案尚餘≤2／團課剩最後1堂；每狀態只提醒一次）
+  cron.schedule('0 9 * * *', () => {
+    try {
+      const r = processRenewalReminders();
+      if (r.packagesSent || r.groupSent) console.log('[scheduler] renewal reminders sent:', r);
+    } catch (e) {
+      console.error('[scheduler] renewal reminder error:', e);
     }
   });
 

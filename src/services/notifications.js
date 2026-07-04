@@ -158,6 +158,16 @@ const TEMPLATES = {
     subject: 'Google 日曆刪除 → 預約已取消',
     body: 'Google 日曆上的事件被刪除，系統已自動取消預約：{{coach_display_name}} × {{member_name}}（{{start_at}}）{{refund_note}}。',
   },
+
+  // === new 2（堂數即將用完自動提醒） ===
+  package_low_sessions: {
+    subject: '方案堂數提醒',
+    body: '提醒您：您的{{session_type_label}}方案還剩 {{remaining}} 堂課。歡迎向教練預約續購，讓訓練不中斷！',
+  },
+  group_last_session: {
+    subject: '團體課報名提醒',
+    body: '提醒您：您報名的團體課只剩最後一堂（{{course_name}}，{{start_at}}）。歡迎繼續報名之後的場次，我們課堂上見！',
+  },
 };
 
 function render(template, vars) {
