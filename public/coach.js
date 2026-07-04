@@ -120,6 +120,7 @@ async function setupCoachPicker() {
   const picker = $('coach-picker');
   let self = null;
   try { self = await api('/api/coach/me'); } catch (e) { if (e.status !== 404) throw e; }
+  myCoachId = self?.id ?? null; // 登錄預約頁籤「預設選自己」用（登入者自己的教練身份）
 
   const all = await api('/api/admin/coaches');
   const active = all.filter(c => c.is_active);
@@ -504,8 +505,9 @@ function escapeAttr(s) { return escapeHtml(s); }
 
 // 登錄預約：週曆狀態
 let regWeekOffset = 0; // 0=本週
-let regViewCoachId = 'all'; // 管理者登錄分頁檢視：'all' 或 coachId 字串；一般教練不使用
+let regViewCoachId = null; // 管理者登錄分頁檢視：null=未初始化（首次渲染時預設自己）；'all' 或 coachId 字串；一般教練不使用
 let regCoachOptionsCache = null; // 教練選單 options HTML 快取（避免每次重繪重撈 /api/admin/coaches）
+let myCoachId = null; // 管理者登入者自己的教練 id（setupCoachPicker 填入；無教練檔案為 null）
 let regDrag = null; // 拖拉改時段中的狀態：{ id, booking, srcEl, startX, startY, pointerId, moved, ghost, dropSlot }
 let regRescheduleInFlight = false; // reschedule PATCH 飛行中，擋拖曳重入
 let regSuppressClick = false; // 拖放結束後吞掉緊接的合成 click（避免落點空格又開登錄彈窗）
@@ -558,7 +560,8 @@ async function renderRegister() {
   $('reg-today').onclick = () => { regWeekOffset = 0; renderRegister(); };
   $('reg-range').textContent = `${dates[0].slice(5).replace('-', '/')} – ${dates[6].slice(5).replace('-', '/')}`;
 
-  // 管理者：填充教練選擇器（全部教練 + 各 active coach）
+  // 管理者：填充教練選擇器（全部教練 + 各 active coach）；首次渲染預設「登入者自己」（教練身份為主），
+  // 自己無教練檔案或未啟用（不在選項內）→ 回退「全部教練」。
   if (isAdmin) {
     const picker = $('reg-coach-picker');
     if (!regCoachOptionsCache) {
@@ -570,6 +573,13 @@ async function renderRegister() {
       regCoachOptionsCache = opts;
     }
     picker.innerHTML = regCoachOptionsCache;
+    if (regViewCoachId === null) {
+      regViewCoachId = 'all';
+      if (myCoachId != null) {
+        picker.value = String(myCoachId);
+        if (picker.value === String(myCoachId)) regViewCoachId = String(myCoachId); // 選項存在才預設自己
+      }
+    }
     picker.value = regViewCoachId;
     picker.onchange = () => { regViewCoachId = picker.value; renderRegister(); };
   }
