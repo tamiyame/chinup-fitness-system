@@ -83,7 +83,7 @@ import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours, listActiveDiscountCodes } from './services/discountService.js';
 import { isValidPhone, findOrCreateUserByPhone, createCustomerNoPhone } from './services/userService.js';
-import { syncBookingCreate, syncBookingCancel } from './services/gcalSync.js';
+import { syncBookingCreate, syncBookingCancel, syncBookingUpdate } from './services/gcalSync.js';
 import {
   createPackage as svcCreatePackage,
   listPackagesForMember as svcListPackages,
@@ -907,14 +907,14 @@ app.post('/api/coach/register', requireCoach, asyncHandler((req, res) => {
 app.patch('/api/coach/bookings/:id/reschedule', requireCoach, asyncHandler((req, res) => {
   const { startAt } = req.body || {};
   const r = svcRescheduleBooking({ bookingId: Number(req.params.id), newStartAt: startAt, actorUserId: req.user.id, isAdmin: !!req.user.is_admin });
-  syncBookingCancel(r.bookingId).then(() => syncBookingCreate(r.bookingId)); // 刷新日曆事件
+  syncBookingUpdate(r.bookingId); // 原子刷新（PUT），避免刪→建窗口被反向同步誤判
   res.json(r);
 }));
 
 app.patch('/api/coach/bookings/:id/reassign', requireCoach, asyncHandler((req, res) => {
   const { memberId, packageId } = req.body || {};
   const r = svcReassignBooking({ bookingId: Number(req.params.id), newMemberId: Number(memberId), newPackageId: Number(packageId), actorUserId: req.user.id, isAdmin: !!req.user.is_admin });
-  syncBookingCancel(r.bookingId).then(() => syncBookingCreate(r.bookingId));
+  syncBookingUpdate(r.bookingId); // 原子刷新（PUT），避免刪→建窗口被反向同步誤判
   res.json(r);
 }));
 

@@ -4,6 +4,7 @@ import { processFailedNotifications } from './services/notifications.js';
 import { runBackup } from './services/backupService.js';
 import { expirePendingOrders } from './services/groupOrderService.js';
 import { reconcile } from './services/gcalSync.js';
+import { pullChanges } from './services/gcalPull.js';
 
 export function startScheduler() {
   // 每小時整點跑截止判定
@@ -51,6 +52,15 @@ export function startScheduler() {
       await reconcile();
     } catch (e) {
       console.error('[scheduler] gcal reconcile error:', e);
+    }
+  });
+
+  // 每 1 分鐘：Google 日曆反向同步（拉回人為異動；功能未啟用時內部直接 return）
+  cron.schedule('* * * * *', async () => {
+    try {
+      await pullChanges();
+    } catch (e) {
+      console.error('[scheduler] gcal pull error:', e);
     }
   });
 

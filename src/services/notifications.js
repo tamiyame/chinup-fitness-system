@@ -148,6 +148,16 @@ const TEMPLATES = {
     subject: '新報名 - {{course_name}}',
     body: '🏋️ {{member_name}} 報名了「{{course_name}}」共 {{count}} 堂（{{date_list}}）。',
   },
+
+  // === new 2（Google 日曆反向同步） ===
+  gcal_move_rejected: {
+    subject: 'Google 日曆移動已退回',
+    body: '您在 Google 日曆上移動的預約已退回：{{member_name}} {{start_at}}。原因：{{reason}}。如需改期請於系統內操作。',
+  },
+  gcal_delete_cancelled: {
+    subject: 'Google 日曆刪除 → 預約已取消',
+    body: 'Google 日曆上的事件被刪除，系統已自動取消預約：{{coach_display_name}} × {{member_name}}（{{start_at}}）{{refund_note}}。',
+  },
 };
 
 function render(template, vars) {

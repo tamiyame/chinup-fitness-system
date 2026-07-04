@@ -2,7 +2,7 @@
 // DB 是唯一事實來源；日曆寫入失敗不影響預約（cron 補齊）。
 import { db } from '../db/connection.js';
 import { getGcalCalendarId } from './discountService.js';
-import { freeBusy, insertEvent, deleteEvent } from './gcalClient.js';
+import { freeBusy, insertEvent, deleteEvent, updateEvent } from './gcalClient.js';
 
 const SESSION_LABELS = { '1on1': '1對1', '1on2': '1對2' };
 
@@ -37,7 +37,7 @@ export function buildEventBody(bookingId) {
     `方案：${label}`,
     amount != null ? `金額：$${amount}${b.discount_code ? `（折扣碼 ${b.discount_code}）` : ''}` : null,
     `預約編號：#${b.id}`,
-    '（chinup 系統自動建立，請勿手動修改；改動不會回寫系統）',
+    '（chinup 系統自動建立。可直接拖動改時段：需整點起、60 分鐘、未來時段；刪除事件＝取消預約並回補堂數）',
   ].filter(Boolean);
   return {
     id: eventIdForBooking(b.id),
@@ -69,6 +69,28 @@ export async function syncBookingCancel(bookingId) {
     if (r.ok) setEventId.run(null, bookingId);
     else console.error('[gcal] deleteEvent failed:', bookingId, r.error);
   } catch (e) { console.error('[gcal] syncBookingCancel threw:', e); }
+}
+
+/** 改期/改派後呼叫（commit 後、不 await）：單一 PUT 原子刷新事件，
+ *  避免「刪→建」窗口被反向同步（gcalPull）誤判為日曆刪除而錯誤取消退款。
+ *  404（事件不存在）→ 補建（insertEvent 遇 409 內建 PUT 復活）；
+ *  其他失敗 → 清 gcal_event_id 交 reconcile 用 insert(409→PUT) 以最新時間補正。 */
+export async function syncBookingUpdate(bookingId) {
+  try {
+    if (!isGcalEnabled()) return;
+    const body = buildEventBody(bookingId);
+    if (!body) return;
+    const r = await updateEvent(getGcalCalendarId(), body.id, body);
+    if (r.ok) { setEventId.run(body.id, bookingId); return; }
+    let err = r.error;
+    if (r.status === 404) {
+      const i = await insertEvent(getGcalCalendarId(), body);
+      if (i.ok) { setEventId.run(body.id, bookingId); return; }
+      err = i.error;
+    }
+    console.error('[gcal] syncBookingUpdate failed:', bookingId, err);
+    setEventId.run(null, bookingId);
+  } catch (e) { console.error('[gcal] syncBookingUpdate threw:', e); }
 }
 
 // ── freebusy → 台北牆鐘區間 ───────────────────────────────────────────
