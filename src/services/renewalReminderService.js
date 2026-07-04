@@ -1,4 +1,4 @@
-// 堂數即將用完自動提醒：方案「尚餘」≤2、團課未來正取合計剩最後 1 堂 → notify（LINE 優先）。
+// 堂數即將用完自動提醒：方案「尚餘」≤1、團課未來正取合計剩最後 1 堂 → notify（LINE 優先）。
 // 每日 9 點掃描；renewal_reminders 去重（每狀態一次）。
 // 規格：docs/superpowers/specs/2026-07-04-renewal-reminders-design.md
 import { db, nowLocal } from '../db/connection.js';
@@ -37,7 +37,7 @@ export function processRenewalReminders(now = nowLocal()) {
   let packagesSent = 0, groupSent = 0;
 
   for (const p of lowPackagesStmt.all(today, now)) {
-    if (!(p.still > 0 && p.still <= 2)) continue;
+    if (!(p.still > 0 && p.still <= 1)) continue;
     if (hasMarker.get('package', p.member_id, p.id)) continue;
     if (!insertMarker.run('package', p.member_id, p.id).changes) continue;
     notify({ userId: p.member_id, sessionId: null, type: 'package_low_sessions',

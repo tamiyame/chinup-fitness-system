@@ -50,15 +50,19 @@ expect('尚餘 3 → 不發', () => assert.equal(notifCount(m1, 'package_low_ses
 db.prepare('UPDATE customer_packages SET remaining_sessions = 1 WHERE id = ?').run(pSafe);
 mkBk(m1, pSafe, '2033-01-15T10:00:00');                          // 尚餘 = 1未登錄 + 1未來 = 2
 run();
-expect('尚餘 2（未登錄1＋未來預約1）→ 發一次', () => assert.equal(notifCount(m1, 'package_low_sessions'), 1));
+expect('尚餘 2 → 不發（門檻為 1）', () => assert.equal(notifCount(m1, 'package_low_sessions'), 0));
+
+db.prepare('UPDATE customer_packages SET remaining_sessions = 0 WHERE id = ?').run(pSafe);   // 尚餘 = 0未登錄 + 1未來 = 1
+run();
+expect('尚餘 1（僅剩未來預約）→ 發一次', () => assert.equal(notifCount(m1, 'package_low_sessions'), 1));
 run();
 expect('再跑不重發（marker 去重）', () => assert.equal(notifCount(m1, 'package_low_sessions'), 1));
 
-const p2 = mkPkg(m1, { remaining: 2, type: '1on2' });            // 續購新方案 尚餘 2 → 對新 ref 再發
+const p2 = mkPkg(m1, { remaining: 1, type: '1on2' });            // 續購新方案 尚餘 1 → 對新 ref 再發
 run();
 expect('續購新方案降到門檻 → 再發（不同 ref）', () => {
   assert.equal(notifCount(m1, 'package_low_sessions'), 2);
-  const cnt1on2 = db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='package_low_sessions' AND body LIKE '%1對2%' AND body LIKE '%2 堂%'").get(m1).c;
+  const cnt1on2 = db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='package_low_sessions' AND body LIKE '%1對2%' AND body LIKE '%1 堂%'").get(m1).c;
   assert.equal(cnt1on2, 1);   // 不依賴掃描順序，直接斷言 1對2 方案的那則存在
 });
 

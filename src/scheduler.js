@@ -28,7 +28,7 @@ export function startScheduler() {
     }
   });
 
-  // 每天早上 9 點：堂數即將用完提醒（方案尚餘≤2／團課剩最後1堂；每狀態只提醒一次）
+  // 每天早上 9 點：堂數即將用完提醒（方案尚餘≤1／團課剩最後1堂；每狀態只提醒一次）
   cron.schedule('0 9 * * *', () => {
     try {
       const r = processRenewalReminders();

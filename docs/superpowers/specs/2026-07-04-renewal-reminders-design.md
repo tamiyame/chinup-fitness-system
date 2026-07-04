@@ -7,7 +7,7 @@
 
 自動提醒快上完課的客人續約／報名：
 
-1. **1對1／1對2 方案**：客人在「我的課表」看得到的方案，**尚餘 ≤ 2 堂**（且 > 0）時提醒一次。
+1. **1對1／1對2 方案**：客人在「我的課表」看得到的方案，**尚餘 ≤ 1 堂**（且 > 0）時提醒一次（業主 2026-07-04 由原定 2 堂改為 1 堂）。
    - 尚餘口徑＝我的課表卡片數字：`已預約未上堂數 ＋（未過期 ? 未登錄餘額 : 0）`（`listScheduleViewPackages` 同口徑）。
 2. **團體課**：客人**全部未來已報名（正取）的團體課場次合計只剩 1 堂**時提醒一次。
 3. 通知走既有 `notify()`：有綁 LINE 推 LINE，未綁走 console 紀錄（實際收不到——與其他客人通知同口徑，不另做 email）。
@@ -48,7 +48,7 @@ LEFT JOIN (SELECT package_id, COUNT(*) AS cnt FROM bookings
 WHERE p.archived_at IS NULL
 ```
 
-- 過濾 `0 < still <= 2` 且 `renewal_reminders` 無 `('package', member, p.id)` 紀錄。
+- 過濾 `0 < still <= 1` 且 `renewal_reminders` 無 `('package', member, p.id)` 紀錄。
 - 逐筆：插入 marker → `notify(type='package_low_sessions', vars={ session_type_label, remaining: still })`。
 - 作廢方案（archived）不掃；過期且無未來預約者 `still=0` 自然排除（與我的課表顯示一致）。
 
