@@ -588,7 +588,10 @@ async function renderRegister() {
   let data;
   try {
     let url;
-    if (isAdmin) url = `/api/coach/week?all=1&start=${start}` + (regViewCoachId !== 'all' ? `&coachId=${regViewCoachId}` : '');
+    // 個別教練：走單教練路徑（resolveCoach 代選），只回該教練資料；「全部教練」才 all=1 全覽
+    if (isAdmin) url = regViewCoachId !== 'all'
+      ? `/api/coach/week?start=${start}&coachId=${regViewCoachId}`
+      : `/api/coach/week?all=1&start=${start}`;
     else url = `/api/coach/week?start=${start}`;
     data = await api(url);
   } catch (e) { $('reg-grid').innerHTML = `<p class="subtle" style="color:#dc2626;">載入失敗：${escapeHtml(e.message)}</p>`; return; }
@@ -622,9 +625,8 @@ async function renderRegister() {
       if (bks.length || gps.length) {
         let inner = bks.map(b => {
           const tag = b.session_type === '1on2' ? '1對2' : '1對1';
-          const other = targetCoachId != null && b.coach_id !== targetCoachId;
-          const coachLbl = (isAll || other) ? `<span class="reg-sub">· ${escapeHtml(b.coach_name || '')}</span>` : '';
-          return `<div class="reg-bk${other ? ' reg-booked-other' : ''}" data-bk="${b.id}">${escapeHtml(b.member_name)} <span class="reg-sub">${tag}</span>${coachLbl}</div>`;
+          const coachLbl = isAll ? `<span class="reg-sub">· ${escapeHtml(b.coach_name || '')}</span>` : '';
+          return `<div class="reg-bk" data-bk="${b.id}">${escapeHtml(b.member_name)} <span class="reg-sub">${tag}</span>${coachLbl}</div>`;
         }).join('');
         inner += gps.map(g => `<div class="reg-gp">${escapeHtml(g.name)} <span class="reg-sub">團課${isAll ? '· ' + escapeHtml(g.coach_name || '') : ''}</span></div>`).join('');
         rows += `<div class="reg-cell reg-multi">${inner}</div>`;

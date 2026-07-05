@@ -1165,8 +1165,6 @@ details.session-row summary:hover { background: #f8faf9; }
 .reg-multi{align-items:stretch;gap:2px;padding:2px;}
 .reg-bk{background:#dbeafe;color:#1e3a8a;font-size:11px;border-radius:4px;padding:2px 4px;cursor:pointer;text-align:left;width:100%;}
 .reg-bk:hover{background:#bfdbfe;}
-.reg-booked-other{background:#eef2f7;color:#64748b;}
-.reg-booked-other:hover{background:#e2e8f0;}
 .reg-gp{background:#f3e8ff;color:#6b21a8;font-size:11px;border-radius:4px;padding:2px 4px;text-align:left;width:100%;}
 
 /* 拖拉改時段 */
