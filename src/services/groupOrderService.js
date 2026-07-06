@@ -514,11 +514,19 @@ export function getPublicSchedule({ phone, name }) {
   const group_remaining = regs.filter((r) => r.status === 'confirmed' && !r.is_past && !r.on_leave).length;
 
   const items = [...bookings, ...regs].sort((a, b) => b.start_at.localeCompare(a.start_at));
+  const stats = {
+    one_done: bookings.filter((b) => b.status === 'confirmed' && b.is_past).length,
+    group_done: regs.filter((r) => r.status === 'confirmed' && r.is_past && !r.on_leave && r.session_status !== 'cancelled').length,
+    leave_count: regs.filter((r) => r.on_leave).length,
+    one_upcoming: one_on_one_remaining,
+    group_upcoming: group_remaining,
+  };
   const packages = listScheduleViewPackages(user.id, now);
   return {
     user: { name: user.name, phone: user.phone },
     items, one_on_one_remaining, group_remaining,
     line_bound: user.role === 'user' ? !!user.line_user_id : null,
     packages,
+    stats,
   };
 }
