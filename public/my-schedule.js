@@ -15,6 +15,7 @@ const state = {
   one_on_one_remaining: 0,
   group_remaining: 0,
   packages: [],
+  stats: null,  // { one_done, group_done, leave_count, one_upcoming, group_upcoming }
 };
 
 // ── Lookup form ──────────────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ async function doLookup(phone, name) {
     state.one_on_one_remaining = data.one_on_one_remaining ?? 0;
     state.group_remaining = data.group_remaining ?? 0;
     state.packages = data.packages ?? [];
+    state.stats = data.stats ?? null;
     state.lineBound = (data.line_bound ?? null);
     showResults();
     render();
@@ -117,6 +119,7 @@ function showForm() {
   state.creds = null;
   state.items = [];
   state.packages = [];
+  state.stats = null;
   state.lineBound = null;
   const bar = document.getElementById('auth-bar');
   if (bar) bar.innerHTML = '';
@@ -359,32 +362,47 @@ function filterItems(items, filter) {
 }
 
 function render() {
+  // 統計列：已上課（個別/團課）・請假・即將到來；全零（新客查詢）→ 不顯示
+  const st = state.stats;
+  let statsHtml = '';
+  if (st && (st.one_done || st.group_done || st.leave_count || st.one_upcoming || st.group_upcoming)) {
+    const doneTotal = st.one_done + st.group_done;
+    const upTotal = st.one_upcoming + st.group_upcoming;
+    statsHtml = `<div class="sn-stats">
+      <span class="sn-stat"><b>${doneTotal}</b> 已上課<span class="sn-stat-sub">個別 ${st.one_done}・團課 ${st.group_done}</span></span>
+      <span class="sn-stat"><b>${st.leave_count}</b> 請假次數</span>
+      <span class="sn-stat"><b>${upTotal}</b> 即將到來</span>
+    </div>`;
+  }
+
   // 我的方案（有效套餐）· Nike 卡片：Archivo 大字尚餘數 + 已上完/共（顯示到課全上完） + 進度條（取代舊「剩 N 堂」膠囊）
+  // 統計列與方案卡共用 #packages-section 容器：無方案時容器仍可能因統計列而需要顯示。
   const PKG_TYPE = { '1on1': '一對一', '1on2': '一對二' };
   const pkgSec = document.getElementById('packages-section');
   if (pkgSec) {
     const pkgs = state.packages || [];
-    if (pkgs.length === 0) {
+    const pkgsHtml = pkgs.length === 0 ? '' :
+      '<div class="section-label">我的方案</div>' +
+      pkgs.map((p) => {
+        const t = PKG_TYPE[p.session_type] || escapeHtml(p.session_type);
+        const total = p.total_sessions, completed = p.completed_sessions, remain = p.remaining_sessions;
+        const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
+        const exp = p.expires_at ? ` · 到期 ${escapeHtml(String(p.expires_at)).replace(/-/g, '/')}` : '';
+        return `<div class="pk-card">
+          <div class="pk-main">
+            <div class="pk-type">${t}</div>
+            <div class="pk-meta">已上完 ${completed} · 共 ${total} 堂${exp}</div>
+            <div class="pk-bar"><div class="pk-bar-fill" style="width:${pct}%"></div></div>
+          </div>
+          <div class="pk-remain"><span class="pk-rtop">尚餘</span><span class="pk-rnum">${remain}</span><span class="pk-rlabel">堂</span></div>
+        </div>`;
+      }).join('');
+    if (!statsHtml && !pkgsHtml) {
       pkgSec.style.display = 'none';
       pkgSec.innerHTML = '';
     } else {
       pkgSec.style.display = 'block';
-      pkgSec.innerHTML =
-        '<div class="section-label">我的方案</div>' +
-        pkgs.map((p) => {
-          const t = PKG_TYPE[p.session_type] || escapeHtml(p.session_type);
-          const total = p.total_sessions, completed = p.completed_sessions, remain = p.remaining_sessions;
-          const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
-          const exp = p.expires_at ? ` · 到期 ${escapeHtml(String(p.expires_at)).replace(/-/g, '/')}` : '';
-          return `<div class="pk-card">
-            <div class="pk-main">
-              <div class="pk-type">${t}</div>
-              <div class="pk-meta">已上完 ${completed} · 共 ${total} 堂${exp}</div>
-              <div class="pk-bar"><div class="pk-bar-fill" style="width:${pct}%"></div></div>
-            </div>
-            <div class="pk-remain"><span class="pk-rtop">尚餘</span><span class="pk-rnum">${remain}</span><span class="pk-rlabel">堂</span></div>
-          </div>`;
-        }).join('');
+      pkgSec.innerHTML = statsHtml + pkgsHtml;
     }
   }
 
