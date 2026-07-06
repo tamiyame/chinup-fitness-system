@@ -971,20 +971,35 @@ function regmNewPkgFormHtml() {
       <div class="regm-newpkg">
         <select id="regm-np-type" class="form-select"><option value="1on1">一對一</option><option value="1on2">一對二</option></select>
         <input id="regm-np-total" class="form-input" type="number" min="1" placeholder="堂數" />
-        <input id="regm-np-amount" class="form-input" type="number" min="0" placeholder="金額（可空）" />
+        <input id="regm-np-unit" class="form-input" type="number" min="0" placeholder="每堂單價（可空）" />
         <input id="regm-np-expiry" class="form-input" type="date" />
         <select id="regm-np-discount" class="form-select"></select>
+        <div id="regm-np-calc" class="regm-sub" style="grid-column:1/-1;"></div>
         <button id="regm-np-create" class="btn-primary">建立方案</button>
       </div>`;
 }
 function bindRegmNewPkgForm(onCreated) {
   getDiscountCodes().then(codes => { const el = document.getElementById('regm-np-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
+  const calc = () => {
+    const t = Number($('regm-np-total').value);
+    const u = $('regm-np-unit').value;
+    const el = $('regm-np-calc');
+    if (!el) return;
+    if (u === '' || !Number.isInteger(t) || t <= 0) { el.textContent = u === '' ? '未填單價 → 建立為「無單價」方案' : ''; return; }
+    const total = Number(u) * t;
+    const disc = document.getElementById('regm-np-discount')?.value;
+    el.textContent = `${t} 堂 × NT$${Number(u).toLocaleString('zh-TW')} ＝ 總額 NT$${total.toLocaleString('zh-TW')}${disc ? '（套用折扣碼後以折後總額入帳）' : ''}`;
+  };
+  ['regm-np-total', 'regm-np-unit'].forEach(id => { $(id).oninput = calc; });
+  const dsel = document.getElementById('regm-np-discount'); if (dsel) dsel.onchange = calc;
+  calc();
   $('regm-np-create').onclick = async () => {
     const total = Number($('regm-np-total').value);
     if (!Number.isInteger(total) || total <= 0) { toast('請填正確堂數', 'error'); return; }
-    const amt = $('regm-np-amount').value;
+    const unit = $('regm-np-unit').value;
+    if (unit !== '' && (!Number.isInteger(Number(unit)) || Number(unit) < 0)) { toast('單價需為 0 以上整數', 'error'); return; }
     try {
-      const pkg = await api('/api/coach/packages', { method: 'POST', body: { memberId: regmCustomer.id, sessionType: $('regm-np-type').value, totalSessions: total, amount: amt === '' ? null : Number(amt), expiresAt: $('regm-np-expiry').value || null, discountCode: document.getElementById('regm-np-discount')?.value || null } });
+      const pkg = await api('/api/coach/packages', { method: 'POST', body: { memberId: regmCustomer.id, sessionType: $('regm-np-type').value, totalSessions: total, amount: unit === '' ? null : Number(unit) * total, expiresAt: $('regm-np-expiry').value || null, discountCode: document.getElementById('regm-np-discount')?.value || null } });
       toast('方案已建立', 'success');
       onCreated(pkg);
     } catch (e) { toast(`建立失敗：${e.message}`, 'error'); }
