@@ -869,7 +869,7 @@ async function renderMemberPackages(memberId, mountEl) {
       } else if (act === 'unitprice') {
         const cur = btn.dataset.unit;
         const v = prompt(`新的每堂單價（目前 ${cur !== '' ? 'NT$' + cur : '無單價'}）：`, cur);
-        if (v == null) return;
+        if (v == null || String(v).trim() === '') return;   // 取消或清空 → 中止（避免空值被 Number('')=0 靜默定價為 0 元）
         const n = Number(v);
         if (!Number.isInteger(n) || n < 0) { toast('單價需為 0 以上整數', 'error'); return; }
         if (!confirm(`確定將單價改為 NT$${n}？此方案所有已登錄堂（含已上完）的單價會一併修正，薪資將依新單價計算。`)) return;
