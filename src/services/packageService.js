@@ -56,14 +56,23 @@ export function createPackage({ memberId, sessionType, totalSessions, amount = n
 }
 
 export function listPackagesForMember(memberId, { includeArchived = false } = {}) {
+  const now = nowLocal();
   const rows = db.prepare(
-    `SELECT cp.*, ${VALID_EXPR} AS is_valid
+    `SELECT cp.*, ${VALID_EXPR} AS is_valid,
+            COALESCE(bc.completed, 0) AS completed_sessions,
+            COALESCE(bc.upcoming, 0) AS upcoming_sessions
        FROM customer_packages cp
+       LEFT JOIN (SELECT package_id,
+                         SUM(CASE WHEN start_at <  ? THEN 1 ELSE 0 END) AS completed,
+                         SUM(CASE WHEN start_at >= ? THEN 1 ELSE 0 END) AS upcoming
+                    FROM bookings
+                   WHERE status = 'confirmed' AND package_id IS NOT NULL
+                   GROUP BY package_id) bc ON bc.package_id = cp.id
       WHERE cp.member_id = ? ${includeArchived ? '' : 'AND cp.archived_at IS NULL'}
       ORDER BY (cp.archived_at IS NOT NULL) ASC,
                (cp.remaining_sessions > 0) DESC,
                (cp.expires_at IS NULL) ASC, cp.expires_at ASC, cp.created_at ASC`
-  ).all(todayLocal(), memberId);
+  ).all(todayLocal(), now, now, memberId);
   for (const r of rows) r.is_valid = !!r.is_valid;
   return rows;
 }
@@ -131,6 +140,23 @@ export function adjustRemaining({ packageId, remaining, note = null }) {
     db.prepare('UPDATE customer_packages SET remaining_sessions = ?, note = COALESCE(?, note) WHERE id = ?')
       .run(r, newNote, packageId);
     return getPackage(packageId);
+  });
+}
+
+/** 修正單價（管理者）：amount 改為 unitPrice×total、清除折扣註記，並回寫該方案全部已登錄堂
+ *  （含已上完；薪資口徑從根修正——舊期別薪資頁重開會依新單價重算，屬修正目的）。 */
+export function updateUnitPrice({ packageId, unitPrice }) {
+  const u = Number(unitPrice);
+  if (!Number.isInteger(u) || u < 0) throw new ApiError(400, 'invalid_unit_price');
+  return tx(() => {
+    const p = db.prepare('SELECT * FROM customer_packages WHERE id = ?').get(packageId);
+    if (!p) throw new ApiError(404, 'package_not_found');
+    const amount = u * p.total_sessions;
+    db.prepare('UPDATE customer_packages SET amount = ?, discount_code = NULL WHERE id = ?').run(amount, packageId);
+    const r = db.prepare(
+      "UPDATE bookings SET original_amount = ? WHERE package_id = ? AND status = 'confirmed'"
+    ).run(u, packageId);
+    return { ok: true, amount, unitPrice: u, rewrittenBookings: r.changes };
   });
 }
 

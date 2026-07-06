@@ -88,6 +88,7 @@ import {
   createPackage as svcCreatePackage,
   listPackagesForMember as svcListPackages,
   adjustRemaining as svcAdjustRemaining,
+  updateUnitPrice as svcUpdateUnitPrice,
   archivePackage as svcArchivePackage,
   restorePackage as svcRestorePackage,
 } from './services/packageService.js';
@@ -847,6 +848,13 @@ app.patch('/api/coach/packages/:id', requireCoach, asyncHandler((req, res) => {
   const { remaining, note } = req.body || {};
   if (remaining == null) return res.status(400).json({ error: 'missing_remaining' });
   res.json(svcAdjustRemaining({ packageId: Number(req.params.id), remaining, note: note ?? null }));
+}));
+
+// 修正單價：金流敏感（回寫已登錄堂、影響薪資口徑）→ requireAdmin（合法入口只有後台會員管理）。
+app.patch('/api/coach/packages/:id/unit-price', requireAdmin, asyncHandler((req, res) => {
+  const { unitPrice } = req.body || {};
+  if (unitPrice == null) return res.status(400).json({ error: 'missing_unit_price' });
+  res.json(svcUpdateUnitPrice({ packageId: Number(req.params.id), unitPrice }));
 }));
 
 // 作廢會連動取消該方案名下（可跨教練）所有預約並刪日曆事件 → 守門用 requireAdmin（合法入口本就只有後台會員管理）。

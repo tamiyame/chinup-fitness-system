@@ -770,13 +770,17 @@ async function renderMemberPackages(memberId, mountEl) {
       : p.is_valid ? '<span class="badge" style="font-size:10px;background:#dcfce7;color:#166534;">有效</span>'
       : '<span class="badge" style="font-size:10px;background:#fef9c3;color:#854d0e;">已失效</span>';
     const exp = p.expires_at ? `到期 ${escapeHtml(p.expires_at)}` : '永久';
+    const unit = p.amount != null ? Math.round(p.amount / p.total_sessions) : null;
+    const money = unit != null ? `單價 NT$${unit.toLocaleString('zh-TW')}（總額 NT$${Number(p.amount).toLocaleString('zh-TW')}）` : '無單價';
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
       <div style="font-size:13px;">
-        <strong>${PKG_TYPE_LABEL[p.session_type] || escapeHtml(p.session_type)}</strong> ${p.remaining_sessions}/${p.total_sessions} 堂 ${badge}
-        <div class="subtle" style="font-size:11px;">${exp}${p.amount != null ? ` · NT$${escapeHtml(String(p.amount))}` : ''}</div>
+        <strong>${PKG_TYPE_LABEL[p.session_type] || escapeHtml(p.session_type)}</strong>
+        已上完 ${p.completed_sessions}・已約 ${p.upcoming_sessions}・未登錄 ${p.remaining_sessions}／共 ${p.total_sessions} 堂 ${badge}
+        <div class="subtle" style="font-size:11px;">${exp} · ${money}</div>
       </div>
       <div style="display:flex;gap:4px;flex-shrink:0;">
         <button class="btn btn-ghost btn-sm" data-act="adjust" data-id="${p.id}" data-total="${escapeHtml(String(p.total_sessions))}" data-remaining="${escapeHtml(String(p.remaining_sessions))}">調整</button>
+        ${arch ? '' : `<button class="btn btn-ghost btn-sm" data-act="unitprice" data-id="${p.id}" data-unit="${unit != null ? unit : ''}">改單價</button>`}
         ${arch
           ? `<button class="btn btn-ghost btn-sm" data-act="restore" data-id="${p.id}">還原</button>`
           : `<button class="btn btn-danger btn-sm" data-act="archive" data-id="${p.id}">作廢</button>`}
@@ -792,26 +796,42 @@ async function renderMemberPackages(memberId, mountEl) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
         <select id="pkg-type" class="form-select" style="margin:0;"><option value="1on1">一對一</option><option value="1on2">一對二</option></select>
         <input id="pkg-total" class="form-input" type="number" min="1" placeholder="堂數" style="margin:0;" />
-        <input id="pkg-amount" class="form-input" type="number" min="0" placeholder="金額（可空）" style="margin:0;" />
+        <input id="pkg-unit" class="form-input" type="number" min="0" placeholder="每堂單價（可空）" style="margin:0;" />
         <input id="pkg-expiry" class="form-input" type="date" style="margin:0;" />
       </div>
       <input id="pkg-note" class="form-input" placeholder="備註（可空）" style="margin:6px 0 0;" />
       <select id="pkg-discount" class="form-select" style="margin:6px 0 0;"></select>
+      <div id="pkg-calc" class="subtle" style="font-size:11px;margin-top:4px;"></div>
       <button id="pkg-create" class="btn btn-primary btn-sm" style="margin-top:8px;">建立方案</button>
     </details>`;
 
   getDiscountCodes().then(codes => { const el = mountEl.querySelector('#pkg-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
 
+  const pkgCalc = () => {
+    const t = Number(mountEl.querySelector('#pkg-total').value);
+    const u = mountEl.querySelector('#pkg-unit').value;
+    const el = mountEl.querySelector('#pkg-calc');
+    if (!el) return;
+    if (u === '' || !Number.isInteger(t) || t <= 0) { el.textContent = u === '' ? '未填單價 → 建立為「無單價」方案' : ''; return; }
+    const total = Number(u) * t;
+    const disc = mountEl.querySelector('#pkg-discount')?.value;
+    el.textContent = `${t} 堂 × NT$${Number(u).toLocaleString('zh-TW')} ＝ 總額 NT$${total.toLocaleString('zh-TW')}${disc ? '（套用折扣碼後以折後總額入帳）' : ''}`;
+  };
+  ['pkg-total', 'pkg-unit'].forEach(id => { const elm = mountEl.querySelector(`#${id}`); if (elm) elm.oninput = pkgCalc; });
+  const pkgDsel = mountEl.querySelector('#pkg-discount'); if (pkgDsel) pkgDsel.onchange = pkgCalc;
+  pkgCalc();
+
   // 建立
   mountEl.querySelector('#pkg-create')?.addEventListener('click', async () => {
     const total = Number(mountEl.querySelector('#pkg-total').value);
     if (!Number.isInteger(total) || total <= 0) { toast('請填正確堂數', 'error'); return; }
-    const amountRaw = mountEl.querySelector('#pkg-amount').value;
+    const unitRaw = mountEl.querySelector('#pkg-unit').value;
+    if (unitRaw !== '' && (!Number.isInteger(Number(unitRaw)) || Number(unitRaw) < 0)) { toast('單價需為 0 以上整數', 'error'); return; }
     const expiry = mountEl.querySelector('#pkg-expiry').value;
     try {
       await api('/api/coach/packages', { method: 'POST', body: {
         memberId, sessionType: mountEl.querySelector('#pkg-type').value, totalSessions: total,
-        amount: amountRaw === '' ? null : Number(amountRaw),
+        amount: unitRaw === '' ? null : Number(unitRaw) * total,
         expiresAt: expiry || null, note: mountEl.querySelector('#pkg-note').value || null,
         discountCode: mountEl.querySelector('#pkg-discount')?.value || null,
       }});
@@ -846,6 +866,17 @@ async function renderMemberPackages(memberId, mountEl) {
       } else if (act === 'restore') {
         await api(`/api/coach/packages/${id}/restore`, { method: 'POST' });
         toast('已還原', 'success');
+      } else if (act === 'unitprice') {
+        const cur = btn.dataset.unit;
+        const v = prompt(`新的每堂單價（目前 ${cur !== '' ? 'NT$' + cur : '無單價'}）：`, cur);
+        if (v == null || String(v).trim() === '') return;   // 取消或清空 → 中止（避免空值被 Number('')=0 靜默定價為 0 元）
+        const n = Number(v);
+        if (!Number.isInteger(n) || n < 0) { toast('單價需為 0 以上整數', 'error'); return; }
+        if (!confirm(`確定將單價改為 NT$${n}？此方案所有已登錄堂（含已上完）的單價會一併修正，薪資將依新單價計算。`)) return;
+        const r = await api(`/api/coach/packages/${id}/unit-price`, { method: 'PATCH', body: { unitPrice: n } });
+        toast(`已修正單價並回寫 ${r.rewrittenBookings} 堂`, 'success');
+        renderMemberPackages(memberId, mountEl);
+        return;
       }
       renderMemberPackages(memberId, mountEl);
     } catch (e) {
