@@ -1,10 +1,11 @@
 // Google 日曆同步層：事件生命週期（冪等）、freebusy busy → 台北牆鐘、reconcile 兜底。
 // DB 是唯一事實來源；日曆寫入失敗不影響預約（cron 補齊）。
 import { db } from '../db/connection.js';
-import { getGcalCalendarId } from './discountService.js';
+import { getGcalCalendarId, getSetting, setSetting } from './discountService.js';
 import { freeBusy, insertEvent, deleteEvent, updateEvent } from './gcalClient.js';
 
 const SESSION_LABELS = { '1on1': '1對1', '1on2': '1對2' };
+const COACH_COLOR_ID = '8'; // 石墨灰：非管理者教練事件色；管理者不帶 colorId＝日曆預設色（業主 2026-07-07 拍板）
 
 export function isGcalEnabled() {
   if (!getGcalCalendarId()) return false;
@@ -17,8 +18,11 @@ export function eventIdForBooking(bookingId) {
 }
 
 const getBookingFull = db.prepare(`
-  SELECT b.*, c.display_name AS coach_name, u.name AS member_name, u.phone AS member_phone
-  FROM bookings b JOIN coaches c ON c.id = b.coach_id JOIN users u ON u.id = b.member_id
+  SELECT b.*, c.display_name AS coach_name, u.name AS member_name, u.phone AS member_phone,
+         cu.is_admin AS coach_is_admin
+  FROM bookings b JOIN coaches c ON c.id = b.coach_id
+  JOIN users u ON u.id = b.member_id
+  JOIN users cu ON cu.id = c.user_id
   WHERE b.id = ?
 `);
 const setEventId = db.prepare('UPDATE bookings SET gcal_event_id = ? WHERE id = ?');
@@ -46,6 +50,7 @@ export function buildEventBody(bookingId) {
     start: { dateTime: `${b.start_at}+08:00`, timeZone: 'Asia/Taipei' },
     end: { dateTime: `${b.end_at}+08:00`, timeZone: 'Asia/Taipei' },
     transparency: 'transparent',
+    ...(b.coach_is_admin ? {} : { colorId: COACH_COLOR_ID }),
   };
 }
 
@@ -167,6 +172,24 @@ const selToDelete = db.prepare(`
   ORDER BY id ASC LIMIT 20
 `);
 
+const BACKFILL_KEY = 'gcal_color_backfill_done';
+const selColorBackfill = db.prepare(`
+  SELECT b.id FROM bookings b
+  JOIN coaches c ON c.id = b.coach_id
+  JOIN users cu ON cu.id = c.user_id
+  WHERE b.status = 'confirmed' AND b.gcal_event_id IS NOT NULL
+    AND b.start_at >= ? AND cu.is_admin = 0
+  ORDER BY b.start_at ASC LIMIT 500
+`);
+
+/** 一次性：把既有「未來、非管理者教練」事件 PUT 補上石墨灰（跑完設 flag；恰達 LIMIT 續跑下輪）。 */
+async function colorBackfillOnce(nowStr) {
+  if (getSetting(BACKFILL_KEY)) return;
+  const rows = selColorBackfill.all(nowStr);
+  for (const r of rows) await syncBookingUpdate(r.id);
+  if (rows.length < 500) setSetting(BACKFILL_KEY, '1');
+}
+
 let _reconcileRunning = false; // node-cron 不序列化重疊執行（單執行緒 boolean 即安全）
 
 export async function reconcile() {
@@ -177,6 +200,7 @@ export async function reconcile() {
     const pad = (n) => String(n).padStart(2, '0');
     const now = new Date();
     const nowStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    await colorBackfillOnce(nowStr);
     for (const row of selToCreate.all(nowStr)) await syncBookingCreate(row.id);
     for (const row of selToDelete.all()) await syncBookingCancel(row.id);
   } finally { _reconcileRunning = false; }
