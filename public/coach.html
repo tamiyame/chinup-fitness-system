@@ -233,16 +233,16 @@ body { visibility: hidden; }
   </div>
 
   <div class="flex gap-2 border-b mb-4 overflow-x-auto">
-    <button data-tab="bookings" class="tab tab-active">我的預約</button>
+    <button data-tab="register" class="tab tab-active">登錄預約</button>
+    <button data-tab="bookings" class="tab">我的預約</button>
     <button data-tab="availability" class="tab">可預約時段</button>
     <button data-tab="profile" class="tab">個人資料</button>
-    <button data-tab="register" class="tab">登錄預約</button>
   </div>
 
-  <section id="tab-bookings" class="tab-panel"></section>
+  <section id="tab-register" class="tab-panel"></section>
+  <section id="tab-bookings" class="tab-panel hidden"></section>
   <section id="tab-availability" class="tab-panel hidden"></section>
   <section id="tab-profile" class="tab-panel hidden"></section>
-<section id="tab-register" class="tab-panel hidden"></section>
 </main>
 
 <div id="toast" class="toast"></div>
