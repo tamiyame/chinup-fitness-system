@@ -178,16 +178,23 @@ const selColorBackfill = db.prepare(`
   JOIN coaches c ON c.id = b.coach_id
   JOIN users cu ON cu.id = c.user_id
   WHERE b.status = 'confirmed' AND b.gcal_event_id IS NOT NULL
-    AND b.start_at >= ? AND cu.is_admin = 0
-  ORDER BY b.start_at ASC LIMIT 500
+    AND b.start_at >= ? AND cu.is_admin = 0 AND b.id > ?
+  ORDER BY b.id ASC LIMIT 200
 `);
 
-/** 一次性：把既有「未來、非管理者教練」事件 PUT 補上石墨灰（跑完設 flag；恰達 LIMIT 續跑下輪）。 */
+/** 一次性：把既有「未來、非管理者教練」事件 PUT 補上石墨灰。
+ *  以 id 游標同一次呼叫內分批跑完（syncBookingUpdate 內部吞錯不拋，迴圈必然終止），
+ *  跑完設 flag；之後每次 reconcile 只剩一次 getSetting 的開銷。 */
 async function colorBackfillOnce(nowStr) {
   if (getSetting(BACKFILL_KEY)) return;
-  const rows = selColorBackfill.all(nowStr);
-  for (const r of rows) await syncBookingUpdate(r.id);
-  if (rows.length < 500) setSetting(BACKFILL_KEY, '1');
+  let lastId = 0;
+  for (;;) {
+    const rows = selColorBackfill.all(nowStr, lastId);
+    for (const r of rows) await syncBookingUpdate(r.id);
+    if (rows.length < 200) break;
+    lastId = rows[rows.length - 1].id;
+  }
+  setSetting(BACKFILL_KEY, '1');
 }
 
 let _reconcileRunning = false; // node-cron 不序列化重疊執行（單執行緒 boolean 即安全）
