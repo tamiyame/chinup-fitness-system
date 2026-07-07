@@ -197,6 +197,40 @@ async function colorBackfillOnce(nowStr) {
   setSetting(BACKFILL_KEY, '1');
 }
 
+const PAST_BACKFILL_KEY = 'gcal_color_backfill_past_done';
+const selPastColorBackfill = db.prepare(`
+  SELECT b.id FROM bookings b
+  JOIN coaches c ON c.id = b.coach_id
+  JOIN users cu ON cu.id = c.user_id
+  WHERE b.status = 'confirmed' AND b.gcal_event_id IS NOT NULL
+    AND b.start_at < ? AND cu.is_admin = 0 AND b.id > ?
+  ORDER BY b.id ASC LIMIT 200
+`);
+
+/** 一次性：石墨灰回補「過去」的非管理者事件（業主 2026-07-07 要求）。
+ *  直接 PUT：404（曾被手動刪）→ 跳過不重建、不清 event_id（避免復活歷史已刪事件）；
+ *  其他失敗只 log（歷史純外觀，不進自癒迴圈）。 */
+async function pastColorBackfillOnce(nowStr) {
+  if (getSetting(PAST_BACKFILL_KEY)) return;
+  const calId = getGcalCalendarId();
+  let lastId = 0;
+  for (;;) {
+    const rows = selPastColorBackfill.all(nowStr, lastId);
+    for (const r of rows) {
+      try {
+        const body = buildEventBody(r.id);
+        if (!body) continue;
+        const res = await updateEvent(calId, body.id, body);
+        // 404/410＝事件已不存在（比照 deleteEvent 認定）→ 靜默跳過；其他失敗 log 後跳過
+        if (!res.ok && res.status !== 404 && res.status !== 410) console.error('[gcal] past color backfill failed:', r.id, res.error);
+      } catch (e) { console.error('[gcal] past color backfill threw:', r.id, e); }
+    }
+    if (rows.length < 200) break;
+    lastId = rows[rows.length - 1].id;
+  }
+  setSetting(PAST_BACKFILL_KEY, '1');
+}
+
 let _reconcileRunning = false; // node-cron 不序列化重疊執行（單執行緒 boolean 即安全）
 
 export async function reconcile() {
@@ -208,6 +242,7 @@ export async function reconcile() {
     const now = new Date();
     const nowStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     await colorBackfillOnce(nowStr);
+    await pastColorBackfillOnce(nowStr);
     for (const row of selToCreate.all(nowStr)) await syncBookingCreate(row.id);
     for (const row of selToDelete.all()) await syncBookingCancel(row.id);
   } finally { _reconcileRunning = false; }
