@@ -111,7 +111,7 @@ async function init() {
     t.addEventListener('click', () => switchTab(t.dataset.tab));
   });
 
-  await renderBookings();
+  switchTab('register'); // 預設落在登錄預約（教練日常主要操作；含管理者共用下拉隱藏邏輯）
   document.body.style.visibility = 'visible';
 }
 
