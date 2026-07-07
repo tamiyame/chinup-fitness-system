@@ -217,10 +217,13 @@ async function pastColorBackfillOnce(nowStr) {
   for (;;) {
     const rows = selPastColorBackfill.all(nowStr, lastId);
     for (const r of rows) {
-      const body = buildEventBody(r.id);
-      if (!body) continue;
-      const res = await updateEvent(calId, body.id, body);
-      if (!res.ok && res.status !== 404) console.error('[gcal] past color backfill failed:', r.id, res.error);
+      try {
+        const body = buildEventBody(r.id);
+        if (!body) continue;
+        const res = await updateEvent(calId, body.id, body);
+        // 404/410＝事件已不存在（比照 deleteEvent 認定）→ 靜默跳過；其他失敗 log 後跳過
+        if (!res.ok && res.status !== 404 && res.status !== 410) console.error('[gcal] past color backfill failed:', r.id, res.error);
+      } catch (e) { console.error('[gcal] past color backfill threw:', r.id, e); }
     }
     if (rows.length < 200) break;
     lastId = rows[rows.length - 1].id;
