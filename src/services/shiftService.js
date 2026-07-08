@@ -154,3 +154,71 @@ export function todayStatus(coachId, now = nowLocal()) {
     .map((a) => ({ startTime: a.start_time, endTime: a.end_time, hours: a.hours }));
   return { date: workDate, slots, extras };
 }
+
+// ── 補登 / 註銷 / 期別彙總 ──
+
+const restoreAttendanceStmt = db.prepare('UPDATE shift_attendance SET voided_at = NULL, voided_by = NULL, note = COALESCE(?, note) WHERE id = ?');
+const voidAttendanceStmt = db.prepare('UPDATE shift_attendance SET voided_at = ?, voided_by = ? WHERE id = ?');
+
+/**
+ * 管理者補登。帶 shiftId：快照該班表起訖；同鍵已有未註銷列 → 409；已註銷列 → 復原（清 voided_*，
+ * 覆寫 note，保留原始佐證）——與 UNIQUE(coach_id, work_date, shift_id) 相容的重登路徑。
+ * 不帶 shiftId：自訂起訖直接插入（班表外加班；同日可多筆）。
+ */
+export function manualAttendance({ coachId, workDate, shiftId = null, startTime = null, endTime = null, note = null, createdBy }) {
+  if (!DATE_RE.test(workDate || '')) throw new ApiError(400, 'invalid_work_date');
+  if (shiftId != null) {
+    const shift = getShiftStmt.get(shiftId);
+    if (!shift || shift.coach_id !== coachId) throw new ApiError(404, 'shift_not_found');
+    return tx(() => {
+      const existing = attendanceForShiftStmt.get(coachId, workDate, shift.id);
+      if (existing) {
+        if (!existing.voided_at) throw new ApiError(409, 'duplicate_attendance');
+        restoreAttendanceStmt.run(note, existing.id);
+        return getAttendanceStmt.get(existing.id);
+      }
+      const info = insertAttendanceStmt.run(coachId, shift.id, workDate, shift.start_time, shift.end_time,
+        hoursBetween(shift.start_time, shift.end_time), 'manual', null, null, null, null, null, createdBy, note);
+      return getAttendanceStmt.get(Number(info.lastInsertRowid));
+    });
+  }
+  if (!TIME_RE.test(startTime || '') || !TIME_RE.test(endTime || '') || startTime >= endTime) throw new ApiError(400, 'invalid_time_range');
+  const info = insertAttendanceStmt.run(coachId, null, workDate, startTime, endTime,
+    hoursBetween(startTime, endTime), 'manual', null, null, null, null, null, createdBy, note);
+  return getAttendanceStmt.get(Number(info.lastInsertRowid));
+}
+
+/** 註銷（軟刪）：薪資排除、紀錄留檔。 */
+export function voidAttendance(id, voidedBy) {
+  const row = getAttendanceStmt.get(id);
+  if (!row) throw new ApiError(404, 'attendance_not_found');
+  if (row.voided_at) throw new ApiError(409, 'already_voided');
+  voidAttendanceStmt.run(nowLocal(), voidedBy, id);
+  return getAttendanceStmt.get(id);
+}
+
+const periodHoursStmt = db.prepare(`
+  SELECT COALESCE(SUM(hours), 0) AS h FROM shift_attendance
+  WHERE coach_id = ? AND voided_at IS NULL AND work_date >= ? AND work_date <= ?
+`);
+export function coachPeriodHours(coachId, startDate, endDate) {
+  return periodHoursStmt.get(coachId, startDate, endDate).h;
+}
+
+const periodRowsStmt = db.prepare(`
+  SELECT * FROM shift_attendance
+  WHERE voided_at IS NULL AND work_date >= ? AND work_date <= ?
+  ORDER BY coach_id ASC, work_date ASC, start_time ASC
+`);
+/** 期別內全教練駐場彙總（payroll 與後台明細共用）；日期含端點。 */
+export function shiftSummaryByCoach(startDate, endDate) {
+  const map = new Map();
+  for (const r of periodRowsStmt.all(startDate, endDate)) {
+    if (!map.has(r.coach_id)) map.set(r.coach_id, { hours: 0, details: [] });
+    const e = map.get(r.coach_id);
+    e.hours += r.hours;
+    e.details.push({ attendanceId: r.id, workDate: r.work_date, startTime: r.start_time, endTime: r.end_time,
+      hours: r.hours, source: r.source, checkedInAt: r.checked_in_at, distanceM: r.distance_m, note: r.note });
+  }
+  return map;
+}
