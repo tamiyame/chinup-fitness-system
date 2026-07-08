@@ -13,7 +13,7 @@ console.log('[shift-service test] start');
 db.exec(`
   DELETE FROM shift_attendance WHERE coach_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'shs-%'));
   DELETE FROM coach_shifts WHERE coach_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'shs-%'));
-  DELETE FROM coaches WHERE user_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'shs-%'));
+  DELETE FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'shs-%');
   DELETE FROM users WHERE email LIKE 'shs-%';
   DELETE FROM app_settings WHERE key LIKE 'checkin_%';
 `);
