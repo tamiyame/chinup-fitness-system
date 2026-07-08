@@ -168,6 +168,41 @@ CREATE TABLE IF NOT EXISTS coach_availability_exceptions (
   CHECK (type = 'leave' OR (start_time IS NOT NULL AND end_time IS NOT NULL AND start_time < end_time))
 );
 
+-- 駐場固定週班表（時薪計酬的排班；可預約時段是另一張 coach_availability_rules，勿混用）
+CREATE TABLE IF NOT EXISTS coach_shifts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  coach_id INTEGER NOT NULL REFERENCES coaches(id) ON DELETE CASCADE,
+  day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  effective_from TEXT NOT NULL,
+  effective_to TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (start_time < end_time)
+);
+CREATE INDEX IF NOT EXISTS idx_coach_shifts_coach ON coach_shifts(coach_id);
+
+-- 駐場出席紀錄：起訖/時數為打卡當下快照（改班表不影響歷史）；voided_at 軟刪（薪資排除、留檔）。
+CREATE TABLE IF NOT EXISTS shift_attendance (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  coach_id INTEGER NOT NULL REFERENCES coaches(id),
+  shift_id INTEGER REFERENCES coach_shifts(id) ON DELETE SET NULL,
+  work_date TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  hours REAL NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('checkin','manual')),
+  checked_in_at TEXT,
+  lat REAL, lng REAL, accuracy REAL, distance_m INTEGER,
+  created_by INTEGER REFERENCES users(id),
+  voided_at TEXT,
+  voided_by INTEGER REFERENCES users(id),
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(coach_id, work_date, shift_id)
+);
+CREATE INDEX IF NOT EXISTS idx_shift_attendance_date ON shift_attendance(work_date);
+
 CREATE TABLE IF NOT EXISTS customer_packages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   member_id INTEGER NOT NULL REFERENCES users(id),
