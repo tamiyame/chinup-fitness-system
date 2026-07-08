@@ -1778,8 +1778,9 @@ Expected: 全部檔案 `✓`（注意：`npm test` 會清洗 `data/app.db`）
 - [ ] **Step 2: 重新 seed、起 server、跑全套 API 測試**
 
 ```bash
-npm run seed
-LINE_MOCK=1 GCAL_MOCK=1 GMAIL_MOCK=1 node --env-file-if-exists=.env src/server.js > "$CLAUDE_JOB_DIR/tmp/chinup-server.log" 2>&1 &
+# 既有 test:api 檔需要啟用教練與 GOOGLE_CLIENT_ID（public-api/backup-api 用 seed-demo 的 fixture；gmail-auth-api 需假 client id）
+node src/db/seed-demo.js
+LINE_MOCK=1 GCAL_MOCK=1 GMAIL_MOCK=1 GOOGLE_CLIENT_ID=test-client-id node --env-file-if-exists=.env src/server.js > "$CLAUDE_JOB_DIR/tmp/chinup-server.log" 2>&1 &
 echo $! > "$CLAUDE_JOB_DIR/tmp/chinup-server.pid"
 sleep 1
 npm run test:api
