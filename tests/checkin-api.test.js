@@ -70,8 +70,10 @@ db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('checkin_la
   });
   const dup = await req('POST', '/api/coach/checkin', { body: GYM, token: tokC });
   expect('重複打卡 → 200 already=true 冪等', () => { assert.equal(dup.status, 200); assert.equal(dup.data.already, true); });
+  // voided_by 需為真實存在的 users.id（FK 無 cascade）；此 DB 為長壽共用檔，AUTOINCREMENT 不重用舊 id，
+  // 不可假設 id=1 存在——用本檔剛種好、保證存在的 cUid。
   db.prepare('UPDATE shift_attendance SET voided_at = ?, voided_by = ? WHERE id = ?')
-    .run('2026-01-01T00:00:00', 1, ok.data.attendance.id);
+    .run('2026-01-01T00:00:00', cUid, ok.data.attendance.id);
   const voided = await req('POST', '/api/coach/checkin', { body: GYM, token: tokC });
   expect('已註銷再打 → 409 attendance_voided', () => { assert.equal(voided.status, 409); assert.equal(voided.data.error, 'attendance_voided'); });
   const noShift = await req('POST', '/api/coach/checkin', { body: GYM, token: tokD });
