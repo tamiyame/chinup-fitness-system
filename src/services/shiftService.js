@@ -27,6 +27,8 @@ const shiftsForDateStmt = db.prepare(`
     AND effective_from <= ? AND (effective_to IS NULL OR effective_to >= ?)
   ORDER BY start_time ASC
 `);
+const updateShiftStmt = db.prepare('UPDATE coach_shifts SET start_time = ?, end_time = ?, effective_from = ?, effective_to = ? WHERE id = ?');
+const deleteShiftStmt = db.prepare('DELETE FROM coach_shifts WHERE id = ?');
 
 function validateShiftFields({ dayOfWeek, startTime, endTime, effectiveFrom, effectiveTo }) {
   if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) throw new ApiError(400, 'invalid_day_of_week');
@@ -58,13 +60,12 @@ export function updateShift(id, { startTime, endTime, effectiveFrom, effectiveTo
     effectiveTo: effectiveTo !== undefined ? effectiveTo : cur.effective_to,
   };
   validateShiftFields(next);
-  db.prepare('UPDATE coach_shifts SET start_time = ?, end_time = ?, effective_from = ?, effective_to = ? WHERE id = ?')
-    .run(next.startTime, next.endTime, next.effectiveFrom, next.effectiveTo, id);
+  updateShiftStmt.run(next.startTime, next.endTime, next.effectiveFrom, next.effectiveTo, id);
   return getShiftStmt.get(id);
 }
 
 export function deleteShift(id) {
-  const info = db.prepare('DELETE FROM coach_shifts WHERE id = ?').run(id);
+  const info = deleteShiftStmt.run(id);
   if (info.changes === 0) throw new ApiError(404, 'shift_not_found');
 }
 
