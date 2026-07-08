@@ -74,3 +74,83 @@ export function shiftsForDate(coachId, dateStr) {
   const dow = new Date(dateStr + 'T00:00:00').getDay();
   return shiftsForDateStmt.all(coachId, dow, dateStr, dateStr);
 }
+
+// ── 打卡 ──
+
+/** 兩座標球面距離（公尺，四捨五入）。 */
+export function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000, rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(lat2 - lat1), dLng = rad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.sqrt(a)));
+}
+
+/** 打卡參數（app_settings）。座標未設定 → configured=false，打卡端點回 503。 */
+export function getCheckinConfig() {
+  const lat = parseFloat(getSetting('checkin_lat') ?? '');
+  const lng = parseFloat(getSetting('checkin_lng') ?? '');
+  const radius = parseInt(getSetting('checkin_radius_m') || '150', 10);
+  const windowBeforeMin = parseInt(getSetting('checkin_window_before_min') || '30', 10);
+  return { lat, lng, radius, windowBeforeMin, configured: Number.isFinite(lat) && Number.isFinite(lng) };
+}
+
+const attendanceForShiftStmt = db.prepare('SELECT * FROM shift_attendance WHERE coach_id = ? AND work_date = ? AND shift_id = ?');
+const attendanceForDateStmt = db.prepare('SELECT * FROM shift_attendance WHERE coach_id = ? AND work_date = ? ORDER BY start_time ASC');
+const getAttendanceStmt = db.prepare('SELECT * FROM shift_attendance WHERE id = ?');
+const insertAttendanceStmt = db.prepare(`
+  INSERT INTO shift_attendance (coach_id, shift_id, work_date, start_time, end_time, hours, source,
+    checked_in_at, lat, lng, accuracy, distance_m, created_by, note)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+/**
+ * GPS 打卡：距離驗證 → 窗口比對（[start−窗口, end]，多列命中取最早開始）→ 冪等寫入。
+ * 已有未註銷紀錄 → { already: true }；已註銷 → 409 attendance_voided（重登走管理者補登）。
+ */
+export function checkIn({ coachId, lat, lng, accuracy = null, now = nowLocal() }) {
+  const cfg = getCheckinConfig();
+  if (!cfg.configured) throw new ApiError(503, 'checkin_not_configured');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new ApiError(400, 'missing_location');
+  const distance = haversineMeters(lat, lng, cfg.lat, cfg.lng);
+  if (distance > cfg.radius) throw new ApiError(403, 'not_at_gym', { distance_m: distance });
+
+  const workDate = now.slice(0, 10);
+  const nowMin = toMin(now.slice(11, 16));
+  const candidates = shiftsForDate(coachId, workDate)
+    .filter((s) => nowMin >= toMin(s.start_time) - cfg.windowBeforeMin && nowMin <= toMin(s.end_time));
+  if (!candidates.length) throw new ApiError(409, 'no_active_shift');
+  const shift = candidates[0];
+
+  return tx(() => {
+    const existing = attendanceForShiftStmt.get(coachId, workDate, shift.id);
+    if (existing) {
+      if (existing.voided_at) throw new ApiError(409, 'attendance_voided');
+      return { attendance: existing, already: true };
+    }
+    const info = insertAttendanceStmt.run(coachId, shift.id, workDate, shift.start_time, shift.end_time,
+      hoursBetween(shift.start_time, shift.end_time), 'checkin', now, lat, lng, accuracy, distance, null, null);
+    return { attendance: getAttendanceStmt.get(Number(info.lastInsertRowid)), already: false };
+  });
+}
+
+/** /checkin 頁資料：今天各班表時段狀態 ＋ 班表外補登列（shift_id NULL）。 */
+export function todayStatus(coachId, now = nowLocal()) {
+  const workDate = now.slice(0, 10);
+  const nowMin = toMin(now.slice(11, 16));
+  const { windowBeforeMin } = getCheckinConfig();
+  const attendance = attendanceForDateStmt.all(coachId, workDate);
+  const byShift = new Map(attendance.filter((a) => a.shift_id != null).map((a) => [a.shift_id, a]));
+  const slots = shiftsForDate(coachId, workDate).map((s) => {
+    const a = byShift.get(s.id);
+    let status;
+    if (a) status = a.voided_at ? 'voided' : 'done';
+    else if (nowMin < toMin(s.start_time) - windowBeforeMin) status = 'upcoming';
+    else if (nowMin > toMin(s.end_time)) status = 'closed';
+    else status = 'open';
+    return { shiftId: s.id, startTime: s.start_time, endTime: s.end_time,
+      hours: hoursBetween(s.start_time, s.end_time), status, checkedInAt: a?.checked_in_at ?? null };
+  });
+  const extras = attendance.filter((a) => a.shift_id == null && !a.voided_at)
+    .map((a) => ({ startTime: a.start_time, endTime: a.end_time, hours: a.hours }));
+  return { date: workDate, slots, extras };
+}
