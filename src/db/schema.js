@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS coaches (
   avatar_path TEXT,
   is_active INTEGER NOT NULL DEFAULT 0 CHECK (is_active IN (0, 1)),
   sort_order INTEGER NOT NULL DEFAULT 0,
+  color TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

@@ -240,6 +240,10 @@ if (!bkPayCols.includes('paid_at')) {
   console.log(`[migrate] bookings.paid_at/paid_by added; ${changes} past bookings backfilled as paid`);
 }
 
+// ── 2026-07-08 教練行事曆顏色 ──
+// coaches.color：登錄預約「全部教練」週曆的教練配色（Google 日曆官方 24 色盤其一），NULL=預設（維持現行藍色）。
+addColumnIfMissing('coaches', 'color', 'TEXT');
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.

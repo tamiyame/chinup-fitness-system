@@ -1003,6 +1003,12 @@ async function deleteCategory(id) {
 document.getElementById('new-cat-btn').addEventListener('click', newCategory);
 
 // --- Coach management ---
+// Google 日曆 24 色盤（與後端 coachService.COACH_COLORS 一致；順序＝色卡排版）
+const COACH_COLORS = [
+  '#AD1457', '#D81B60', '#E67C73', '#D50000', '#F4511E', '#EF6C00', '#F09300', '#F6BF26',
+  '#E4C441', '#C0CA33', '#7CB342', '#0B8043', '#33B679', '#009688', '#039BE5', '#4285F4',
+  '#7986CB', '#3F51B5', '#B39DDB', '#9E69AF', '#8E24AA', '#795548', '#616161', '#A79B8E',
+];
 async function loadCoachMgmt() {
   const coaches = await api('/api/admin/coaches');
   const wrap = document.getElementById('coach-mgmt-list');
@@ -1012,9 +1018,13 @@ async function loadCoachMgmt() {
     const row = document.createElement('div');
     row.className = 'card flex items-center justify-between gap-3 mb-2';
     row.innerHTML = `
-      <div>
-        <div class="font-semibold">${escapeHtml(c.display_name)} <span class="text-xs ${c.is_active ? 'text-green-600' : 'text-amber-600'}">${c.is_active ? '啟用中' : '待啟用'}</span></div>
-        <div class="text-xs text-slate-500">${escapeHtml(c.user_email)} · ${escapeHtml(c.specialty || '')}</div>
+      <div class="flex items-center gap-3">
+        <button data-id="${c.id}" class="coach-color-dot${c.color ? '' : ' coach-color-none'}" title="行事曆顏色"
+                style="${c.color ? `background:${escapeHtml(c.color)};` : ''}"></button>
+        <div>
+          <div class="font-semibold">${escapeHtml(c.display_name)} <span class="text-xs ${c.is_active ? 'text-green-600' : 'text-amber-600'}">${c.is_active ? '啟用中' : '待啟用'}</span></div>
+          <div class="text-xs text-slate-500">${escapeHtml(c.user_email)} · ${escapeHtml(c.specialty || '')}</div>
+        </div>
       </div>
       <div class="flex gap-2">
         <button data-id="${c.id}" data-active="${c.is_active}" class="btn btn-ghost btn-sm toggle-active">${c.is_active ? '停用' : '啟用'}</button>
@@ -1022,6 +1032,15 @@ async function loadCoachMgmt() {
       </div>
     `;
     wrap.appendChild(row);
+    const panel = document.createElement('div');
+    panel.className = 'coach-color-panel hidden';
+    panel.dataset.for = c.id;
+    panel.innerHTML = `
+      <div class="coach-color-grid">
+        ${COACH_COLORS.map(col => `<button class="coach-color-opt${c.color === col ? ' is-current' : ''}" data-id="${c.id}" data-color="${col}" style="background:${col};" title="${col}">${c.color === col ? '✓' : ''}</button>`).join('')}
+      </div>
+      <button class="btn btn-ghost btn-sm coach-color-default" data-id="${c.id}">預設（不指定）</button>`;
+    wrap.appendChild(panel);
   }
   wrap.querySelectorAll('.toggle-active').forEach(b => b.addEventListener('click', async () => {
     await api(`/api/admin/coaches/${b.dataset.id}`, { method: 'PATCH', body: { is_active: b.dataset.active === '0' || b.dataset.active === 'false' ? 1 : 0 } });
@@ -1036,6 +1055,19 @@ async function loadCoachMgmt() {
       toast(e.data?.error === 'cannot_change_self' ? '不能把自己降為一般用戶' : `失敗：${e.message}`, 'error');
     }
   }));
+  wrap.querySelectorAll('.coach-color-dot').forEach(b => b.addEventListener('click', () => {
+    const p = wrap.querySelector(`.coach-color-panel[data-for="${b.dataset.id}"]`);
+    const wasHidden = p.classList.contains('hidden');
+    wrap.querySelectorAll('.coach-color-panel').forEach(x => x.classList.add('hidden'));
+    if (wasHidden) p.classList.remove('hidden');
+  }));
+  const setCoachColor = async (id, color) => {
+    await api(`/api/admin/coaches/${id}`, { method: 'PATCH', body: { color } });
+    toast('顏色已更新', 'success');
+    loadCoachMgmt();
+  };
+  wrap.querySelectorAll('.coach-color-opt').forEach(b => b.addEventListener('click', () => setCoachColor(b.dataset.id, b.dataset.color)));
+  wrap.querySelectorAll('.coach-color-default').forEach(b => b.addEventListener('click', () => setCoachColor(b.dataset.id, null)));
 }
 
 // --- Create coach account form ---

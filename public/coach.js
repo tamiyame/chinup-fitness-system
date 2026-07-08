@@ -626,7 +626,9 @@ async function renderRegister() {
         let inner = bks.map(b => {
           const tag = b.session_type === '1on2' ? '1對2' : '1對1';
           const coachLbl = isAll ? `<span class="reg-sub">· ${escapeHtml(b.coach_name || '')}</span>` : '';
-          return `<div class="reg-bk" data-bk="${b.id}">${escapeHtml(b.member_name)} <span class="reg-sub">${tag}</span>${coachLbl}</div>`;
+          const colored = isAll && b.coach_color;
+          const style = colored ? ` style="background:${escapeHtml(b.coach_color)};"` : '';
+          return `<div class="reg-bk${colored ? ' reg-bk-colored' : ''}" data-bk="${b.id}"${style}>${escapeHtml(b.member_name)} <span class="reg-sub">${tag}</span>${coachLbl}</div>`;
         }).join('');
         inner += gps.map(g => `<div class="reg-gp">${escapeHtml(g.name)} <span class="reg-sub">團課${isAll ? '· ' + escapeHtml(g.coach_name || '') : ''}</span></div>`).join('');
         rows += `<div class="reg-cell reg-multi">${inner}</div>`;
