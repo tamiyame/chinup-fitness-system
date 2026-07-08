@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>到場打卡 | CHIN UP</title>
+  <link rel="stylesheet" href="/colors_and_type.css">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .ck-wrap{ max-width:420px; margin:0 auto; padding:24px 16px 48px; }
+    .ck-card{ background:#fff; border-radius:16px; padding:20px; box-shadow:0 2px 12px rgba(15,23,42,.06); }
+    .ck-date{ font-weight:800; font-size:1.05rem; }
+    .ck-slot{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #eef2f7; font-size:.95rem; }
+    .ck-slot:last-child{ border-bottom:none; }
+    .ck-chip{ font-size:.75rem; padding:2px 8px; border-radius:999px; background:#eef2f7; color:#475569; white-space:nowrap; }
+    .ck-chip.done{ background:#dcfce7; color:#166534; }
+    .ck-chip.open{ background:#dbeafe; color:#1d4ed8; }
+    .ck-btn{ width:100%; margin-top:16px; padding:14px 0; border:none; border-radius:12px; background:#0284c7; color:#fff; font-size:1.05rem; font-weight:800; cursor:pointer; }
+    .ck-btn:disabled{ opacity:.5; cursor:default; }
+    .ck-msg{ margin-top:12px; font-size:.9rem; line-height:1.5; }
+    .ck-msg.ok{ color:#166534; }
+    .ck-msg.err{ color:#b91c1c; }
+    .ck-period{ margin-top:14px; font-size:.8rem; color:#64748b; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="ck-wrap">
+    <div class="ck-card">
+      <div class="ck-date" id="ck-date">載入中…</div>
+      <div id="ck-slots"></div>
+      <button class="ck-btn" id="ck-punch">到場打卡</button>
+      <div class="ck-msg" id="ck-msg"></div>
+      <div class="ck-period" id="ck-period"></div>
+    </div>
+  </div>
+  <script src="/checkin.js"></script>
+</body>
+</html>

@@ -127,6 +127,9 @@ app.get('/line.html', (req, res) => res.redirect(301, '/my-schedule'));
 app.get('/my-schedule', (req, res) =>
   res.sendFile(resolve(__dirname, '../public/my-schedule.html'))
 );
+app.get('/checkin', (req, res) =>
+  res.sendFile(resolve(__dirname, '../public/checkin.html'))
+);
 
 app.use(express.static(resolve(__dirname, '../public')));
 app.use('/avatars', express.static(resolve(__dirname, '../data/avatars'), { maxAge: '7d' }));
