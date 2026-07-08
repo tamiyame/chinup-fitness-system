@@ -1728,6 +1728,7 @@ let prData = null;
 let prDefaultPeriod = null;
 const prNT = (n) => 'NT$' + Number(n || 0).toLocaleString('zh-TW');
 const prDT = (s) => `${s.slice(5, 10).replace('-', '/')} ${s.slice(11, 16)}`;   // 'MM/DD HH:MM'
+const prHoursNum = (n) => Math.round((n || 0) * 100) / 100;
 
 function prShift(period, delta) {
   const [y, m] = period.split('-').map(Number);
@@ -1779,6 +1780,9 @@ function renderPayroll() {
         <th class="text-right p-3">團課人次</th>
         <th class="text-right p-3">團課實收</th>
         <th class="text-right p-3">團課薪資</th>
+        <th class="text-right p-3">駐場時數</th>
+        <th class="text-right p-3">駐場時薪</th>
+        <th class="text-right p-3">駐場薪資</th>
         <th class="text-right p-3">應發合計</th>
       </tr></thead>
       <tbody>
@@ -1787,7 +1791,8 @@ function renderPayroll() {
           const badges =
             (c.isActive ? '' : '<span class="pr-info-badge">已停用</span>') +
             (o.unpriced ? `<span class="pr-warn-badge">${o.unpriced} 堂無單價</span>` : '') +
-            (o.future ? `<span class="pr-info-badge">${o.future} 堂未上課</span>` : '');
+            (o.future ? `<span class="pr-info-badge">${o.future} 堂未上課</span>` : '') +
+            (c.shift.hours > 0 && c.shift.rate == null ? '<span class="pr-warn-badge">駐場無時薪</span>' : '');
           return `
           <tr class="pr-row" data-idx="${i}">
             <td class="p-3 cell-name"><span class="font-medium">${escapeHtml(c.displayName)}</span>${badges}</td>
@@ -1798,6 +1803,9 @@ function renderPayroll() {
             <td class="p-3 text-right pr-c-ghead">${c.group.headcount}</td>
             <td class="p-3 text-right pr-c-grev subtle">${prNT(c.group.revenue)}</td>
             <td class="p-3 text-right pr-c-gsal">${prNT(c.group.salary)}</td>
+            <td class="p-3 text-right pr-c-shifth">${c.shift.hours ? prHoursNum(c.shift.hours) + ' 小時' : '—'}</td>
+            <td class="p-3 text-right pr-c-shiftr subtle">${c.shift.rate != null ? prNT(c.shift.rate) : '—'}</td>
+            <td class="p-3 text-right pr-c-shifts">${prNT(c.shift.salary)}</td>
             <td class="p-3 text-right pr-c-total pr-total-cell">${prNT(c.total)}</td>
           </tr>`;
         }).join('')}
@@ -1810,6 +1818,9 @@ function renderPayroll() {
           <td class="p-3 text-right pr-c-ghead">${t.groupHeadcount}</td>
           <td class="p-3 text-right pr-c-grev">${prNT(t.groupRevenue)}</td>
           <td class="p-3 text-right pr-c-gsal">${prNT(t.groupSalary)}</td>
+          <td class="p-3 text-right pr-c-shifth">${prHoursNum(t.shiftHours)} 小時</td>
+          <td class="p-3 text-right pr-c-shiftr">—</td>
+          <td class="p-3 text-right pr-c-shifts">${prNT(t.shiftSalary)}</td>
           <td class="p-3 text-right pr-c-total pr-total-cell">${prNT(t.total)}</td>
         </tr>
       </tbody>
@@ -1837,26 +1848,45 @@ function prToggleDetail(tr) {
         <td>${escapeHtml(x.courseName)}</td>
         <td>${x.headcount} 人</td>
         <td class="text-right">${prNT(x.revenue)}</td></tr>`).join('');
+  const shRows = c.shift.details.map((x) => `
+    <tr><td>${x.workDate.slice(5).replace('-', '/')}　${x.startTime}–${x.endTime}</td>
+        <td>${prHoursNum(x.hours)} 小時</td>
+        <td>${x.source === 'manual' ? '補登' : '掃碼'}${x.checkedInAt ? '・' + x.checkedInAt.slice(11, 16) + ' 到場' : ''}${x.distanceM != null ? '・距 ' + x.distanceM + 'm' : ''}${x.note ? '・' + escapeHtml(x.note) : ''}</td>
+        <td class="text-right"><button class="btn btn-ghost btn-sm pr-void-btn" data-aid="${x.attendanceId}">註銷</button></td></tr>`).join('');
   const row = document.createElement('tr');
   row.className = 'pr-detail-row';
-  row.innerHTML = `<td colspan="9" class="cell-span"><div class="pr-detail-block">
+  row.innerHTML = `<td colspan="12" class="cell-span"><div class="pr-detail-block">
       <h4>一對一明細（${o.sessions} 堂・實收 ${prNT(o.revenue)}）</h4>
       ${oneRows ? `<table><tbody>${oneRows}</tbody></table>` : '<div class="subtle text-sm">本期無一對一堂數</div>'}
       <h4>團體課明細（${c.group.headcount} 人次・實收 ${prNT(c.group.revenue)}）</h4>
       ${grpRows ? `<table><tbody>${grpRows}</tbody></table>` : '<div class="subtle text-sm">本期無授課團課場次</div>'}
+      <h4>駐場明細（${prHoursNum(c.shift.hours)} 小時${c.shift.rate != null ? '・時薪 ' + prNT(c.shift.rate) : ''}）</h4>
+      ${shRows ? `<table><tbody>${shRows}</tbody></table>` : '<div class="subtle text-sm">本期無駐場出席</div>'}
     </div></td>`;
   tr.after(row);
+  row.querySelectorAll('.pr-void-btn').forEach((btn) => btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (btn.dataset.arm !== '1') {
+      btn.dataset.arm = '1'; btn.textContent = '確認註銷？';
+      setTimeout(() => { btn.dataset.arm = ''; btn.textContent = '註銷'; }, 3000);
+      return;
+    }
+    try { await api(`/api/admin/attendance/${btn.dataset.aid}/void`, { method: 'POST' }); toast('已註銷', 'success'); loadPayroll(); }
+    catch (err) { toast('註銷失敗：' + (err.data?.error || err.message), 'error'); }
+  }));
 }
 
 function prExportCsv() {
   if (!prData) return;
-  const rows = [['教練', '1對1堂數', '1對1實收', '適用%', '1對1薪資', '團課人次', '團課實收', '團課薪資', '應發合計']];
+  const rows = [['教練', '1對1堂數', '1對1實收', '適用%', '1對1薪資', '團課人次', '團課實收', '團課薪資', '駐場時數', '駐場時薪', '駐場薪資', '應發合計']];
   for (const c of prData.coaches) {
     rows.push([c.displayName, c.oneOnOne.sessions, c.oneOnOne.revenue, c.oneOnOne.pct + '%',
-      c.oneOnOne.salary, c.group.headcount, c.group.revenue, c.group.salary, c.total]);
+      c.oneOnOne.salary, c.group.headcount, c.group.revenue, c.group.salary,
+      prHoursNum(c.shift.hours), c.shift.rate ?? '', c.shift.salary, c.total]);
   }
   const t = prData.totals;
-  rows.push(['全店總計', t.oneOnOneSessions, t.oneOnOneRevenue, '', t.oneOnOneSalary, t.groupHeadcount, t.groupRevenue, t.groupSalary, t.total]);
+  rows.push(['全店總計', t.oneOnOneSessions, t.oneOnOneRevenue, '', t.oneOnOneSalary, t.groupHeadcount, t.groupRevenue, t.groupSalary,
+    prHoursNum(t.shiftHours), '', t.shiftSalary, t.total]);
   const csv = '﻿' + rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');   // BOM：Excel 中文相容
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -1891,6 +1921,160 @@ document.getElementById('pr-settings-save').addEventListener('click', async () =
   } catch (e) {
     toast(`儲存失敗：${e.message}`);
   }
+});
+
+// ─── 駐場出勤（打卡參數 / 教練時薪與班表 / 補登） ───────────
+const SH_WEEK = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+let shCoaches = [];
+let shShifts = [];
+const shToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+async function loadShiftAdmin() {
+  try {
+    const [settings, coaches, shifts] = await Promise.all([
+      api('/api/admin/settings'), api('/api/admin/coaches'), api('/api/admin/shifts'),
+    ]);
+    document.getElementById('sh-lat').value = settings.checkin_lat;
+    document.getElementById('sh-lng').value = settings.checkin_lng;
+    document.getElementById('sh-radius').value = settings.checkin_radius_m;
+    document.getElementById('sh-window').value = settings.checkin_window_before_min;
+    shCoaches = coaches; shShifts = shifts;
+    renderShCoaches();
+    renderShManualCoachOptions();
+    renderShManualShiftOptions();
+  } catch (e) { toast('駐場資料載入失敗：' + e.message, 'error'); }
+}
+
+function renderShCoaches() {
+  const box = document.getElementById('sh-coaches');
+  const rows = shCoaches.filter((c) => c.is_active || shShifts.some((s) => s.coach_id === c.id));
+  box.innerHTML = rows.map((c) => {
+    const shiftRows = shShifts.filter((s) => s.coach_id === c.id).map((s) => `
+      <tr data-sid="${s.id}">
+        <td>${SH_WEEK[s.day_of_week]} ${s.start_time}–${s.end_time}</td>
+        <td class="subtle">自 ${s.effective_from}</td>
+        <td><input type="date" class="form-input sh-eff-to" value="${s.effective_to || ''}" title="結束日（含當日；留空＝持續有效）"></td>
+        <td class="text-right">
+          <button class="btn btn-ghost btn-sm sh-shift-save">儲存</button>
+          <button class="btn btn-ghost btn-sm sh-shift-del">刪除</button>
+        </td>
+      </tr>`).join('');
+    return `
+    <div class="sh-coach card mb-3" data-cid="${c.id}">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <span class="font-medium">${escapeHtml(c.display_name)}</span>
+        <span class="text-sm">時薪
+          <input type="number" min="0" class="form-input sh-rate" style="width:90px" value="${c.hourly_rate ?? ''}" placeholder="未設">
+          <button class="btn btn-ghost btn-sm sh-rate-save">儲存</button></span>
+      </div>
+      <table class="w-full text-sm mt-2"><tbody>${shiftRows}</tbody></table>
+      <div class="flex flex-wrap gap-2 mt-2 items-end text-sm">
+        <select class="form-input sh-new-dow">${SH_WEEK.map((w, i) => `<option value="${i}">${w}</option>`).join('')}</select>
+        <input type="time" class="form-input sh-new-start">
+        <input type="time" class="form-input sh-new-end">
+        <input type="date" class="form-input sh-new-from" value="${shToday()}" title="生效日">
+        <button class="btn btn-primary btn-sm sh-shift-add">新增班表</button>
+      </div>
+    </div>`;
+  }).join('') || '<div class="subtle text-sm">尚無啟用教練</div>';
+}
+
+document.getElementById('sh-coaches').addEventListener('click', async (e) => {
+  const card = e.target.closest('.sh-coach');
+  if (!card) return;
+  const cid = Number(card.dataset.cid);
+  try {
+    if (e.target.classList.contains('sh-rate-save')) {
+      const raw = card.querySelector('.sh-rate').value.trim();
+      await api(`/api/admin/coaches/${cid}/hourly-rate`, { method: 'PATCH', body: { hourly_rate: raw === '' ? null : Number(raw) } });
+      toast('時薪已更新', 'success'); loadShiftAdmin(); loadPayroll();
+    } else if (e.target.classList.contains('sh-shift-add')) {
+      await api('/api/admin/shifts', { method: 'POST', body: {
+        coach_id: cid,
+        day_of_week: Number(card.querySelector('.sh-new-dow').value),
+        start_time: card.querySelector('.sh-new-start').value,
+        end_time: card.querySelector('.sh-new-end').value,
+        effective_from: card.querySelector('.sh-new-from').value,
+      } });
+      toast('班表已新增', 'success'); loadShiftAdmin();
+    } else if (e.target.classList.contains('sh-shift-save')) {
+      const tr = e.target.closest('tr');
+      await api(`/api/admin/shifts/${tr.dataset.sid}`, { method: 'PATCH', body: { effective_to: tr.querySelector('.sh-eff-to').value || null } });
+      toast('班表已更新', 'success'); loadShiftAdmin();
+    } else if (e.target.classList.contains('sh-shift-del')) {
+      if (e.target.dataset.arm !== '1') {
+        e.target.dataset.arm = '1'; e.target.textContent = '確認刪除？';
+        setTimeout(() => { e.target.dataset.arm = ''; e.target.textContent = '刪除'; }, 3000);
+        return;
+      }
+      await api(`/api/admin/shifts/${e.target.closest('tr').dataset.sid}`, { method: 'DELETE' });
+      toast('班表已刪除（誤建用；正常結束班表請填結束日）', 'success'); loadShiftAdmin();
+    }
+  } catch (err) {
+    const msgs = { invalid_time_range: '起訖時間無效', invalid_effective_range: '生效日期無效', invalid_hourly_rate: '時薪需為 0–100000 的整數' };
+    toast(msgs[err.data?.error] || '操作失敗：' + (err.data?.error || err.message), 'error');
+  }
+});
+
+function renderShManualCoachOptions() {
+  document.getElementById('sh-m-coach').innerHTML =
+    shCoaches.filter((c) => c.is_active).map((c) => `<option value="${c.id}">${escapeHtml(c.display_name)}</option>`).join('');
+}
+function renderShManualShiftOptions() {
+  const cid = Number(document.getElementById('sh-m-coach').value);
+  const date = document.getElementById('sh-m-date').value;
+  let opts = '<option value="">自訂起訖</option>';
+  if (cid && date) {
+    const dow = new Date(date + 'T00:00:00').getDay();
+    opts += shShifts
+      .filter((s) => s.coach_id === cid && s.day_of_week === dow && s.effective_from <= date && (!s.effective_to || s.effective_to >= date))
+      .map((s) => `<option value="${s.id}">${s.start_time}–${s.end_time}</option>`).join('');
+  }
+  document.getElementById('sh-m-shift').innerHTML = opts;
+}
+document.getElementById('sh-m-coach').addEventListener('change', renderShManualShiftOptions);
+document.getElementById('sh-m-date').addEventListener('change', renderShManualShiftOptions);
+
+document.getElementById('sh-m-save').addEventListener('click', async () => {
+  const shiftId = document.getElementById('sh-m-shift').value;
+  const body = {
+    coach_id: Number(document.getElementById('sh-m-coach').value),
+    work_date: document.getElementById('sh-m-date').value,
+    note: document.getElementById('sh-m-note').value.trim() || null,
+  };
+  if (shiftId) body.shift_id = Number(shiftId);
+  else {
+    body.start_time = document.getElementById('sh-m-start').value;
+    body.end_time = document.getElementById('sh-m-end').value;
+  }
+  try {
+    await api('/api/admin/attendance', { method: 'POST', body });
+    toast('已補登', 'success');
+    document.getElementById('sh-m-note').value = '';
+    loadPayroll();
+  } catch (err) {
+    const msgs = { duplicate_attendance: '該時段已有出席紀錄', invalid_time_range: '起訖時間無效', invalid_work_date: '日期無效', shift_not_found: '找不到該班表' };
+    toast(msgs[err.data?.error] || '補登失敗：' + (err.data?.error || err.message), 'error');
+  }
+});
+
+document.getElementById('sh-settings-save').addEventListener('click', async () => {
+  try {
+    await api('/api/admin/settings', { method: 'PATCH', body: {
+      checkin_lat: document.getElementById('sh-lat').value.trim(),
+      checkin_lng: document.getElementById('sh-lng').value.trim(),
+      checkin_radius_m: Number(document.getElementById('sh-radius').value),
+      checkin_window_before_min: Number(document.getElementById('sh-window').value),
+    } });
+    toast('打卡參數已儲存', 'success');
+  } catch (err) { toast('儲存失敗：' + (err.data?.error || err.message), 'error'); }
+});
+
+document.getElementById('sh-toggle').addEventListener('click', () => {
+  const body = document.getElementById('sh-body');
+  body.classList.toggle('hidden');
+  document.getElementById('sh-toggle').textContent = body.classList.contains('hidden') ? '展開' : '收合';
+  if (!body.classList.contains('hidden')) loadShiftAdmin();
 });
 
 loadCategories();

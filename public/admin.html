@@ -182,6 +182,9 @@ body { visibility: hidden; }
   #pr-table td.pr-c-ghead::before{ content:"團課人次"; }
   #pr-table td.pr-c-grev::before{ content:"團課實收"; }
   #pr-table td.pr-c-gsal::before{ content:"團課薪資"; }
+  #pr-table td.pr-c-shifth::before{ content:"駐場時數"; }
+  #pr-table td.pr-c-shiftr::before{ content:"駐場時薪"; }
+  #pr-table td.pr-c-shifts::before{ content:"駐場薪資"; }
   #pr-table td.pr-c-total::before{ content:"應發合計"; }
   #pr-table tr.pr-detail-row{ display:block; }
   .pr-detail-block table, .pr-detail-block tbody, .pr-detail-block tr{ display:table; width:100%; }
@@ -729,6 +732,47 @@ details.session-row summary .font-semibold{
         <button id="pr-settings-save" class="btn btn-primary btn-sm">儲存並重算</button>
         <button id="pr-settings-cancel" class="btn btn-ghost btn-sm">取消</button>
       </div>
+    </div>
+  </section>
+
+  <!-- 駐場出勤 -->
+  <section class="card mb-6">
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold">駐場出勤</h3>
+      <button id="sh-toggle" class="btn btn-ghost btn-sm">展開</button>
+    </div>
+    <div class="subtle text-sm mt-1">教練掃館內 QR code（/checkin 頁）到場打卡；依固定班表計時數，乘各自時薪併入上方薪資表。</div>
+    <div id="sh-body" class="hidden mt-4">
+      <h4 class="font-bold text-sm mb-2">打卡參數</h4>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <label class="text-sm">館址緯度
+          <input id="sh-lat" class="form-input mt-1" placeholder="25.0330"></label>
+        <label class="text-sm">館址經度
+          <input id="sh-lng" class="form-input mt-1" placeholder="121.5654"></label>
+        <label class="text-sm">允許半徑（公尺）
+          <input id="sh-radius" type="number" min="10" max="5000" class="form-input mt-1"></label>
+        <label class="text-sm">可提早打卡（分鐘）
+          <input id="sh-window" type="number" min="0" max="240" class="form-input mt-1"></label>
+      </div>
+      <div class="mt-2"><button id="sh-settings-save" class="btn btn-primary btn-sm">儲存參數</button></div>
+
+      <h4 class="font-bold text-sm mb-2 mt-5">教練時薪與班表</h4>
+      <div id="sh-coaches"></div>
+
+      <h4 class="font-bold text-sm mb-2 mt-5">補登出席</h4>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <label class="text-sm">教練
+          <select id="sh-m-coach" class="form-input mt-1"></select></label>
+        <label class="text-sm">日期
+          <input id="sh-m-date" type="date" class="form-input mt-1"></label>
+        <label class="text-sm">套用班表時段
+          <select id="sh-m-shift" class="form-input mt-1"><option value="">自訂起訖</option></select></label>
+        <label class="text-sm">自訂起訖
+          <div class="flex gap-1 mt-1"><input id="sh-m-start" type="time" class="form-input"><input id="sh-m-end" type="time" class="form-input"></div></label>
+        <label class="text-sm">備註
+          <input id="sh-m-note" class="form-input mt-1"></label>
+      </div>
+      <div class="mt-2"><button id="sh-m-save" class="btn btn-primary btn-sm">補登</button></div>
     </div>
   </section>
 
