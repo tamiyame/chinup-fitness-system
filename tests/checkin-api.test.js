@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
 import { hashPassword } from '../src/services/auth.js';
 const BASE = process.env.BASE || 'http://localhost:3000';
-async function req(method, path, { body, token } = {}) {
-  const headers = { 'Content-Type': 'application/json', 'X-Forwarded-For': '10.99.7.1' };
+async function req(method, path, { body, token, ip } = {}) {
+  const headers = { 'Content-Type': 'application/json', 'X-Forwarded-For': ip || '10.99.7.1' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const text = await res.text(); let data; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
@@ -92,6 +92,25 @@ db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('checkin_la
   const im = await req('GET', `/api/coach/checkin/today?coachId=${cId}`, { token: tokD });
   expect('coachId query 無效——永遠回本人（D 無班表 slots 空）', () => {
     assert.equal(im.status, 200); assert.equal(im.data.slots.length, 0);
+  });
+}
+{
+  // rate limit：server.js checkinLimiter = 60s 窗口內最多 10 次（含未通過驗證的請求，limiter 跑在 requireCoach 之前）。
+  // 用專屬 IP 10.99.7.9，不與前面呼叫共用額度；連續 11 次 fetch 依序送出全程約 1 秒，穩落在同一 60s 窗口內。
+  const RL_IP = '10.99.7.9';
+  const bursts = [];
+  for (let i = 0; i < 11; i++) {
+    bursts.push(await req('POST', '/api/coach/checkin', { body: {}, token: tokC, ip: RL_IP }));
+  }
+  expect('前 10 次未被限流（缺座標仍走到驗證 → 400 missing_location）', () => {
+    bursts.slice(0, 10).forEach((r, i) => {
+      assert.equal(r.status, 400, `第 ${i + 1} 次 status`);
+      assert.equal(r.data.error, 'missing_location', `第 ${i + 1} 次 error`);
+    });
+  });
+  expect('第 11 次超過額度 → 429 rate_limited', () => {
+    assert.equal(bursts[10].status, 429);
+    assert.equal(bursts[10].data.error, 'rate_limited');
   });
 }
 console.log('[checkin-api test] done');
