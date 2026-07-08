@@ -9,6 +9,34 @@ const __serviceDir = dirname(fileURLToPath(import.meta.url));
 const AVATAR_DIR = resolve(__serviceDir, '../../data/avatars');
 mkdirSync(AVATAR_DIR, { recursive: true });
 
+/** Google 日曆官方 24 色盤（登錄預約全覽的教練配色；順序照後台色卡排版）。 */
+export const COACH_COLORS = [
+  '#AD1457', // Radicchio
+  '#D81B60', // Cherry Blossom
+  '#E67C73', // Flamingo
+  '#D50000', // Tomato
+  '#F4511E', // Tangerine
+  '#EF6C00', // Pumpkin
+  '#F09300', // Mango
+  '#F6BF26', // Banana
+  '#E4C441', // Citron
+  '#C0CA33', // Avocado
+  '#7CB342', // Pistachio
+  '#0B8043', // Basil
+  '#33B679', // Sage
+  '#009688', // Eucalyptus
+  '#039BE5', // Peacock
+  '#4285F4', // Cobalt
+  '#7986CB', // Lavender
+  '#3F51B5', // Blueberry
+  '#B39DDB', // Wisteria
+  '#9E69AF', // Amethyst
+  '#8E24AA', // Grape
+  '#795548', // Cocoa
+  '#616161', // Graphite
+  '#A79B8E', // Birch
+];
+
 const MAX_BYTES = 2 * 1024 * 1024;
 const MAGIC = {
   jpg: [0xff, 0xd8, 0xff],
@@ -69,16 +97,23 @@ export function setCoachActive(id, active) {
   return { ok: true };
 }
 
-const UPDATABLE = ['display_name', 'specialty', 'bio', 'avatar_path', 'sort_order'];
+const UPDATABLE = ['display_name', 'specialty', 'bio', 'avatar_path', 'sort_order', 'color'];
 export function updateCoach(id, fields) {
   const current = getCoachStmt.get(id);
   if (!current) throw new ApiError(404, 'coach_not_found');
+  // color：undefined=不動；null/'' = 清除；其餘須在 COACH_COLORS 內
+  let color = fields.color;
+  if (color !== undefined) {
+    color = color === '' ? null : color;
+    if (color !== null && !COACH_COLORS.includes(color)) throw new ApiError(400, 'invalid_color');
+  }
   const snake = {
     display_name: fields.displayName ?? fields.display_name,
     specialty: fields.specialty,
     bio: fields.bio,
     avatar_path: fields.avatarPath ?? fields.avatar_path,
     sort_order: fields.sortOrder ?? fields.sort_order,
+    color,
   };
   const cols = [], vals = [];
   for (const k of UPDATABLE) {

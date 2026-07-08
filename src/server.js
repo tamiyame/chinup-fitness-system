@@ -686,10 +686,10 @@ app.get('/api/admin/coaches', requireAdmin, asyncHandler((req, res) => {
 
 app.patch('/api/admin/coaches/:id', requireAdmin, asyncHandler((req, res) => {
   const id = Number(req.params.id);
-  const { display_name, specialty, bio, sort_order, is_active } = req.body || {};
+  const { display_name, specialty, bio, sort_order, is_active, color } = req.body || {};
   const existing = svcGetCoach(id);
   if (!existing) return res.status(404).json({ error: 'coach_not_found' });
-  svcUpdateCoach(id, { displayName: display_name, specialty, bio, sortOrder: sort_order });
+  svcUpdateCoach(id, { displayName: display_name, specialty, bio, sortOrder: sort_order, color });
   if (typeof is_active === 'boolean' || is_active === 0 || is_active === 1) {
     svcSetCoachActive(id, !!is_active);
   }
