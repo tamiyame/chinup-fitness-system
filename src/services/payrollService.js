@@ -3,6 +3,7 @@
 import { db, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
 import { getSetting } from './discountService.js';
+import { shiftSummaryByCoach } from './shiftService.js';
 
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const pad = (n) => String(n).padStart(2, '0');
@@ -34,7 +35,7 @@ function intSetting(key, dflt) {
   return Number.isInteger(n) ? n : dflt;
 }
 
-const coachesStmt = db.prepare('SELECT id, display_name, is_active FROM coaches ORDER BY created_at ASC, id ASC');
+const coachesStmt = db.prepare('SELECT id, display_name, is_active, hourly_rate FROM coaches ORDER BY created_at ASC, id ASC');
 const bookingsStmt = db.prepare(`
   SELECT b.id, b.coach_id, b.start_at, b.session_type, b.package_id,
          b.original_amount, b.discount_amount, u.name AS member_name
@@ -70,6 +71,7 @@ export function computePayroll({ period } = {}) {
     coachId: c.id, displayName: c.display_name, isActive: c.is_active,
     oneOnOne: { sessions: 0, revenue: 0, unpriced: 0, future: 0, pct: settings.pctLow, salary: 0, details: [] },
     group: { headcount: 0, revenue: 0, pct: settings.groupPct, salary: 0, details: [] },
+    shift: { hours: 0, rate: c.hourly_rate ?? null, salary: 0, details: [] },
     total: 0,
   }]));
 
@@ -98,14 +100,23 @@ export function computePayroll({ period } = {}) {
       headcount: s.headcount, revenue: s.revenue });
   }
 
+  const shiftMap = shiftSummaryByCoach(displayStart, displayEnd);
+  for (const [coachId, s] of shiftMap) {
+    const c = byCoach.get(coachId);
+    if (!c) continue;
+    c.shift.hours = s.hours;
+    c.shift.details = s.details;
+  }
+
   const coaches = [];
   for (const c of byCoach.values()) {
     const o = c.oneOnOne;
     o.pct = o.sessions > settings.threshold ? settings.pctHigh : settings.pctLow;
     o.salary = Math.round(o.revenue * o.pct / 100);
     c.group.salary = Math.round(c.group.revenue * settings.groupPct / 100);
-    c.total = o.salary + c.group.salary;
-    if (c.isActive || o.sessions > 0 || c.group.details.length > 0) coaches.push(c);
+    c.shift.salary = c.shift.rate != null ? Math.round(c.shift.hours * c.shift.rate) : 0;
+    c.total = o.salary + c.group.salary + c.shift.salary;
+    if (c.isActive || o.sessions > 0 || c.group.details.length > 0 || c.shift.details.length > 0) coaches.push(c);
   }
 
   const totals = coaches.reduce((t, c) => ({
@@ -115,8 +126,10 @@ export function computePayroll({ period } = {}) {
     groupHeadcount: t.groupHeadcount + c.group.headcount,
     groupRevenue: t.groupRevenue + c.group.revenue,
     groupSalary: t.groupSalary + c.group.salary,
+    shiftHours: t.shiftHours + c.shift.hours,
+    shiftSalary: t.shiftSalary + c.shift.salary,
     total: t.total + c.total,
-  }), { oneOnOneSessions: 0, oneOnOneRevenue: 0, oneOnOneSalary: 0, groupHeadcount: 0, groupRevenue: 0, groupSalary: 0, total: 0 });
+  }), { oneOnOneSessions: 0, oneOnOneRevenue: 0, oneOnOneSalary: 0, groupHeadcount: 0, groupRevenue: 0, groupSalary: 0, shiftHours: 0, shiftSalary: 0, total: 0 });
 
   return { period: p, range: { start: displayStart, end: displayEnd }, settings, coaches, totals };
 }
