@@ -1020,7 +1020,7 @@ async function loadCoachMgmt() {
     row.innerHTML = `
       <div class="flex items-center gap-3">
         <button data-id="${c.id}" class="coach-color-dot${c.color ? '' : ' coach-color-none'}" title="行事曆顏色"
-                style="${c.color ? `background:${c.color};` : ''}"></button>
+                style="${c.color ? `background:${escapeHtml(c.color)};` : ''}"></button>
         <div>
           <div class="font-semibold">${escapeHtml(c.display_name)} <span class="text-xs ${c.is_active ? 'text-green-600' : 'text-amber-600'}">${c.is_active ? '啟用中' : '待啟用'}</span></div>
           <div class="text-xs text-slate-500">${escapeHtml(c.user_email)} · ${escapeHtml(c.specialty || '')}</div>
