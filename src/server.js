@@ -94,7 +94,9 @@ import {
 } from './services/packageService.js';
 import { getCoachWeek as svcGetCoachWeek, searchCustomers as svcSearchCustomers } from './services/coachCalendarService.js';
 import { sendBookingConfirmation } from './services/emailService.js';
-import { computePayroll } from './services/payrollService.js';
+import { computePayroll, periodRange, defaultPeriod } from './services/payrollService.js';
+import { checkIn as shiftCheckIn, todayStatus as shiftTodayStatus, coachPeriodHours,
+  listShifts, createShift, updateShift, deleteShift, manualAttendance, voidAttendance } from './services/shiftService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -112,6 +114,7 @@ const changePwLimiter = createRateLimiter({ name: 'change-password', windowMs: 1
 // freebusy 放大（不同日期參數可繞過 60s 快取打到 Google API）與濫用 email 確認信
 const bookingLimiter = createRateLimiter({ name: 'public-booking', windowMs: 60_000, max: 20 });
 const lineBindLimiter = createRateLimiter({ name: 'public-line-bind', windowMs: 60_000, max: 10 });
+const checkinLimiter = createRateLimiter({ name: 'checkin', windowMs: 60_000, max: 10 });
 app.use(express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; },
@@ -932,6 +935,26 @@ app.post('/api/coach/bookings/:id/cancel-group', requireCoach, asyncHandler((req
   const r = svcCancelCoachGroup({ bookingId: Number(req.params.id), actorUserId: req.user.id, isAdmin: !!req.user.is_admin, reason: (reason || '').trim() || null });
   for (const id of r.cancelled) syncBookingCancel(id); // commit 後副作用：逐筆刪日曆事件、不 await
   res.json(r);
+}));
+
+// --- 駐場打卡（永遠本人：刻意不走 resolveCoach，管理者代登記走後台補登留稽核）---
+app.get('/api/coach/checkin/today', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const status = shiftTodayStatus(coach.id);
+  const period = defaultPeriod();
+  const { displayStart, displayEnd } = periodRange(period);
+  const periodHours = Math.round(coachPeriodHours(coach.id, displayStart, displayEnd) * 100) / 100;
+  res.json({ ...status, period, periodHours });
+}));
+
+app.post('/api/coach/checkin', checkinLimiter, requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { lat, lng, accuracy } = req.body || {};
+  const result = shiftCheckIn({ coachId: coach.id, lat: Number(lat), lng: Number(lng),
+    accuracy: accuracy == null ? null : Number(accuracy) });
+  res.json({ ok: true, already: result.already, attendance: result.attendance });
 }));
 
 // --- Public (no auth): anon booking / group orders / phone lookup ---
