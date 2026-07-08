@@ -116,7 +116,7 @@ CREATE INDEX IF NOT EXISTS idx_shift_attendance_date ON shift_attendance(work_da
 1. **期別報表擴充**：`computePayroll`（src/services/payrollService.js）為每位教練加 `shift: { hours, rate, salary, details[] }`；`totals` 加 `shiftHours`、`shiftSalary` 並計入 `total`。期別邊界：`work_date >= displayStart AND work_date <= displayEnd`（含端點），排除 `voided_at IS NOT NULL`。`salary = Math.round(hours × hourly_rate)`（與既有捨入慣例一致）。明細展開列出席清單：日期、時段、時數、來源（掃碼/補登）、打卡時刻、GPS 距離。CSV（admin.js 既有 BOM 慣例）加三欄：駐場時數／時薪／駐場薪資。`hourly_rate IS NULL` 的教練不顯示駐場欄位（有出席紀錄但無時薪者顯示提醒，薪資以 0 計）。
 2. **駐場設定區塊**：各教練時薪編輯；班表管理（星期、起訖時間、生效起迄；「結束班表」＝填結束日）；`checkin_*` 三參數與座標編輯（沿用既有 settings PATCH 驗證清單）。
 3. **例外調整**（均 `requireAdmin`）：
-   - 補登：選教練＋日期＋（套用該日班表時段 或 自訂起訖），`source='manual'`、記 `created_by`；
+   - 補登：選教練＋日期＋（套用該日班表時段 或 自訂起訖），`source='manual'`、記 `created_by`；若同 `(教練, 日期, 班表)` 已有**已註銷**紀錄，補登＝復原該列（清除 `voided_at/voided_by`，保留原始佐證），避免與 UNIQUE 約束衝突；已有未註銷紀錄則回 `409 duplicate_attendance`；
    - 註銷：填 `voided_at/voided_by`，薪資排除、留檔可查。
 
 ## API 一覽
