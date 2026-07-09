@@ -1947,32 +1947,37 @@ async function loadShiftAdmin() {
   } catch (e) { toast('駐場資料載入失敗：' + e.message, 'error'); }
 }
 
+// 'HH:MM' 起訖 → 時數標籤（整數不帶小數、其餘一位小數）
+function shDurLabel(start, end) {
+  const m = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const h = (m(end) - m(start)) / 60;
+  return `${Number.isInteger(h) ? h : h.toFixed(1)} 小時`;
+}
+
 function renderShSlots() {
   const box = document.getElementById('sh-slots');
   box.innerHTML = shSlots.map((s) => {
     const chips = s.coaches.map((c) => `
-      <span class="sh-chip" data-coach="${c.coachId}"
-        style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid #e2e8f0;border-radius:999px;background:#f8fafc;">
-        ${escapeHtml(c.displayName)}<button type="button" class="sh-chip-x" style="border:none;background:none;cursor:pointer;color:#94a3b8;">✕</button>
-      </span>`).join(' ');
+      <span class="sh-chip" data-coach="${c.coachId}">${escapeHtml(c.displayName)}<button type="button" class="sh-chip-x">✕</button></span>`).join('');
     const addable = shCoaches.filter((c) => c.is_active && !s.coaches.some((x) => x.coachId === c.id));
     return `
-    <div class="sh-slot card mb-3" data-sid="${s.id}">
-      <div class="flex items-center justify-between flex-wrap gap-2">
-        <span class="font-medium">${SH_WEEK[s.day_of_week]} ${s.start_time}–${s.end_time}</span>
-        <span class="text-sm subtle">自 ${s.effective_from}${s.effective_to ? '，至 ' + s.effective_to : ''}</span>
+    <div class="sh-slot sh-slot-card" data-sid="${s.id}">
+      <div class="sh-slot-top">
+        <span class="sh-slot-dow">${SH_WEEK[s.day_of_week]}</span>
+        <span class="sh-slot-eff">自 ${s.effective_from.replace(/-/g, '/')}<br>${s.effective_to ? '至 ' + s.effective_to.replace(/-/g, '/') : '持續有效'}</span>
       </div>
-      <div class="flex flex-wrap gap-2 mt-2 items-center text-sm">${chips || '<span class="subtle">尚未指派教練</span>'}</div>
-      <div class="flex flex-wrap gap-2 mt-2 items-end text-sm">
+      <div class="sh-slot-time">${s.start_time}–${s.end_time}<span class="sh-dur">${shDurLabel(s.start_time, s.end_time)}</span></div>
+      <div class="sh-slot-coaches">${chips || '<span class="sh-chip-empty">尚未指派教練</span>'}</div>
+      <div class="sh-slot-foot">
         <select class="form-input sh-slot-coach">
-          <option value="">加入教練…</option>
+          <option value="">＋ 加入教練</option>
           ${addable.map((c) => `<option value="${c.id}">${escapeHtml(c.display_name)}</option>`).join('')}
         </select>
-        <button type="button" class="btn btn-ghost btn-sm sh-slot-assign">加入</button>
-        <label class="text-sm">結束日
-          <input type="date" class="form-input sh-slot-to" value="${s.effective_to || ''}" title="結束日（含當日；留空＝持續有效）"></label>
-        <button type="button" class="btn btn-ghost btn-sm sh-slot-save">儲存</button>
-        <button type="button" class="btn btn-ghost btn-sm sh-slot-del">刪除</button>
+        <div class="sh-slot-ops">
+          <input type="date" class="form-input sh-slot-to" value="${s.effective_to || ''}" title="結束日（含當日；留空＝持續有效）">
+          <button type="button" class="btn btn-ghost btn-sm sh-slot-save">儲存</button>
+          <button type="button" class="btn btn-ghost btn-sm sh-slot-del">刪除</button>
+        </div>
       </div>
     </div>`;
   }).join('') || '<div class="subtle text-sm">尚未建立時段</div>';
@@ -1981,24 +1986,35 @@ function renderShSlots() {
 function renderShRates() {
   const box = document.getElementById('sh-rates');
   box.innerHTML = shCoaches.filter((c) => c.is_active).map((c) => `
-    <div class="flex items-center gap-2 text-sm mb-1 sh-rate-row" data-cid="${c.id}">
-      <span class="font-medium" style="min-width:96px;">${escapeHtml(c.display_name)}</span>
-      時薪 <input type="number" min="0" class="form-input sh-rate" style="width:90px" value="${c.hourly_rate ?? ''}" placeholder="未設">
+    <div class="sh-rate-row" data-cid="${c.id}">
+      <span class="sh-rate-name">${escapeHtml(c.display_name)}</span>
+      <div class="sh-rate-input"><input type="number" min="0" class="form-input sh-rate" value="${c.hourly_rate ?? ''}" placeholder="未設"></div>
       <button type="button" class="btn btn-ghost btn-sm sh-rate-save">儲存</button>
     </div>`).join('') || '<div class="subtle text-sm">尚無啟用教練</div>';
 }
+
+// 「＋ 加入教練」下拉選定即指派（chip ✕ 可隨時移除，毋須再一顆加入鈕）
+document.getElementById('sh-slots').addEventListener('change', async (e) => {
+  if (!e.target.classList.contains('sh-slot-coach')) return;
+  const card = e.target.closest('.sh-slot');
+  const coachId = e.target.value;
+  if (!card || !coachId) return;
+  try {
+    await api(`/api/admin/slots/${card.dataset.sid}/coaches`, { method: 'POST', body: { coach_id: Number(coachId) } });
+    toast('已加入教練', 'success'); loadShiftAdmin();
+  } catch (err) {
+    const msgs = { coach_already_in_slot: '該教練已在此時段', slot_not_found: '時段不存在（可能已被刪除，請重整）' };
+    toast(msgs[err.data?.error] || '操作失敗：' + (err.data?.error || err.message), 'error');
+    e.target.value = '';
+  }
+});
 
 document.getElementById('sh-slots').addEventListener('click', async (e) => {
   const card = e.target.closest('.sh-slot');
   if (!card) return;
   const sid = Number(card.dataset.sid);
   try {
-    if (e.target.classList.contains('sh-slot-assign')) {
-      const coachId = card.querySelector('.sh-slot-coach').value;
-      if (!coachId) { toast('請先選擇教練', 'error'); return; }
-      await api(`/api/admin/slots/${sid}/coaches`, { method: 'POST', body: { coach_id: Number(coachId) } });
-      toast('已加入教練', 'success'); loadShiftAdmin();
-    } else if (e.target.classList.contains('sh-chip-x')) {
+    if (e.target.classList.contains('sh-chip-x')) {
       const chip = e.target.closest('.sh-chip');
       if (e.target.dataset.arm !== '1') {
         e.target.dataset.arm = '1'; e.target.textContent = '確認?';
