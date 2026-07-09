@@ -248,6 +248,44 @@ addColumnIfMissing('coaches', 'color', 'TEXT');
 // coaches.hourly_rate：駐場時薪（元/小時）。NULL=不參與駐場薪資。即時制（計算當下取現值，不存歷史）。
 addColumnIfMissing('coaches', 'hourly_rate', 'INTEGER');
 
+// ── 2026-07-09 固定時段＋指派教練 ──
+// coach_shifts.slot_id：所屬館方時段（gym_slots）。ALTER 加欄的 REFERENCES 實際具強制力
+// （node:sqlite 實測：非法插入被拒、CASCADE 有效）；service 層仍顯式連動，作為語意自我文件化與雙保險。
+addColumnIfMissing('coach_shifts', 'slot_id', 'INTEGER REFERENCES gym_slots(id) ON DELETE CASCADE');
+
+/** 歸組 backfill：slot_id IS NULL 的既有班表按（星期＋起訖＋生效起迄）分組建 gym_slots 並回填。
+ *  冪等（無 NULL 列＝no-op）。回傳本次建立的時段數。
+ *  一次性 legacy 歸組；不與既有時段合併（重跑只處理新的 NULL 列）。 */
+export function backfillGymSlots() {
+  const orphans = db.prepare('SELECT * FROM coach_shifts WHERE slot_id IS NULL ORDER BY id ASC').all();
+  if (!orphans.length) return 0;
+  const insertSlot = db.prepare('INSERT INTO gym_slots (day_of_week, start_time, end_time, effective_from, effective_to) VALUES (?, ?, ?, ?, ?)');
+  const setSlot = db.prepare('UPDATE coach_shifts SET slot_id = ? WHERE id = ?');
+  const groups = new Map();
+  for (const r of orphans) {
+    const key = [r.day_of_week, r.start_time, r.end_time, r.effective_from, r.effective_to ?? ''].join('|');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  let created = 0;
+  db.exec('BEGIN');
+  try {
+    for (const rows of groups.values()) {
+      const r0 = rows[0];
+      const slotId = Number(insertSlot.run(r0.day_of_week, r0.start_time, r0.end_time, r0.effective_from, r0.effective_to).lastInsertRowid);
+      created++;
+      for (const r of rows) setSlot.run(slotId, r.id);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw e;
+  }
+  console.log(`[migrate] gym_slots 歸組：${orphans.length} 列班表 → ${created} 個時段`);
+  return created;
+}
+backfillGymSlots();
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.

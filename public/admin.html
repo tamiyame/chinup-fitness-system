@@ -192,6 +192,72 @@ body { visibility: hidden; }
   .pr-detail-block td::before{ content:none; }
 }
 
+/* ── 駐場出勤（時段卡片＋時薪＋補登）— 技術美學卡片版 ── */
+.sh-h4{ font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-soft); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+.sh-h4::after{ content:''; flex:1; height:1px; background:#f1f5f9; }
+.sh-field{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+.sh-flabel{ font-size:12px; font-weight:600; color:var(--ink-soft); letter-spacing:.04em; }
+.sh-range{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:6px;
+  border:1px solid var(--line); border-radius:var(--radius-sm); padding:4px 8px; background:var(--surface); }
+.sh-range input{ border:none; padding:6px 2px; font-size:13px; font-family:inherit; min-width:0; width:100%; background:transparent; }
+.sh-range input:focus{ outline:none; }
+.sh-range:focus-within{ border-color:var(--brand-500); box-shadow:0 0 0 3px rgba(56,189,248,.15); }
+.sh-dash{ color:var(--ink-mute); font-weight:600; }
+.sh-field--range{ grid-column:span 2; }
+
+.sh-week{ border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; background:var(--surface); }
+.sh-week-day{ display:grid; grid-template-columns:56px 1fr; border-bottom:1px solid #f1f5f9; min-height:52px; }
+.sh-week-day:last-child{ border-bottom:none; }
+.sh-week-dow{ display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;
+  color:var(--ink-soft); background:#f8faf9; border-right:1px solid var(--line); }
+.sh-week-day.has .sh-week-dow{ color:var(--brand-700); background:var(--brand-50); }
+.sh-week-slots{ display:flex; flex-wrap:wrap; gap:8px; padding:10px 12px; align-items:center; }
+.sh-pill{ display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:var(--radius-sm);
+  padding:6px 10px; background:var(--surface); font-size:13px; cursor:pointer;
+  transition:border-color .15s, box-shadow .15s; }
+.sh-pill:hover{ border-color:rgba(56,189,248,.4); box-shadow:var(--shadow-sm); }
+.sh-pill .t{ font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-0.01em; }
+.sh-pill .n{ font-size:12px; color:var(--ink-soft); background:#f1f5f9; border-radius:999px; padding:1px 8px; }
+.sh-pill.empty{ border-style:dashed; color:var(--ink-mute); }
+.sh-pill.active{ border-color:var(--brand-600); box-shadow:0 0 0 3px rgba(56,189,248,.15); }
+.sh-week-none{ font-size:12px; color:#cbd5e1; }
+.sh-detail{ border:1px solid rgba(56,189,248,.35); border-radius:var(--radius); background:var(--surface);
+  padding:16px; margin-top:12px; box-shadow:var(--shadow); }
+.sh-detail-head{ display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:6px; }
+.sh-detail-title{ font-weight:800; font-size:16px; font-variant-numeric:tabular-nums; }
+.sh-detail-eff{ font-size:12px; color:var(--ink-mute); }
+.sh-slot-coaches{ display:flex; flex-wrap:wrap; gap:6px; min-height:30px; margin-top:10px; }
+.sh-toolbar{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; align-items:end; }
+.sh-chip{ display:inline-flex; align-items:center; gap:6px; padding:5px 6px 5px 12px; border-radius:999px;
+  background:var(--brand-50); border:1px solid rgba(56,189,248,.25); font-size:13px; font-weight:600; color:var(--brand-900); }
+.sh-chip::before{ content:''; width:6px; height:6px; border-radius:50%; background:var(--brand-600); }
+.sh-chip-x{ border:none; background:transparent; cursor:pointer; color:var(--ink-mute); font-size:12px;
+  min-width:18px; height:18px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; padding:0 2px; white-space:nowrap; }
+.sh-chip-x:hover{ background:rgba(2,132,199,.12); color:var(--brand-700); }
+.sh-chip-empty{ font-size:13px; color:var(--ink-mute); font-style:italic; align-self:center; }
+.sh-slot-foot{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; border-top:1px solid #f1f5f9; padding-top:12px; margin-top:12px; }
+.sh-slot-foot select{ flex:1 1 180px; min-width:0; padding:7px 10px; font-size:13px; }
+.sh-slot-ops{ display:flex; gap:8px; align-items:center; flex:1 1 260px; }
+.sh-slot-ops input[type="date"]{ flex:1; min-width:0; padding:7px 10px; font-size:13px; }
+.sh-two-col{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
+.sh-panel{ border:1px solid var(--line); border-radius:var(--radius); background:var(--surface);
+  padding:16px; box-shadow:var(--shadow-sm); }
+.sh-rate-row{ display:grid; grid-template-columns:1fr 130px max-content; gap:10px; align-items:center;
+  padding:10px 4px; border-bottom:1px solid #f1f5f9; }
+.sh-rate-row:last-child{ border-bottom:none; }
+.sh-rate-name{ font-weight:600; font-size:14px; }
+.sh-rate-input{ position:relative; }
+.sh-rate-input .form-input{ padding-left:40px; text-align:right; font-variant-numeric:tabular-nums; }
+.sh-rate-input::before{ content:'NT$'; position:absolute; left:10px; top:50%; transform:translateY(-50%);
+  font-size:11px; font-weight:700; color:var(--ink-mute); letter-spacing:.02em; }
+.sh-manual{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; align-items:end; }
+@media (max-width:640px){
+  .sh-rate-row{ grid-template-columns:1fr 110px max-content; }
+  .sh-field--range{ grid-column:1/-1; }
+  .sh-week-day{ grid-template-columns:44px 1fr; }
+}
+
 /* 備份 modal 內表格同步 Nike 化 */
 #backup-modal table thead th{
   font-family:"Archivo","Noto Sans TC",sans-serif;
@@ -769,23 +835,45 @@ details.session-row summary .font-semibold{
       <div id="sh-qr" class="mt-2"></div>
       <div class="mt-2"><button type="button" id="sh-qr-print" class="btn btn-ghost btn-sm">列印 QR code</button></div>
 
-      <h4 class="font-bold text-sm mb-2 mt-5">教練時薪與班表</h4>
-      <div id="sh-coaches"></div>
-
-      <h4 class="font-bold text-sm mb-2 mt-5">補登出席</h4>
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <label class="text-sm">教練
-          <select id="sh-m-coach" class="form-input mt-1"></select></label>
-        <label class="text-sm">日期
-          <input id="sh-m-date" type="date" class="form-input mt-1"></label>
-        <label class="text-sm">套用班表時段
-          <select id="sh-m-shift" class="form-input mt-1"><option value="">自訂起訖</option></select></label>
-        <label class="text-sm">自訂起訖
-          <div class="flex gap-1 mt-1"><input id="sh-m-start" type="time" class="form-input"><input id="sh-m-end" type="time" class="form-input"></div></label>
-        <label class="text-sm">備註
-          <input id="sh-m-note" class="form-input mt-1"></label>
+      <div class="sh-h4 mt-5">每週固定時段</div>
+      <div class="subtle text-sm mb-2">先建立固定時段，再把教練加進去；點時段可展開指派與設定。教練掃 QR 即可打該時段的卡。</div>
+      <div id="sh-slots">
+        <div id="sh-week" class="sh-week"></div>
+        <div id="sh-slot-detail"></div>
       </div>
-      <div class="mt-2"><button id="sh-m-save" class="btn btn-primary btn-sm">補登</button></div>
+      <div class="sh-h4 mt-5">新增時段</div>
+      <div class="sh-toolbar">
+        <label class="sh-field"><span class="sh-flabel">星期</span><select id="sh-slot-new-dow" class="form-input"></select></label>
+        <div class="sh-field sh-field--range"><span class="sh-flabel">時段起訖</span>
+          <div class="sh-range"><input type="time" id="sh-slot-new-start"><span class="sh-dash">–</span><input type="time" id="sh-slot-new-end"></div>
+        </div>
+        <label class="sh-field"><span class="sh-flabel">生效日</span><input type="date" id="sh-slot-new-from" class="form-input"></label>
+        <div class="sh-field"><span class="sh-flabel">&nbsp;</span><button type="button" id="sh-slot-add" class="btn btn-primary btn-sm">新增時段</button></div>
+      </div>
+
+      <div class="sh-two-col mt-5">
+        <div class="sh-panel">
+          <div class="sh-h4">教練時薪</div>
+          <div id="sh-rates"></div>
+        </div>
+
+        <div class="sh-panel">
+          <div class="sh-h4">補登出席</div>
+          <div class="sh-manual">
+            <label class="sh-field"><span class="sh-flabel">教練</span>
+              <select id="sh-m-coach" class="form-input"></select></label>
+            <label class="sh-field"><span class="sh-flabel">日期</span>
+              <input id="sh-m-date" type="date" class="form-input"></label>
+            <label class="sh-field"><span class="sh-flabel">套用班表時段</span>
+              <select id="sh-m-shift" class="form-input"><option value="">自訂起訖</option></select></label>
+            <div class="sh-field sh-field--range"><span class="sh-flabel">自訂起訖</span>
+              <div class="sh-range"><input id="sh-m-start" type="time"><span class="sh-dash">–</span><input id="sh-m-end" type="time"></div></div>
+            <label class="sh-field" style="grid-column:1/-1;"><span class="sh-flabel">備註</span>
+              <input id="sh-m-note" class="form-input" placeholder="選填，例：忘記打卡"></label>
+          </div>
+          <button id="sh-m-save" class="btn btn-primary btn-sm mt-3">補登</button>
+        </div>
+      </div>
     </div>
   </section>
 
