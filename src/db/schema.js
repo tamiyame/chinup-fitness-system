@@ -168,6 +168,18 @@ CREATE TABLE IF NOT EXISTS coach_availability_exceptions (
   CHECK (type = 'leave' OR (start_time IS NOT NULL AND end_time IS NOT NULL AND start_time < end_time))
 );
 
+-- 館方固定上班時段（老闆先建時段、再指派教練；指派展開成 coach_shifts 列）
+CREATE TABLE IF NOT EXISTS gym_slots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  effective_from TEXT NOT NULL,
+  effective_to TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (start_time < end_time)
+);
+
 -- 駐場固定週班表（時薪計酬的排班；可預約時段是另一張 coach_availability_rules，勿混用）
 CREATE TABLE IF NOT EXISTS coach_shifts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,6 +189,7 @@ CREATE TABLE IF NOT EXISTS coach_shifts (
   end_time TEXT NOT NULL,
   effective_from TEXT NOT NULL,
   effective_to TEXT,
+  slot_id INTEGER REFERENCES gym_slots(id) ON DELETE CASCADE,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK (start_time < end_time)
 );
