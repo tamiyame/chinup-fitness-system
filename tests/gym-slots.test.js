@@ -10,7 +10,7 @@ console.log('[gym-slots test] start');
 db.exec(`
   DELETE FROM shift_attendance WHERE coach_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'gsl-%'));
   DELETE FROM coach_shifts WHERE coach_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'gsl-%'));
-  DELETE FROM gym_slots WHERE id NOT IN (SELECT DISTINCT slot_id FROM coach_shifts WHERE slot_id IS NOT NULL);
+  DELETE FROM gym_slots WHERE effective_from LIKE '2033-%';   -- 只掃本測試年份，勿全域掃孤兒時段（無教練時段是合法狀態）
   DELETE FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'gsl-%');
   DELETE FROM users WHERE email LIKE 'gsl-%';
 `);
