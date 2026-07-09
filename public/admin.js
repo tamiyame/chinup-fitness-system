@@ -2020,7 +2020,8 @@ document.getElementById('sh-slots').addEventListener('click', async (e) => {
       toast('時段已刪除（誤建用；正常結束請填結束日）', 'success'); loadShiftAdmin();
     }
   } catch (err) {
-    const msgs = { coach_already_in_slot: '該教練已在此時段', invalid_time_range: '起訖時間無效', invalid_effective_range: '生效日期無效' };
+    const msgs = { coach_already_in_slot: '該教練已在此時段', invalid_time_range: '起訖時間無效', invalid_effective_range: '生效日期無效',
+      slot_not_found: '時段不存在（可能已被刪除，請重整）', coach_not_in_slot: '該教練已不在此時段' };
     toast(msgs[err.data?.error] || '操作失敗：' + (err.data?.error || err.message), 'error');
   }
 });
@@ -2032,7 +2033,10 @@ document.getElementById('sh-rates').addEventListener('click', async (e) => {
     const raw = row.querySelector('.sh-rate').value.trim();
     await api(`/api/admin/coaches/${row.dataset.cid}/hourly-rate`, { method: 'PATCH', body: { hourly_rate: raw === '' ? null : Number(raw) } });
     toast('時薪已更新', 'success'); loadShiftAdmin(); loadPayroll();
-  } catch (err) { toast('操作失敗：' + (err.data?.error || err.message), 'error'); }
+  } catch (err) {
+    const msgs = { invalid_hourly_rate: '時薪需為 0–100000 的整數' };
+    toast(msgs[err.data?.error] || '操作失敗：' + (err.data?.error || err.message), 'error');
+  }
 });
 
 document.getElementById('sh-slot-add').addEventListener('click', async () => {

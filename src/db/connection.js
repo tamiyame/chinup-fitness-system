@@ -249,12 +249,13 @@ addColumnIfMissing('coaches', 'color', 'TEXT');
 addColumnIfMissing('coaches', 'hourly_rate', 'INTEGER');
 
 // ── 2026-07-09 固定時段＋指派教練 ──
-// coach_shifts.slot_id：所屬館方時段（gym_slots）。ALTER 加欄的 REFERENCES 無強制力
-// （比照 bookings.session_type 對 CHECK 的處理），CASCADE 由 service 層交易顯式實作。
+// coach_shifts.slot_id：所屬館方時段（gym_slots）。ALTER 加欄的 REFERENCES 實際具強制力
+// （node:sqlite 實測：非法插入被拒、CASCADE 有效）；service 層仍顯式連動，作為語意自我文件化與雙保險。
 addColumnIfMissing('coach_shifts', 'slot_id', 'INTEGER REFERENCES gym_slots(id) ON DELETE CASCADE');
 
 /** 歸組 backfill：slot_id IS NULL 的既有班表按（星期＋起訖＋生效起迄）分組建 gym_slots 並回填。
- *  冪等（無 NULL 列＝no-op）。回傳本次建立的時段數。 */
+ *  冪等（無 NULL 列＝no-op）。回傳本次建立的時段數。
+ *  一次性 legacy 歸組；不與既有時段合併（重跑只處理新的 NULL 列）。 */
 export function backfillGymSlots() {
   const orphans = db.prepare('SELECT * FROM coach_shifts WHERE slot_id IS NULL ORDER BY id ASC').all();
   if (!orphans.length) return 0;

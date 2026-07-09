@@ -104,4 +104,30 @@ expect('deleteSlot 連動刪旗下教練列', () => {
   assert.throws(() => deleteSlot(s2.id), (e) => e.code === 'slot_not_found');
 });
 
+// ── 重打卡防護：移除→重加同時段不得雙倍計薪 ──
+{
+  const { checkIn, todayStatus } = await import('../src/services/shiftService.js');
+  const { setSetting } = await import('../src/services/discountService.js');
+  setSetting('checkin_lat', '25.0330'); setSetting('checkin_lng', '121.5654');
+  const D = '2033-05-04';                       // 任選測試日
+  const DOW = new Date(D + 'T00:00:00').getDay();
+  const s9 = createSlot({ dayOfWeek: DOW, startTime: '09:00', endTime: '11:00', effectiveFrom: '2033-05-01' });
+  assignCoach(s9.id, cB);
+  expect('打卡→移除→重加→再打卡 = already:true 且僅一筆出席', () => {
+    const r1 = checkIn({ coachId: cB, lat: 25.0330, lng: 121.5654, now: `${D}T09:10:00` });
+    assert.equal(r1.already, false);
+    unassignCoach(s9.id, cB);
+    assignCoach(s9.id, cB);
+    const r2 = checkIn({ coachId: cB, lat: 25.0330, lng: 121.5654, now: `${D}T09:20:00` });
+    assert.equal(r2.already, true);
+    assert.equal(r2.attendance.id, r1.attendance.id);
+    const cnt = db.prepare('SELECT COUNT(*) AS c FROM shift_attendance WHERE coach_id = ? AND work_date = ?').get(cB, D).c;
+    assert.equal(cnt, 1);
+    const st = todayStatus(cB, `${D}T09:30:00`);
+    assert.equal(st.slots[0].status, 'done');   // 新 shift id 仍顯示已打卡
+    assert.equal(st.extras.length, 0);          // 不重複顯示為班表外
+  });
+  db.exec("DELETE FROM app_settings WHERE key IN ('checkin_lat','checkin_lng')");
+}
+
 console.log('[gym-slots test] done');

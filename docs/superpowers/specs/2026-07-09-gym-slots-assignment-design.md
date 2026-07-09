@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS gym_slots (
 
 ### `coach_shifts.slot_id`（新欄）
 
-雙軌（比照 `users.is_admin` 前例）：**全新 DB** 由 SCHEMA 的 `coach_shifts` CREATE TABLE 直接帶 `slot_id INTEGER REFERENCES gym_slots(id) ON DELETE CASCADE` 欄（`gym_slots` 的 CREATE 置於 `coach_shifts` 之前）；**既有 DB** 用 `addColumnIfMissing('coach_shifts', 'slot_id', 'INTEGER REFERENCES gym_slots(id) ON DELETE CASCADE')`（SQLite ALTER 加欄的 REFERENCES 子句不具強制力——比照 `bookings.session_type` 對 CHECK 的處理：由 app 層保證，CASCADE 行為在 service 層以交易顯式實作，不依賴 DB 層）。
+雙軌（比照 `users.is_admin` 前例）：**全新 DB** 由 SCHEMA 的 `coach_shifts` CREATE TABLE 直接帶 `slot_id INTEGER REFERENCES gym_slots(id) ON DELETE CASCADE` 欄（`gym_slots` 的 CREATE 置於 `coach_shifts` 之前）；**既有 DB** 用 `addColumnIfMissing('coach_shifts', 'slot_id', 'INTEGER REFERENCES gym_slots(id) ON DELETE CASCADE')`（ALTER 加欄的 REFERENCES 實際具強制力——node:sqlite 實測：非法插入被拒、CASCADE 有效；service 層仍在交易中顯式連動，作為語意自我文件化與雙保險，不依賴單一層）。
 
 ### 語意（service 層，全部在 `tx()` 內）
 
@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS gym_slots (
 | 修改時段 | UPDATE `gym_slots` ＋ 同交易 UPDATE `coach_shifts` SET 同欄位 WHERE `slot_id=?`（歷史出席受快照保護） |
 | 結束時段 | ＝修改時段填 `effective_to`（連動） |
 | 刪除時段（誤建） | DELETE `gym_slots` ＋ 同交易 DELETE `coach_shifts` WHERE `slot_id=?`（顯式刪除，不依賴 DB CASCADE——見上） |
+
+行為調整（最終審查）：checkIn 增加同日同起訖未註銷出席的冪等防護，杜絕移除→重加後重打卡的雙倍計薪。
 
 ### 既有資料歸組（開機冪等 migration，`connection.js`）
 

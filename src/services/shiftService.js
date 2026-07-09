@@ -95,6 +95,11 @@ export function getCheckinConfig() {
 }
 
 const attendanceForShiftStmt = db.prepare('SELECT * FROM shift_attendance WHERE coach_id = ? AND work_date = ? AND shift_id = ?');
+const sameDayTimesStmt = db.prepare(`
+  SELECT * FROM shift_attendance
+  WHERE coach_id = ? AND work_date = ? AND voided_at IS NULL AND start_time = ? AND end_time = ?
+  ORDER BY id ASC LIMIT 1
+`);
 const attendanceForDateStmt = db.prepare('SELECT * FROM shift_attendance WHERE coach_id = ? AND work_date = ? ORDER BY start_time ASC');
 const getAttendanceStmt = db.prepare('SELECT * FROM shift_attendance WHERE id = ?');
 const insertAttendanceStmt = db.prepare(`
@@ -127,6 +132,9 @@ export function checkIn({ coachId, lat, lng, accuracy = null, now = nowLocal() }
       if (existing.voided_at) throw new ApiError(409, 'attendance_voided');
       return { attendance: existing, already: true };
     }
+    // 移除→重加同時段會產生新 shift id，UNIQUE 鍵擋不住重打卡；同日同起訖未註銷出席一律視為已打卡（防雙倍計薪）
+    const dup = sameDayTimesStmt.get(coachId, workDate, shift.start_time, shift.end_time);
+    if (dup) return { attendance: dup, already: true };
     const info = insertAttendanceStmt.run(coachId, shift.id, workDate, shift.start_time, shift.end_time,
       hoursBetween(shift.start_time, shift.end_time), 'checkin', now, lat, lng, accuracy, distance, null, null);
     return { attendance: getAttendanceStmt.get(Number(info.lastInsertRowid)), already: false };
@@ -140,8 +148,11 @@ export function todayStatus(coachId, now = nowLocal()) {
   const { windowBeforeMin } = getCheckinConfig();
   const attendance = attendanceForDateStmt.all(coachId, workDate);
   const byShift = new Map(attendance.filter((a) => a.shift_id != null).map((a) => [a.shift_id, a]));
+  const byTimes = new Map(attendance.filter((a) => !a.voided_at).map((a) => [a.start_time + '|' + a.end_time, a]));
+  const slotTimeKeys = new Set();
   const slots = shiftsForDate(coachId, workDate).map((s) => {
-    const a = byShift.get(s.id);
+    slotTimeKeys.add(s.start_time + '|' + s.end_time);
+    const a = byShift.get(s.id) || byTimes.get(s.start_time + '|' + s.end_time);
     let status;
     if (a) status = a.voided_at ? 'voided' : 'done';
     else if (nowMin < toMin(s.start_time) - windowBeforeMin) status = 'upcoming';
@@ -150,7 +161,7 @@ export function todayStatus(coachId, now = nowLocal()) {
     return { shiftId: s.id, startTime: s.start_time, endTime: s.end_time,
       hours: hoursBetween(s.start_time, s.end_time), status, checkedInAt: a?.checked_in_at ?? null };
   });
-  const extras = attendance.filter((a) => a.shift_id == null && !a.voided_at)
+  const extras = attendance.filter((a) => a.shift_id == null && !a.voided_at && !slotTimeKeys.has(a.start_time + '|' + a.end_time))
     .map((a) => ({ startTime: a.start_time, endTime: a.end_time, hours: a.hours }));
   return { date: workDate, slots, extras };
 }
@@ -225,7 +236,7 @@ export function shiftSummaryByCoach(startDate, endDate) {
 
 // ── 館方固定時段（gym_slots）＋指派展開 ──
 // 指派＝在交易中展開一列 coach_shifts（複製時段參數、掛 slot_id）；時段修改連動旗下教練列。
-// CASCADE 顯式實作（既有 DB 的 slot_id 無強制 FK）。規則見 2026-07-09-gym-slots-assignment-design.md。
+// CASCADE 顯式實作，作為雙保險（DB 層 FK 實際亦有強制力，見 connection.js 註解）。規則見 2026-07-09-gym-slots-assignment-design.md。
 
 const listSlotsStmt = db.prepare('SELECT * FROM gym_slots ORDER BY day_of_week ASC, start_time ASC');
 const getSlotStmt = db.prepare('SELECT * FROM gym_slots WHERE id = ?');
