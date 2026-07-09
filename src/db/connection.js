@@ -244,6 +244,10 @@ if (!bkPayCols.includes('paid_at')) {
 // coaches.color：登錄預約「全部教練」週曆的教練配色（Google 日曆官方 24 色盤其一），NULL=預設（維持現行藍色）。
 addColumnIfMissing('coaches', 'color', 'TEXT');
 
+// ── 2026-07-09 駐場打卡與時薪 ──
+// coaches.hourly_rate：駐場時薪（元/小時）。NULL=不參與駐場薪資。即時制（計算當下取現值，不存歷史）。
+addColumnIfMissing('coaches', 'hourly_rate', 'INTEGER');
+
 // NOTE: initial role bootstrap has run in production.
 // Removed because the guard `role='user'` made demoted accounts get
 // re-promoted on every boot — owners' role changes weren't sticky.

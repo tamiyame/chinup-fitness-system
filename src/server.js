@@ -1,7 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, basename } from 'node:path';
-import { db, tx } from './db/connection.js';
+import { db, nowLocal, tx } from './db/connection.js';
 import {
   createTemplate, editTemplate, listTemplates, getTemplate,
   listOpenSessions, listRegistrationsBySession, setSessionOpen,
@@ -94,7 +94,9 @@ import {
 } from './services/packageService.js';
 import { getCoachWeek as svcGetCoachWeek, searchCustomers as svcSearchCustomers } from './services/coachCalendarService.js';
 import { sendBookingConfirmation } from './services/emailService.js';
-import { computePayroll } from './services/payrollService.js';
+import { computePayroll, periodRange, defaultPeriod } from './services/payrollService.js';
+import { checkIn as shiftCheckIn, todayStatus as shiftTodayStatus, coachPeriodHours,
+  listShifts, createShift, updateShift, deleteShift, manualAttendance, voidAttendance } from './services/shiftService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -112,6 +114,7 @@ const changePwLimiter = createRateLimiter({ name: 'change-password', windowMs: 1
 // freebusy 放大（不同日期參數可繞過 60s 快取打到 Google API）與濫用 email 確認信
 const bookingLimiter = createRateLimiter({ name: 'public-booking', windowMs: 60_000, max: 20 });
 const lineBindLimiter = createRateLimiter({ name: 'public-line-bind', windowMs: 60_000, max: 10 });
+const checkinLimiter = createRateLimiter({ name: 'checkin', windowMs: 60_000, max: 10 });
 app.use(express.json({
   limit: '3mb',
   verify: (req, res, buf) => { req.rawBody = buf; },
@@ -123,6 +126,9 @@ app.get('/my-bookings.html', (req, res) => res.redirect(301, '/my-schedule'));
 app.get('/line.html', (req, res) => res.redirect(301, '/my-schedule'));
 app.get('/my-schedule', (req, res) =>
   res.sendFile(resolve(__dirname, '../public/my-schedule.html'))
+);
+app.get('/checkin', (req, res) =>
+  res.sendFile(resolve(__dirname, '../public/checkin.html'))
 );
 
 app.use(express.static(resolve(__dirname, '../public')));
@@ -934,6 +940,26 @@ app.post('/api/coach/bookings/:id/cancel-group', requireCoach, asyncHandler((req
   res.json(r);
 }));
 
+// --- 駐場打卡（永遠本人：刻意不走 resolveCoach，管理者代登記走後台補登留稽核）---
+app.get('/api/coach/checkin/today', requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const status = shiftTodayStatus(coach.id);
+  const period = defaultPeriod();
+  const { displayStart, displayEnd } = periodRange(period);
+  const periodHours = Math.round(coachPeriodHours(coach.id, displayStart, displayEnd) * 100) / 100;
+  res.json({ ...status, period, periodHours });
+}));
+
+app.post('/api/coach/checkin', checkinLimiter, requireCoach, asyncHandler((req, res) => {
+  const coach = loadCoachForUser(req, res);
+  if (!coach) return;
+  const { lat, lng, accuracy } = req.body || {};
+  const result = shiftCheckIn({ coachId: coach.id, lat: Number(lat), lng: Number(lng),
+    accuracy: accuracy == null ? null : Number(accuracy) });
+  res.json({ ok: true, already: result.already, attendance: result.attendance });
+}));
+
 // --- Public (no auth): anon booking / group orders / phone lookup ---
 app.get('/api/public/group-courses', asyncHandler((req, res) => {
   res.json(svcPublicCourses());
@@ -1261,6 +1287,61 @@ app.get('/api/admin/payroll', requireAdmin, asyncHandler((req, res) => {
   res.json(computePayroll({ period: req.query.period ? String(req.query.period) : undefined }));
 }));
 
+// --- Admin: 駐場班表 / 時薪 / 出席補登與註銷 ---
+app.get('/api/admin/shifts', requireAdmin, asyncHandler((req, res) => {
+  const coachId = req.query.coachId ? Number(req.query.coachId) : null;
+  res.json(listShifts(coachId));
+}));
+
+app.post('/api/admin/shifts', requireAdmin, asyncHandler((req, res) => {
+  const b = req.body || {};
+  const coach = svcGetCoach(Number(b.coach_id));
+  if (!coach) return res.status(404).json({ error: 'coach_not_found' });
+  res.json(createShift({ coachId: coach.id, dayOfWeek: Number(b.day_of_week), startTime: b.start_time,
+    endTime: b.end_time, effectiveFrom: b.effective_from, effectiveTo: b.effective_to ?? null }));
+}));
+
+app.patch('/api/admin/shifts/:id', requireAdmin, asyncHandler((req, res) => {
+  const b = req.body || {};
+  res.json(updateShift(Number(req.params.id), {
+    startTime: b.start_time, endTime: b.end_time, effectiveFrom: b.effective_from,
+    effectiveTo: 'effective_to' in b ? b.effective_to : undefined,
+  }));
+}));
+
+app.delete('/api/admin/shifts/:id', requireAdmin, asyncHandler((req, res) => {
+  deleteShift(Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+// 時薪：整數 0–100000，null/'' 清空（該教練不參與駐場薪資）。
+app.patch('/api/admin/coaches/:id/hourly-rate', requireAdmin, asyncHandler((req, res) => {
+  const coach = svcGetCoach(Number(req.params.id));
+  if (!coach) return res.status(404).json({ error: 'coach_not_found' });
+  const raw = req.body?.hourly_rate;
+  let v = null;
+  if (raw !== null && raw !== undefined && raw !== '') {
+    v = Number(raw);
+    if (!Number.isInteger(v) || v < 0 || v > 100000) return res.status(400).json({ error: 'invalid_hourly_rate' });
+  }
+  db.prepare('UPDATE coaches SET hourly_rate = ?, updated_at = ? WHERE id = ?').run(v, nowLocal(), coach.id);
+  res.json(svcGetCoach(coach.id));
+}));
+
+app.post('/api/admin/attendance', requireAdmin, asyncHandler((req, res) => {
+  const b = req.body || {};
+  const coach = svcGetCoach(Number(b.coach_id));
+  if (!coach) return res.status(404).json({ error: 'coach_not_found' });
+  res.json(manualAttendance({ coachId: coach.id, workDate: b.work_date,
+    shiftId: b.shift_id != null ? Number(b.shift_id) : null,
+    startTime: b.start_time ?? null, endTime: b.end_time ?? null,
+    note: b.note ?? null, createdBy: req.user.id }));
+}));
+
+app.post('/api/admin/attendance/:id/void', requireAdmin, asyncHandler((req, res) => {
+  res.json(voidAttendance(Number(req.params.id), req.user.id));
+}));
+
 // --- Admin: Settings ---
 function settingsPayload() {
   return {
@@ -1275,6 +1356,10 @@ function settingsPayload() {
     payroll_pct_low: Number(getSetting('payroll_pct_low') || '50'),
     payroll_pct_high: Number(getSetting('payroll_pct_high') || '60'),
     payroll_group_pct: Number(getSetting('payroll_group_pct') || '50'),
+    checkin_lat: getSetting('checkin_lat') || '',
+    checkin_lng: getSetting('checkin_lng') || '',
+    checkin_radius_m: Number(getSetting('checkin_radius_m') || '150'),
+    checkin_window_before_min: Number(getSetting('checkin_window_before_min') || '30'),
   };
 }
 app.get('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
@@ -1325,6 +1410,23 @@ app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
     ['payroll_pct_high', 0, 100],
     ['payroll_group_pct', 0, 100],
   ]) {
+    if (b[key] !== undefined) {
+      const n = Number(b[key]);
+      if (!Number.isInteger(n) || n < min || n > max) return res.status(400).json({ error: `invalid_${key}` });
+      writes.push([key, String(n)]);
+    }
+  }
+  // 駐場打卡參數：座標可空字串（=未設定，打卡回 503）；半徑/窗口為整數範圍。
+  for (const [key, min, max] of [['checkin_lat', -90, 90], ['checkin_lng', -180, 180]]) {
+    if (b[key] !== undefined) {
+      const s = String(b[key]).trim();
+      if (s === '') { writes.push([key, '']); continue; }
+      const v = Number(s);
+      if (!Number.isFinite(v) || v < min || v > max) return res.status(400).json({ error: `invalid_${key}` });
+      writes.push([key, String(v)]);
+    }
+  }
+  for (const [key, min, max] of [['checkin_radius_m', 10, 5000], ['checkin_window_before_min', 0, 240]]) {
     if (b[key] !== undefined) {
       const n = Number(b[key]);
       if (!Number.isInteger(n) || n < min || n > max) return res.status(400).json({ error: `invalid_${key}` });

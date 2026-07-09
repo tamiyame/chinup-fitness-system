@@ -11,7 +11,8 @@ import { createBooking } from '../services/bookingService.js';
 // reference sessions/registrations/users; clear it first so the wipe below
 // doesn't trip a FOREIGN KEY constraint on databases that hold legacy rows.
 // group_orders/bookings 也引用 users（無 cascade）：npm test 跑完常殘留這些列（測試只在開頭 reset）→ 一併先刪。
-db.exec("DELETE FROM point_transactions; DELETE FROM discount_redemptions; DELETE FROM auth_sessions; DELETE FROM notifications; DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM bookings; DELETE FROM customer_packages; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM renewal_reminders; DELETE FROM users;");
+// shift_attendance 同理（coach_id/created_by/voided_by 皆無 cascade）；coach_shifts/coaches 有 cascade 免清。
+db.exec("DELETE FROM point_transactions; DELETE FROM discount_redemptions; DELETE FROM auth_sessions; DELETE FROM notifications; DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM bookings; DELETE FROM customer_packages; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM renewal_reminders; DELETE FROM shift_attendance; DELETE FROM users;");
 
 const insertUser = db.prepare(
   'INSERT INTO users (name, email, phone, password_hash, role, notification_preference) VALUES (?, ?, ?, ?, ?, ?)'

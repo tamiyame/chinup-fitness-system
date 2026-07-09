@@ -46,4 +46,10 @@ expect('coaches 元素形狀（若有教練）', () => {
   assert.ok('coachId' in c && 'displayName' in c && 'total' in c);
   assert.ok(Array.isArray(c.oneOnOne.details) && Array.isArray(c.group.details));
 });
+expect('coaches 元素含 shift 區塊、totals 含 shiftHours/shiftSalary', () => {
+  const c = r0.data.coaches[0];
+  if (c) { assert.ok(c.shift && 'hours' in c.shift && 'rate' in c.shift && 'salary' in c.shift && Array.isArray(c.shift.details)); }
+  assert.equal(typeof r0.data.totals.shiftHours, 'number');
+  assert.equal(typeof r0.data.totals.shiftSalary, 'number');
+});
 console.log('[payroll-api test] done');

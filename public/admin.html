@@ -182,6 +182,9 @@ body { visibility: hidden; }
   #pr-table td.pr-c-ghead::before{ content:"團課人次"; }
   #pr-table td.pr-c-grev::before{ content:"團課實收"; }
   #pr-table td.pr-c-gsal::before{ content:"團課薪資"; }
+  #pr-table td.pr-c-shifth::before{ content:"駐場時數"; }
+  #pr-table td.pr-c-shiftr::before{ content:"駐場時薪"; }
+  #pr-table td.pr-c-shifts::before{ content:"駐場薪資"; }
   #pr-table td.pr-c-total::before{ content:"應發合計"; }
   #pr-table tr.pr-detail-row{ display:block; }
   .pr-detail-block table, .pr-detail-block tbody, .pr-detail-block tr{ display:table; width:100%; }
@@ -732,6 +735,60 @@ details.session-row summary .font-semibold{
     </div>
   </section>
 
+  <!-- 駐場出勤 -->
+  <section class="card mb-6">
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold">駐場出勤</h3>
+      <button id="sh-toggle" class="btn btn-ghost btn-sm">展開</button>
+    </div>
+    <div class="subtle text-sm mt-1">教練掃館內 QR code（/checkin 頁）到場打卡；依固定班表計時數，乘各自時薪併入上方薪資表。</div>
+    <div id="sh-body" class="hidden mt-4">
+      <h4 class="font-bold text-sm mb-2">打卡參數</h4>
+      <label class="text-sm block mb-1">館址定位（三種方式擇一：人在館內按「使用目前位置」最準；或搜尋地址（通常到街道層級）；或直接貼上 Google Maps 複製的「緯度, 經度」）
+        <div class="flex gap-2 mt-1 flex-wrap">
+          <input id="sh-addr" class="form-input" style="flex:1;min-width:200px;" placeholder="地址／地標，或貼上「25.0338, 121.5645」">
+          <button type="button" id="sh-addr-search" class="btn btn-ghost btn-sm" style="white-space:nowrap;">搜尋</button>
+          <button type="button" id="sh-addr-locate" class="btn btn-ghost btn-sm" style="white-space:nowrap;">使用目前位置</button>
+        </div>
+      </label>
+      <div id="sh-addr-results" class="text-sm mb-3"></div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <label class="text-sm">館址緯度
+          <input id="sh-lat" class="form-input mt-1" placeholder="25.0330"></label>
+        <label class="text-sm">館址經度
+          <input id="sh-lng" class="form-input mt-1" placeholder="121.5654"></label>
+        <label class="text-sm">允許半徑（公尺）
+          <input id="sh-radius" type="number" min="10" max="5000" class="form-input mt-1"></label>
+        <label class="text-sm">可提早打卡（分鐘）
+          <input id="sh-window" type="number" min="0" max="240" class="form-input mt-1"></label>
+      </div>
+      <div class="mt-2"><button id="sh-settings-save" class="btn btn-primary btn-sm">儲存參數</button></div>
+
+      <h4 class="font-bold text-sm mb-2 mt-5">打卡 QR code</h4>
+      <div class="subtle text-sm">列印貼在館內，教練用手機掃描即可開啟打卡頁（<span id="sh-qr-url"></span>）。</div>
+      <div id="sh-qr" class="mt-2"></div>
+      <div class="mt-2"><button type="button" id="sh-qr-print" class="btn btn-ghost btn-sm">列印 QR code</button></div>
+
+      <h4 class="font-bold text-sm mb-2 mt-5">教練時薪與班表</h4>
+      <div id="sh-coaches"></div>
+
+      <h4 class="font-bold text-sm mb-2 mt-5">補登出席</h4>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <label class="text-sm">教練
+          <select id="sh-m-coach" class="form-input mt-1"></select></label>
+        <label class="text-sm">日期
+          <input id="sh-m-date" type="date" class="form-input mt-1"></label>
+        <label class="text-sm">套用班表時段
+          <select id="sh-m-shift" class="form-input mt-1"><option value="">自訂起訖</option></select></label>
+        <label class="text-sm">自訂起訖
+          <div class="flex gap-1 mt-1"><input id="sh-m-start" type="time" class="form-input"><input id="sh-m-end" type="time" class="form-input"></div></label>
+        <label class="text-sm">備註
+          <input id="sh-m-note" class="form-input mt-1"></label>
+      </div>
+      <div class="mt-2"><button id="sh-m-save" class="btn btn-primary btn-sm">補登</button></div>
+    </div>
+  </section>
+
   <!-- 彙總表 -->
   <section class="mb-10">
     <div class="flex items-center justify-between mb-4">
@@ -835,6 +892,7 @@ details.session-row summary .font-semibold{
 
 <div id="toast" class="toast"></div>
 
+<script src="/vendor/qrcode.js"></script><!-- QR Code Generator (Kazuhiko Arase, MIT)：後台顯示/列印打卡 QR 用 -->
 <script type="module" src="/app.js"></script>
 <script type="module" src="/admin.js"></script>
 </body>

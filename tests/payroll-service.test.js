@@ -14,6 +14,7 @@ db.exec(`
   DELETE FROM course_templates WHERE name LIKE 'PR測試%';
   DELETE FROM bookings WHERE start_at LIKE '2031-%';
   DELETE FROM customer_packages WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'pr-%');
+  DELETE FROM shift_attendance WHERE coach_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'pr-%'));
   DELETE FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'pr-%');
   DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'pr-%');
   DELETE FROM users WHERE email LIKE 'pr-%';
@@ -204,4 +205,46 @@ expect('totals = 各教練加總', () => {
   assert.equal(r.totals.total, sum);
   assert.equal(r.totals.groupRevenue, r.coaches.reduce((s, c) => s + c.group.revenue, 0));
 });
+
+// ── 駐場時薪整合 ──
+{
+  const uid = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('PR駐場','pr-shift@x.com','coach')").run().lastInsertRowid);
+  const cid = Number(db.prepare("INSERT INTO coaches (user_id, display_name, is_active, hourly_rate) VALUES (?, 'PR駐場', 1, 500)").run(uid).lastInsertRowid);
+  const ins = db.prepare(`INSERT INTO shift_attendance (coach_id, shift_id, work_date, start_time, end_time, hours, source, created_by)
+    VALUES (?, NULL, ?, '09:00', '11:00', 2, 'manual', 1)`);
+  ins.run(cid, '2031-01-10');
+  ins.run(cid, '2031-02-05');            // 迄端含
+  ins.run(cid, '2031-02-06');            // 期外
+  const voided = Number(db.prepare(`INSERT INTO shift_attendance (coach_id, shift_id, work_date, start_time, end_time, hours, source, created_by, voided_at)
+    VALUES (?, NULL, '2031-01-20', '09:00', '10:00', 1, 'manual', 1, '2031-01-21T00:00:00')`).run(cid).lastInsertRowid);
+
+  const r = computePayroll({ period: '2031-02' });
+  const c = r.coaches.find((x) => x.coachId === cid);
+  expect('shift 區塊：時數含端點/排除註銷、薪資=時數×時薪', () => {
+    assert.equal(c.shift.hours, 4); assert.equal(c.shift.rate, 500); assert.equal(c.shift.salary, 2000);
+    assert.equal(c.shift.details.length, 2);
+    assert.equal(c.total, c.oneOnOne.salary + c.group.salary + 2000);
+  });
+  expect('totals 加總 shiftHours/shiftSalary 並計入 total', () => {
+    assert.ok(r.totals.shiftHours >= 4);
+    assert.ok(r.totals.shiftSalary >= 2000);
+    assert.equal(r.totals.total, r.coaches.reduce((s, x) => s + x.total, 0));
+  });
+  db.prepare("UPDATE coaches SET hourly_rate = NULL WHERE id = ?").run(cid);
+  const r2 = computePayroll({ period: '2031-02' });
+  const c2 = r2.coaches.find((x) => x.coachId === cid);
+  expect('hourly_rate NULL：rate=null、salary=0、時數照列', () => {
+    assert.equal(c2.shift.rate, null); assert.equal(c2.shift.salary, 0); assert.equal(c2.shift.hours, 4);
+  });
+  expect('時薪四捨五入到元：333 × 1.5h = 500', () => {
+    db.prepare("UPDATE coaches SET hourly_rate = 333, is_active = 0 WHERE id = ?").run(cid);
+    db.exec(`DELETE FROM shift_attendance WHERE coach_id = ${cid}`);
+    db.prepare(`INSERT INTO shift_attendance (coach_id, shift_id, work_date, start_time, end_time, hours, source, created_by)
+      VALUES (?, NULL, '2031-01-15', '09:00', '10:30', 1.5, 'manual', 1)`).run(cid);
+    const c3 = computePayroll({ period: '2031-02' }).coaches.find((x) => x.coachId === cid);
+    assert.ok(c3, '停用教練期內有駐場資料仍應列出');
+    assert.equal(c3.shift.salary, 500);
+  });
+}
+
 console.log('[payroll-service test] done');
