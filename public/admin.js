@@ -2133,6 +2133,7 @@ document.getElementById('sh-addr').addEventListener('keydown', (e) => {
 // 人在館內取當下 GPS 當館址座標——與教練打卡同一種量測，錨點最準
 document.getElementById('sh-addr-locate').addEventListener('click', () => {
   const box = document.getElementById('sh-addr-results');
+  if (!navigator.geolocation) { box.textContent = '此瀏覽器不支援定位功能，請改用地址搜尋或手動輸入。'; return; }
   box.textContent = '取得目前位置中…';
   navigator.geolocation.getCurrentPosition((pos) => {
     shApplyCoords(pos.coords.latitude, pos.coords.longitude,
