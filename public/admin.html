@@ -769,8 +769,19 @@ details.session-row summary .font-semibold{
       <div id="sh-qr" class="mt-2"></div>
       <div class="mt-2"><button type="button" id="sh-qr-print" class="btn btn-ghost btn-sm">列印 QR code</button></div>
 
-      <h4 class="font-bold text-sm mb-2 mt-5">教練時薪與班表</h4>
-      <div id="sh-coaches"></div>
+      <h4 class="font-bold text-sm mb-2 mt-5">上班時段</h4>
+      <div class="subtle text-sm">先建立固定時段，再把教練加進去；教練掃 QR 即可打該時段的卡。</div>
+      <div id="sh-slots" class="mt-2"></div>
+      <div class="flex flex-wrap gap-2 mt-2 items-end text-sm">
+        <select id="sh-slot-new-dow" class="form-input"></select>
+        <input type="time" id="sh-slot-new-start" class="form-input">
+        <input type="time" id="sh-slot-new-end" class="form-input">
+        <input type="date" id="sh-slot-new-from" class="form-input" title="生效日">
+        <button type="button" id="sh-slot-add" class="btn btn-primary btn-sm">新增時段</button>
+      </div>
+
+      <h4 class="font-bold text-sm mb-2 mt-5">教練時薪</h4>
+      <div id="sh-rates"></div>
 
       <h4 class="font-bold text-sm mb-2 mt-5">補登出席</h4>
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3">

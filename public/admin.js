@@ -1927,94 +1927,132 @@ document.getElementById('pr-settings-save').addEventListener('click', async () =
 const SH_WEEK = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 let shCoaches = [];
 let shShifts = [];
+let shSlots = [];
 const shToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 async function loadShiftAdmin() {
   try {
-    const [settings, coaches, shifts] = await Promise.all([
-      api('/api/admin/settings'), api('/api/admin/coaches'), api('/api/admin/shifts'),
+    const [settings, coaches, slots, shifts] = await Promise.all([
+      api('/api/admin/settings'), api('/api/admin/coaches'), api('/api/admin/slots'), api('/api/admin/shifts'),
     ]);
     document.getElementById('sh-lat').value = settings.checkin_lat;
     document.getElementById('sh-lng').value = settings.checkin_lng;
     document.getElementById('sh-radius').value = settings.checkin_radius_m;
     document.getElementById('sh-window').value = settings.checkin_window_before_min;
-    shCoaches = coaches; shShifts = shifts;
-    renderShCoaches();
+    shCoaches = coaches; shSlots = slots; shShifts = shifts;
+    renderShSlots();
+    renderShRates();
     renderShManualCoachOptions();
     renderShManualShiftOptions();
   } catch (e) { toast('駐場資料載入失敗：' + e.message, 'error'); }
 }
 
-function renderShCoaches() {
-  const box = document.getElementById('sh-coaches');
-  const rows = shCoaches.filter((c) => c.is_active || shShifts.some((s) => s.coach_id === c.id));
-  box.innerHTML = rows.map((c) => {
-    const shiftRows = shShifts.filter((s) => s.coach_id === c.id).map((s) => `
-      <tr data-sid="${s.id}">
-        <td>${SH_WEEK[s.day_of_week]} ${s.start_time}–${s.end_time}</td>
-        <td class="subtle">自 ${s.effective_from}</td>
-        <td><input type="date" class="form-input sh-eff-to" value="${s.effective_to || ''}" title="結束日（含當日；留空＝持續有效）"></td>
-        <td class="text-right">
-          <button class="btn btn-ghost btn-sm sh-shift-save">儲存</button>
-          <button class="btn btn-ghost btn-sm sh-shift-del">刪除</button>
-        </td>
-      </tr>`).join('');
+function renderShSlots() {
+  const box = document.getElementById('sh-slots');
+  box.innerHTML = shSlots.map((s) => {
+    const chips = s.coaches.map((c) => `
+      <span class="sh-chip" data-coach="${c.coachId}"
+        style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid #e2e8f0;border-radius:999px;background:#f8fafc;">
+        ${escapeHtml(c.displayName)}<button type="button" class="sh-chip-x" style="border:none;background:none;cursor:pointer;color:#94a3b8;">✕</button>
+      </span>`).join(' ');
+    const addable = shCoaches.filter((c) => c.is_active && !s.coaches.some((x) => x.coachId === c.id));
     return `
-    <div class="sh-coach card mb-3" data-cid="${c.id}">
+    <div class="sh-slot card mb-3" data-sid="${s.id}">
       <div class="flex items-center justify-between flex-wrap gap-2">
-        <span class="font-medium">${escapeHtml(c.display_name)}</span>
-        <span class="text-sm">時薪
-          <input type="number" min="0" class="form-input sh-rate" style="width:90px" value="${c.hourly_rate ?? ''}" placeholder="未設">
-          <button class="btn btn-ghost btn-sm sh-rate-save">儲存</button></span>
+        <span class="font-medium">${SH_WEEK[s.day_of_week]} ${s.start_time}–${s.end_time}</span>
+        <span class="text-sm subtle">自 ${s.effective_from}${s.effective_to ? '，至 ' + s.effective_to : ''}</span>
       </div>
-      <table class="w-full text-sm mt-2"><tbody>${shiftRows}</tbody></table>
+      <div class="flex flex-wrap gap-2 mt-2 items-center text-sm">${chips || '<span class="subtle">尚未指派教練</span>'}</div>
       <div class="flex flex-wrap gap-2 mt-2 items-end text-sm">
-        <select class="form-input sh-new-dow">${SH_WEEK.map((w, i) => `<option value="${i}">${w}</option>`).join('')}</select>
-        <input type="time" class="form-input sh-new-start">
-        <input type="time" class="form-input sh-new-end">
-        <input type="date" class="form-input sh-new-from" value="${shToday()}" title="生效日">
-        <button class="btn btn-primary btn-sm sh-shift-add">新增班表</button>
+        <select class="form-input sh-slot-coach">
+          <option value="">加入教練…</option>
+          ${addable.map((c) => `<option value="${c.id}">${escapeHtml(c.display_name)}</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-ghost btn-sm sh-slot-assign">加入</button>
+        <label class="text-sm">結束日
+          <input type="date" class="form-input sh-slot-to" value="${s.effective_to || ''}" title="結束日（含當日；留空＝持續有效）"></label>
+        <button type="button" class="btn btn-ghost btn-sm sh-slot-save">儲存</button>
+        <button type="button" class="btn btn-ghost btn-sm sh-slot-del">刪除</button>
       </div>
     </div>`;
-  }).join('') || '<div class="subtle text-sm">尚無啟用教練</div>';
+  }).join('') || '<div class="subtle text-sm">尚未建立時段</div>';
 }
 
-document.getElementById('sh-coaches').addEventListener('click', async (e) => {
-  const card = e.target.closest('.sh-coach');
+function renderShRates() {
+  const box = document.getElementById('sh-rates');
+  box.innerHTML = shCoaches.filter((c) => c.is_active).map((c) => `
+    <div class="flex items-center gap-2 text-sm mb-1 sh-rate-row" data-cid="${c.id}">
+      <span class="font-medium" style="min-width:96px;">${escapeHtml(c.display_name)}</span>
+      時薪 <input type="number" min="0" class="form-input sh-rate" style="width:90px" value="${c.hourly_rate ?? ''}" placeholder="未設">
+      <button type="button" class="btn btn-ghost btn-sm sh-rate-save">儲存</button>
+    </div>`).join('') || '<div class="subtle text-sm">尚無啟用教練</div>';
+}
+
+document.getElementById('sh-slots').addEventListener('click', async (e) => {
+  const card = e.target.closest('.sh-slot');
   if (!card) return;
-  const cid = Number(card.dataset.cid);
+  const sid = Number(card.dataset.sid);
   try {
-    if (e.target.classList.contains('sh-rate-save')) {
-      const raw = card.querySelector('.sh-rate').value.trim();
-      await api(`/api/admin/coaches/${cid}/hourly-rate`, { method: 'PATCH', body: { hourly_rate: raw === '' ? null : Number(raw) } });
-      toast('時薪已更新', 'success'); loadShiftAdmin(); loadPayroll();
-    } else if (e.target.classList.contains('sh-shift-add')) {
-      await api('/api/admin/shifts', { method: 'POST', body: {
-        coach_id: cid,
-        day_of_week: Number(card.querySelector('.sh-new-dow').value),
-        start_time: card.querySelector('.sh-new-start').value,
-        end_time: card.querySelector('.sh-new-end').value,
-        effective_from: card.querySelector('.sh-new-from').value,
-      } });
-      toast('班表已新增', 'success'); loadShiftAdmin();
-    } else if (e.target.classList.contains('sh-shift-save')) {
-      const tr = e.target.closest('tr');
-      await api(`/api/admin/shifts/${tr.dataset.sid}`, { method: 'PATCH', body: { effective_to: tr.querySelector('.sh-eff-to').value || null } });
-      toast('班表已更新', 'success'); loadShiftAdmin();
-    } else if (e.target.classList.contains('sh-shift-del')) {
+    if (e.target.classList.contains('sh-slot-assign')) {
+      const coachId = card.querySelector('.sh-slot-coach').value;
+      if (!coachId) { toast('請先選擇教練', 'error'); return; }
+      await api(`/api/admin/slots/${sid}/coaches`, { method: 'POST', body: { coach_id: Number(coachId) } });
+      toast('已加入教練', 'success'); loadShiftAdmin();
+    } else if (e.target.classList.contains('sh-chip-x')) {
+      const chip = e.target.closest('.sh-chip');
+      if (e.target.dataset.arm !== '1') {
+        e.target.dataset.arm = '1'; e.target.textContent = '確認?';
+        setTimeout(() => { e.target.dataset.arm = ''; e.target.textContent = '✕'; }, 3000);
+        return;
+      }
+      await api(`/api/admin/slots/${sid}/coaches/${chip.dataset.coach}`, { method: 'DELETE' });
+      toast('已移除教練（歷史出席不受影響）', 'success'); loadShiftAdmin();
+    } else if (e.target.classList.contains('sh-slot-save')) {
+      await api(`/api/admin/slots/${sid}`, { method: 'PATCH', body: { effective_to: card.querySelector('.sh-slot-to').value || null } });
+      toast('時段已更新', 'success'); loadShiftAdmin();
+    } else if (e.target.classList.contains('sh-slot-del')) {
       if (e.target.dataset.arm !== '1') {
         e.target.dataset.arm = '1'; e.target.textContent = '確認刪除？';
         setTimeout(() => { e.target.dataset.arm = ''; e.target.textContent = '刪除'; }, 3000);
         return;
       }
-      await api(`/api/admin/shifts/${e.target.closest('tr').dataset.sid}`, { method: 'DELETE' });
-      toast('班表已刪除（誤建用；正常結束班表請填結束日）', 'success'); loadShiftAdmin();
+      await api(`/api/admin/slots/${sid}`, { method: 'DELETE' });
+      toast('時段已刪除（誤建用；正常結束請填結束日）', 'success'); loadShiftAdmin();
     }
   } catch (err) {
-    const msgs = { invalid_time_range: '起訖時間無效', invalid_effective_range: '生效日期無效', invalid_hourly_rate: '時薪需為 0–100000 的整數' };
+    const msgs = { coach_already_in_slot: '該教練已在此時段', invalid_time_range: '起訖時間無效', invalid_effective_range: '生效日期無效' };
     toast(msgs[err.data?.error] || '操作失敗：' + (err.data?.error || err.message), 'error');
   }
 });
+
+document.getElementById('sh-rates').addEventListener('click', async (e) => {
+  if (!e.target.classList.contains('sh-rate-save')) return;
+  const row = e.target.closest('.sh-rate-row');
+  try {
+    const raw = row.querySelector('.sh-rate').value.trim();
+    await api(`/api/admin/coaches/${row.dataset.cid}/hourly-rate`, { method: 'PATCH', body: { hourly_rate: raw === '' ? null : Number(raw) } });
+    toast('時薪已更新', 'success'); loadShiftAdmin(); loadPayroll();
+  } catch (err) { toast('操作失敗：' + (err.data?.error || err.message), 'error'); }
+});
+
+document.getElementById('sh-slot-add').addEventListener('click', async () => {
+  try {
+    await api('/api/admin/slots', { method: 'POST', body: {
+      day_of_week: Number(document.getElementById('sh-slot-new-dow').value),
+      start_time: document.getElementById('sh-slot-new-start').value,
+      end_time: document.getElementById('sh-slot-new-end').value,
+      effective_from: document.getElementById('sh-slot-new-from').value,
+    } });
+    toast('時段已建立', 'success'); loadShiftAdmin();
+  } catch (err) {
+    const msgs = { invalid_time_range: '起訖時間無效', invalid_effective_range: '生效日期無效', invalid_day_of_week: '星期無效' };
+    toast(msgs[err.data?.error] || '建立失敗：' + (err.data?.error || err.message), 'error');
+  }
+});
+
+// 新增時段表單初始化（星期選項＋生效日預設今天）
+document.getElementById('sh-slot-new-dow').innerHTML = SH_WEEK.map((w, i) => `<option value="${i}">${w}</option>`).join('');
+document.getElementById('sh-slot-new-from').value = shToday();
 
 function renderShManualCoachOptions() {
   document.getElementById('sh-m-coach').innerHTML =
