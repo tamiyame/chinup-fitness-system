@@ -836,8 +836,8 @@ details.session-row summary .font-semibold{
       <div class="sh-add-card mt-3">
         <div class="sh-add-title">新增時段</div>
         <div class="sh-add-row">
-          <div class="sh-field"><span class="sh-flabel">星期</span><select id="sh-slot-new-dow" class="form-input"></select></div>
-          <div class="sh-field"><span class="sh-flabel">生效日</span><input type="date" id="sh-slot-new-from" class="form-input"></div>
+          <label class="sh-field"><span class="sh-flabel">星期</span><select id="sh-slot-new-dow" class="form-input"></select></label>
+          <label class="sh-field"><span class="sh-flabel">生效日</span><input type="date" id="sh-slot-new-from" class="form-input"></label>
         </div>
         <div class="sh-field"><span class="sh-flabel">時段起訖</span>
           <div class="sh-range"><input type="time" id="sh-slot-new-start"><span class="sh-dash">–</span><input type="time" id="sh-slot-new-end"></div>
@@ -854,16 +854,16 @@ details.session-row summary .font-semibold{
         <div class="sh-panel">
           <div class="sh-h4">補登出席</div>
           <div class="sh-manual">
-            <div class="sh-field"><span class="sh-flabel">教練</span>
-              <select id="sh-m-coach" class="form-input"></select></div>
-            <div class="sh-field"><span class="sh-flabel">日期</span>
-              <input id="sh-m-date" type="date" class="form-input"></div>
-            <div class="sh-field"><span class="sh-flabel">套用班表時段</span>
-              <select id="sh-m-shift" class="form-input"><option value="">自訂起訖</option></select></div>
+            <label class="sh-field"><span class="sh-flabel">教練</span>
+              <select id="sh-m-coach" class="form-input"></select></label>
+            <label class="sh-field"><span class="sh-flabel">日期</span>
+              <input id="sh-m-date" type="date" class="form-input"></label>
+            <label class="sh-field"><span class="sh-flabel">套用班表時段</span>
+              <select id="sh-m-shift" class="form-input"><option value="">自訂起訖</option></select></label>
             <div class="sh-field sh-field--range"><span class="sh-flabel">自訂起訖</span>
               <div class="sh-range"><input id="sh-m-start" type="time"><span class="sh-dash">–</span><input id="sh-m-end" type="time"></div></div>
-            <div class="sh-field" style="grid-column:1/-1;"><span class="sh-flabel">備註</span>
-              <input id="sh-m-note" class="form-input" placeholder="選填，例：忘記打卡"></div>
+            <label class="sh-field" style="grid-column:1/-1;"><span class="sh-flabel">備註</span>
+              <input id="sh-m-note" class="form-input" placeholder="選填，例：忘記打卡"></label>
           </div>
           <button id="sh-m-save" class="btn btn-primary btn-sm mt-3">補登</button>
         </div>

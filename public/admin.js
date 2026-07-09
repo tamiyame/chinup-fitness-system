@@ -2036,7 +2036,7 @@ document.getElementById('sh-slots').addEventListener('click', async (e) => {
       toast('時段已刪除（誤建用；正常結束請填結束日）', 'success'); loadShiftAdmin();
     }
   } catch (err) {
-    const msgs = { coach_already_in_slot: '該教練已在此時段', invalid_time_range: '起訖時間無效', invalid_effective_range: '生效日期無效',
+    const msgs = { invalid_time_range: '起訖時間無效', invalid_effective_range: '生效日期無效',
       slot_not_found: '時段不存在（可能已被刪除，請重整）', coach_not_in_slot: '該教練已不在此時段' };
     toast(msgs[err.data?.error] || '操作失敗：' + (err.data?.error || err.message), 'error');
   }
