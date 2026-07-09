@@ -1954,19 +1954,39 @@ function shDurLabel(start, end) {
   return `${Number.isInteger(h) ? h : h.toFixed(1)} 小時`;
 }
 
+let shSelectedSlotId = null;   // 週表目前展開的時段（點藥丸切換；刪除或消失時自動收合）
+
 function renderShSlots() {
-  const box = document.getElementById('sh-slots');
-  box.innerHTML = shSlots.map((s) => {
-    const chips = s.coaches.map((c) => `
-      <span class="sh-chip" data-coach="${c.coachId}">${escapeHtml(c.displayName)}<button type="button" class="sh-chip-x">✕</button></span>`).join('');
-    const addable = shCoaches.filter((c) => c.is_active && !s.coaches.some((x) => x.coachId === c.id));
-    return `
-    <div class="sh-slot sh-slot-card" data-sid="${s.id}">
-      <div class="sh-slot-top">
-        <span class="sh-slot-dow">${SH_WEEK[s.day_of_week]}</span>
-        <span class="sh-slot-eff">自 ${s.effective_from.replace(/-/g, '/')}<br>${s.effective_to ? '至 ' + s.effective_to.replace(/-/g, '/') : '持續有效'}</span>
+  if (shSelectedSlotId != null && !shSlots.some((s) => s.id === shSelectedSlotId)) shSelectedSlotId = null;
+
+  // 週一～週日排列（沿用登錄週曆的週一起始慣例）
+  const week = document.getElementById('sh-week');
+  week.innerHTML = [1, 2, 3, 4, 5, 6, 0].map((dow) => {
+    const daySlots = shSlots.filter((s) => s.day_of_week === dow);
+    const pills = daySlots.map((s) => {
+      const names = s.coaches.map((c) => escapeHtml(c.displayName)).join('、');
+      return `<button type="button" class="sh-pill${s.coaches.length ? '' : ' empty'}${s.id === shSelectedSlotId ? ' active' : ''}" data-sid="${s.id}">
+        <span class="t">${s.start_time}–${s.end_time}</span><span class="n">${names || '尚未指派'}</span>
+      </button>`;
+    }).join('');
+    return `<div class="sh-week-day${daySlots.length ? ' has' : ''}">
+      <div class="sh-week-dow">${SH_WEEK[dow].replace('週', '')}</div>
+      <div class="sh-week-slots">${pills || '<span class="sh-week-none">—</span>'}</div>
+    </div>`;
+  }).join('');
+
+  const box = document.getElementById('sh-slot-detail');
+  const s = shSlots.find((x) => x.id === shSelectedSlotId);
+  if (!s) { box.innerHTML = ''; return; }
+  const chips = s.coaches.map((c) => `
+    <span class="sh-chip" data-coach="${c.coachId}">${escapeHtml(c.displayName)}<button type="button" class="sh-chip-x">✕</button></span>`).join('');
+  const addable = shCoaches.filter((c) => c.is_active && !s.coaches.some((x) => x.coachId === c.id));
+  box.innerHTML = `
+    <div class="sh-slot sh-detail" data-sid="${s.id}">
+      <div class="sh-detail-head">
+        <span class="sh-detail-title">${SH_WEEK[s.day_of_week]} ${s.start_time}–${s.end_time}<span class="subtle" style="font-size:12px;font-weight:600;margin-left:8px;">${shDurLabel(s.start_time, s.end_time)}</span></span>
+        <span class="sh-detail-eff">自 ${s.effective_from.replace(/-/g, '/')}${s.effective_to ? '，至 ' + s.effective_to.replace(/-/g, '/') : '，持續有效'}</span>
       </div>
-      <div class="sh-slot-time">${s.start_time}–${s.end_time}<span class="sh-dur">${shDurLabel(s.start_time, s.end_time)}</span></div>
       <div class="sh-slot-coaches">${chips || '<span class="sh-chip-empty">尚未指派教練</span>'}</div>
       <div class="sh-slot-foot">
         <select class="form-input sh-slot-coach">
@@ -1980,7 +2000,6 @@ function renderShSlots() {
         </div>
       </div>
     </div>`;
-  }).join('') || '<div class="subtle text-sm">尚未建立時段</div>';
 }
 
 function renderShRates() {
@@ -2010,6 +2029,14 @@ document.getElementById('sh-slots').addEventListener('change', async (e) => {
 });
 
 document.getElementById('sh-slots').addEventListener('click', async (e) => {
+  // 點週表藥丸 → 展開/收合詳情面板
+  const pill = e.target.closest('.sh-pill');
+  if (pill) {
+    const sid = Number(pill.dataset.sid);
+    shSelectedSlotId = shSelectedSlotId === sid ? null : sid;
+    renderShSlots();
+    return;
+  }
   const card = e.target.closest('.sh-slot');
   if (!card) return;
   const sid = Number(card.dataset.sid);
@@ -2057,12 +2084,13 @@ document.getElementById('sh-rates').addEventListener('click', async (e) => {
 
 document.getElementById('sh-slot-add').addEventListener('click', async () => {
   try {
-    await api('/api/admin/slots', { method: 'POST', body: {
+    const created = await api('/api/admin/slots', { method: 'POST', body: {
       day_of_week: Number(document.getElementById('sh-slot-new-dow').value),
       start_time: document.getElementById('sh-slot-new-start').value,
       end_time: document.getElementById('sh-slot-new-end').value,
       effective_from: document.getElementById('sh-slot-new-from').value,
     } });
+    shSelectedSlotId = created.id;   // 建立後直接展開詳情，接著加教練
     toast('時段已建立', 'success'); loadShiftAdmin();
   } catch (err) {
     const msgs = { invalid_time_range: '起訖時間無效', invalid_effective_range: '生效日期無效', invalid_day_of_week: '星期無效' };

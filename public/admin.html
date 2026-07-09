@@ -206,19 +206,29 @@ body { visibility: hidden; }
 .sh-dash{ color:var(--ink-mute); font-weight:600; }
 .sh-field--range{ grid-column:span 2; }
 
-.sh-slot-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
-.sh-slot-card{ border:1px solid var(--line); border-radius:var(--radius); background:var(--surface);
-  padding:18px 18px 14px; box-shadow:var(--shadow-sm); display:flex; flex-direction:column; gap:12px;
-  transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
-.sh-slot-card:hover{ transform:translateY(-1px); box-shadow:var(--shadow); border-color:rgba(56,189,248,.3); }
-.sh-slot-top{ display:flex; justify-content:space-between; align-items:flex-start; }
-.sh-slot-dow{ font-size:12px; font-weight:700; letter-spacing:.12em; color:var(--brand-700);
-  background:var(--brand-50); border:1px solid rgba(56,189,248,.2); border-radius:999px; padding:4px 10px; }
-.sh-slot-eff{ font-size:11px; color:var(--ink-mute); text-align:right; line-height:1.4; }
-.sh-slot-time{ font-size:28px; font-weight:800; letter-spacing:-0.03em; line-height:1;
-  font-variant-numeric:tabular-nums; color:var(--ink); }
-.sh-slot-time .sh-dur{ font-size:12px; font-weight:600; color:var(--ink-mute); letter-spacing:0; margin-left:8px; }
-.sh-slot-coaches{ display:flex; flex-wrap:wrap; gap:6px; min-height:30px; }
+.sh-week{ border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; background:var(--surface); }
+.sh-week-day{ display:grid; grid-template-columns:56px 1fr; border-bottom:1px solid #f1f5f9; min-height:52px; }
+.sh-week-day:last-child{ border-bottom:none; }
+.sh-week-dow{ display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px;
+  color:var(--ink-soft); background:#f8faf9; border-right:1px solid var(--line); }
+.sh-week-day.has .sh-week-dow{ color:var(--brand-700); background:var(--brand-50); }
+.sh-week-slots{ display:flex; flex-wrap:wrap; gap:8px; padding:10px 12px; align-items:center; }
+.sh-pill{ display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:var(--radius-sm);
+  padding:6px 10px; background:var(--surface); font-size:13px; cursor:pointer;
+  transition:border-color .15s, box-shadow .15s; }
+.sh-pill:hover{ border-color:rgba(56,189,248,.4); box-shadow:var(--shadow-sm); }
+.sh-pill .t{ font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-0.01em; }
+.sh-pill .n{ font-size:12px; color:var(--ink-soft); background:#f1f5f9; border-radius:999px; padding:1px 8px; }
+.sh-pill.empty{ border-style:dashed; color:var(--ink-mute); }
+.sh-pill.active{ border-color:var(--brand-600); box-shadow:0 0 0 3px rgba(56,189,248,.15); }
+.sh-week-none{ font-size:12px; color:#cbd5e1; }
+.sh-detail{ border:1px solid rgba(56,189,248,.35); border-radius:var(--radius); background:var(--surface);
+  padding:16px; margin-top:12px; box-shadow:var(--shadow); }
+.sh-detail-head{ display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:6px; }
+.sh-detail-title{ font-weight:800; font-size:16px; font-variant-numeric:tabular-nums; }
+.sh-detail-eff{ font-size:12px; color:var(--ink-mute); }
+.sh-slot-coaches{ display:flex; flex-wrap:wrap; gap:6px; min-height:30px; margin-top:10px; }
+.sh-toolbar{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; align-items:end; }
 .sh-chip{ display:inline-flex; align-items:center; gap:6px; padding:5px 6px 5px 12px; border-radius:999px;
   background:var(--brand-50); border:1px solid rgba(56,189,248,.25); font-size:13px; font-weight:600; color:var(--brand-900); }
 .sh-chip::before{ content:''; width:6px; height:6px; border-radius:50%; background:var(--brand-600); }
@@ -226,14 +236,10 @@ body { visibility: hidden; }
   min-width:18px; height:18px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; padding:0 2px; white-space:nowrap; }
 .sh-chip-x:hover{ background:rgba(2,132,199,.12); color:var(--brand-700); }
 .sh-chip-empty{ font-size:13px; color:var(--ink-mute); font-style:italic; align-self:center; }
-.sh-slot-foot{ display:flex; flex-direction:column; gap:8px; border-top:1px solid #f1f5f9; padding-top:10px; }
-.sh-slot-foot select{ width:100%; padding:7px 10px; font-size:13px; }
-.sh-slot-ops{ display:flex; gap:8px; align-items:center; }
+.sh-slot-foot{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; border-top:1px solid #f1f5f9; padding-top:12px; margin-top:12px; }
+.sh-slot-foot select{ flex:1 1 180px; min-width:0; padding:7px 10px; font-size:13px; }
+.sh-slot-ops{ display:flex; gap:8px; align-items:center; flex:1 1 260px; }
 .sh-slot-ops input[type="date"]{ flex:1; min-width:0; padding:7px 10px; font-size:13px; }
-.sh-add-card{ border:1px dashed #cbd5e1; border-radius:var(--radius); display:flex; flex-direction:column;
-  gap:12px; padding:18px; background:rgba(255,255,255,.6); max-width:340px; }
-.sh-add-title{ font-size:13px; font-weight:700; color:var(--ink-soft); letter-spacing:.04em; }
-.sh-add-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .sh-two-col{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
 .sh-panel{ border:1px solid var(--line); border-radius:var(--radius); background:var(--surface);
   padding:16px; box-shadow:var(--shadow-sm); }
@@ -247,10 +253,9 @@ body { visibility: hidden; }
   font-size:11px; font-weight:700; color:var(--ink-mute); letter-spacing:.02em; }
 .sh-manual{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; align-items:end; }
 @media (max-width:640px){
-  .sh-add-row{ grid-template-columns:1fr; }
-  .sh-add-card{ max-width:none; }
   .sh-rate-row{ grid-template-columns:1fr 110px max-content; }
   .sh-field--range{ grid-column:1/-1; }
+  .sh-week-day{ grid-template-columns:44px 1fr; }
 }
 
 /* 備份 modal 內表格同步 Nike 化 */
@@ -830,19 +835,20 @@ details.session-row summary .font-semibold{
       <div id="sh-qr" class="mt-2"></div>
       <div class="mt-2"><button type="button" id="sh-qr-print" class="btn btn-ghost btn-sm">列印 QR code</button></div>
 
-      <div class="sh-h4 mt-5">上班時段</div>
-      <div class="subtle text-sm mb-2">先建立固定時段，再把教練加進去；教練掃 QR 即可打該時段的卡。</div>
-      <div id="sh-slots" class="sh-slot-grid"></div>
-      <div class="sh-add-card mt-3">
-        <div class="sh-add-title">新增時段</div>
-        <div class="sh-add-row">
-          <label class="sh-field"><span class="sh-flabel">星期</span><select id="sh-slot-new-dow" class="form-input"></select></label>
-          <label class="sh-field"><span class="sh-flabel">生效日</span><input type="date" id="sh-slot-new-from" class="form-input"></label>
-        </div>
-        <div class="sh-field"><span class="sh-flabel">時段起訖</span>
+      <div class="sh-h4 mt-5">每週固定時段</div>
+      <div class="subtle text-sm mb-2">先建立固定時段，再把教練加進去；點時段可展開指派與設定。教練掃 QR 即可打該時段的卡。</div>
+      <div id="sh-slots">
+        <div id="sh-week" class="sh-week"></div>
+        <div id="sh-slot-detail"></div>
+      </div>
+      <div class="sh-h4 mt-5">新增時段</div>
+      <div class="sh-toolbar">
+        <label class="sh-field"><span class="sh-flabel">星期</span><select id="sh-slot-new-dow" class="form-input"></select></label>
+        <div class="sh-field sh-field--range"><span class="sh-flabel">時段起訖</span>
           <div class="sh-range"><input type="time" id="sh-slot-new-start"><span class="sh-dash">–</span><input type="time" id="sh-slot-new-end"></div>
         </div>
-        <button type="button" id="sh-slot-add" class="btn btn-primary btn-sm" style="align-self:flex-start;">新增時段</button>
+        <label class="sh-field"><span class="sh-flabel">生效日</span><input type="date" id="sh-slot-new-from" class="form-input"></label>
+        <div class="sh-field"><span class="sh-flabel">&nbsp;</span><button type="button" id="sh-slot-add" class="btn btn-primary btn-sm">新增時段</button></div>
       </div>
 
       <div class="sh-two-col mt-5">
