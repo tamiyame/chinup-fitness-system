@@ -222,3 +222,87 @@ export function shiftSummaryByCoach(startDate, endDate) {
   }
   return map;
 }
+
+// ── 館方固定時段（gym_slots）＋指派展開 ──
+// 指派＝在交易中展開一列 coach_shifts（複製時段參數、掛 slot_id）；時段修改連動旗下教練列。
+// CASCADE 顯式實作（既有 DB 的 slot_id 無強制 FK）。規則見 2026-07-09-gym-slots-assignment-design.md。
+
+const listSlotsStmt = db.prepare('SELECT * FROM gym_slots ORDER BY day_of_week ASC, start_time ASC');
+const getSlotStmt = db.prepare('SELECT * FROM gym_slots WHERE id = ?');
+const insertSlotStmt = db.prepare('INSERT INTO gym_slots (day_of_week, start_time, end_time, effective_from, effective_to) VALUES (?, ?, ?, ?, ?)');
+const updateSlotStmt = db.prepare('UPDATE gym_slots SET start_time = ?, end_time = ?, effective_from = ?, effective_to = ? WHERE id = ?');
+const deleteSlotStmt = db.prepare('DELETE FROM gym_slots WHERE id = ?');
+const slotCoachesStmt = db.prepare(`
+  SELECT cs.id AS shift_id, cs.coach_id, c.display_name
+  FROM coach_shifts cs JOIN coaches c ON c.id = cs.coach_id
+  WHERE cs.slot_id = ? ORDER BY c.display_name ASC
+`);
+const slotShiftForCoachStmt = db.prepare('SELECT * FROM coach_shifts WHERE slot_id = ? AND coach_id = ?');
+const updateSlotShiftsStmt = db.prepare('UPDATE coach_shifts SET start_time = ?, end_time = ?, effective_from = ?, effective_to = ? WHERE slot_id = ?');
+const deleteSlotShiftsStmt = db.prepare('DELETE FROM coach_shifts WHERE slot_id = ?');
+const insertShiftForSlotStmt = db.prepare(`
+  INSERT INTO coach_shifts (coach_id, day_of_week, start_time, end_time, effective_from, effective_to, slot_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+
+/** 時段清單（星期、開始時間升冪），內嵌已指派教練（displayName 升冪）。 */
+export function listSlots() {
+  return listSlotsStmt.all().map((s) => ({
+    ...s,
+    coaches: slotCoachesStmt.all(s.id).map((r) => ({ coachId: r.coach_id, displayName: r.display_name, shiftId: r.shift_id })),
+  }));
+}
+export function getSlot(id) { return getSlotStmt.get(id); }
+
+export function createSlot({ dayOfWeek, startTime, endTime, effectiveFrom, effectiveTo = null }) {
+  validateShiftFields({ dayOfWeek, startTime, endTime, effectiveFrom, effectiveTo });
+  const info = insertSlotStmt.run(dayOfWeek, startTime, endTime, effectiveFrom, effectiveTo);
+  return getSlotStmt.get(Number(info.lastInsertRowid));
+}
+
+/** 局部更新（不可改星期——要換星期＝結束或刪除後重建）；交易內連動旗下教練列。 */
+export function updateSlot(id, { startTime, endTime, effectiveFrom, effectiveTo } = {}) {
+  const cur = getSlotStmt.get(id);
+  if (!cur) throw new ApiError(404, 'slot_not_found');
+  const next = {
+    dayOfWeek: cur.day_of_week,
+    startTime: startTime !== undefined ? startTime : cur.start_time,
+    endTime: endTime !== undefined ? endTime : cur.end_time,
+    effectiveFrom: effectiveFrom !== undefined ? effectiveFrom : cur.effective_from,
+    effectiveTo: effectiveTo !== undefined ? effectiveTo : cur.effective_to,
+  };
+  validateShiftFields(next);
+  return tx(() => {
+    updateSlotStmt.run(next.startTime, next.endTime, next.effectiveFrom, next.effectiveTo, id);
+    updateSlotShiftsStmt.run(next.startTime, next.endTime, next.effectiveFrom, next.effectiveTo, id);
+    return getSlotStmt.get(id);
+  });
+}
+
+/** 刪除誤建時段；交易內顯式連動刪旗下教練列。 */
+export function deleteSlot(id) {
+  tx(() => {
+    const info = deleteSlotStmt.run(id);
+    if (info.changes === 0) throw new ApiError(404, 'slot_not_found');
+    deleteSlotShiftsStmt.run(id);
+  });
+}
+
+/** 指派教練：展開一列 coach_shifts（複製時段參數＋掛 slot_id）。 */
+export function assignCoach(slotId, coachId) {
+  const slot = getSlotStmt.get(slotId);
+  if (!slot) throw new ApiError(404, 'slot_not_found');
+  return tx(() => {
+    if (slotShiftForCoachStmt.get(slotId, coachId)) throw new ApiError(409, 'coach_already_in_slot');
+    const info = insertShiftForSlotStmt.run(coachId, slot.day_of_week, slot.start_time, slot.end_time,
+      slot.effective_from, slot.effective_to, slotId);
+    return getShiftStmt.get(Number(info.lastInsertRowid));
+  });
+}
+
+/** 移除指派：刪展開列（歷史出席已快照且 shift_id ON DELETE SET NULL，帳不受影響）。 */
+export function unassignCoach(slotId, coachId) {
+  const row = slotShiftForCoachStmt.get(slotId, coachId);
+  if (!row) throw new ApiError(404, 'coach_not_in_slot');
+  deleteShiftStmt.run(row.id);
+}
