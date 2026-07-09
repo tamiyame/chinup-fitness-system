@@ -744,10 +744,11 @@ details.session-row summary .font-semibold{
     <div class="subtle text-sm mt-1">教練掃館內 QR code（/checkin 頁）到場打卡；依固定班表計時數，乘各自時薪併入上方薪資表。</div>
     <div id="sh-body" class="hidden mt-4">
       <h4 class="font-bold text-sm mb-2">打卡參數</h4>
-      <label class="text-sm block mb-1">地址搜尋（自動帶出經緯度；帶出後仍可於下方手動微調）
-        <div class="flex gap-2 mt-1">
-          <input id="sh-addr" class="form-input" style="flex:1;" placeholder="輸入地址或地標，例：台北市信義區信義路五段7號">
-          <button id="sh-addr-search" class="btn btn-ghost btn-sm" style="white-space:nowrap;">搜尋</button>
+      <label class="text-sm block mb-1">館址定位（三種方式擇一：人在館內按「使用目前位置」最準；或搜尋地址（通常到街道層級）；或直接貼上 Google Maps 複製的「緯度, 經度」）
+        <div class="flex gap-2 mt-1 flex-wrap">
+          <input id="sh-addr" class="form-input" style="flex:1;min-width:200px;" placeholder="地址／地標，或貼上「25.0338, 121.5645」">
+          <button type="button" id="sh-addr-search" class="btn btn-ghost btn-sm" style="white-space:nowrap;">搜尋</button>
+          <button type="button" id="sh-addr-locate" class="btn btn-ghost btn-sm" style="white-space:nowrap;">使用目前位置</button>
         </div>
       </label>
       <div id="sh-addr-results" class="text-sm mb-3"></div>
@@ -766,7 +767,7 @@ details.session-row summary .font-semibold{
       <h4 class="font-bold text-sm mb-2 mt-5">打卡 QR code</h4>
       <div class="subtle text-sm">列印貼在館內，教練用手機掃描即可開啟打卡頁（<span id="sh-qr-url"></span>）。</div>
       <div id="sh-qr" class="mt-2"></div>
-      <div class="mt-2"><button id="sh-qr-print" class="btn btn-ghost btn-sm">列印 QR code</button></div>
+      <div class="mt-2"><button type="button" id="sh-qr-print" class="btn btn-ghost btn-sm">列印 QR code</button></div>
 
       <h4 class="font-bold text-sm mb-2 mt-5">教練時薪與班表</h4>
       <div id="sh-coaches"></div>

@@ -155,7 +155,7 @@ CREATE INDEX IF NOT EXISTS idx_shift_attendance_date ON shift_attendance(work_da
 
 ## 2026-07-09 smoke 回饋增補
 
-1. **地址搜尋帶座標（雙向）**：打卡參數區新增地址搜尋框——OpenStreetMap Nominatim（免金鑰、`countrycodes=tw`、繁中），點選結果自動帶入緯度／經度欄位；欄位維持可手動輸入，帶出不準時直接修正（雙向）。無結果／失敗時顯示引導文字。純前端呼叫，無後端變更。
+1. **館址定位三入口（雙向）**：打卡參數區新增定位列——(a) **使用目前位置**：人在館內取瀏覽器 GPS 當館址座標（與打卡手機同為 GPS 實測，錨點最準，顯示定位精度）；(b) **地址搜尋**：OpenStreetMap Nominatim（免金鑰、`countrycodes=tw`、繁中），點選結果帶入座標——OSM 台灣門牌資料稀疏，**通常僅達街道層級**（此為資料限制；要地址→門牌精度需接 Google Geocoding API＋計費，暫不做）；(c) **貼上座標**：搜尋框直接貼 Google Maps 右鍵複製的「緯度, 經度」自動辨識帶入（含範圍驗證）。三者帶入後緯度／經度欄位均維持可手動微調（雙向）。無結果／失敗顯示引導文字。純前端，無後端變更。
 2. **後台內建打卡 QR code**：駐場出勤區塊直接顯示指向本站 `/checkin` 的 QR（vendored `public/vendor/qrcode.js`，Kazuhiko Arase，MIT，離線產生不依賴外部服務），附網址與「列印 QR code」鈕（新視窗大圖、自動叫出列印）。QR 內容用 `location.origin`，本機／正式站自動對應（本機 QR 手機掃不到是預期）。取代原先僅存於 repo root 的一次性 `checkin-qr.png`。
 
 ## 刻意不做（YAGNI）

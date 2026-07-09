@@ -2077,20 +2077,41 @@ document.getElementById('sh-toggle').addEventListener('click', () => {
   if (!body.classList.contains('hidden')) { loadShiftAdmin(); shRenderQr(); }
 });
 
-// ── 地址搜尋（OpenStreetMap Nominatim，免金鑰）──
-// 點選結果帶入經緯度欄；欄位保持可手動修正（帶出的座標不準時直接改）。
+// ── 館址定位（三入口：目前位置 GPS／Nominatim 地址搜尋／貼上座標）──
+// 帶入後欄位保持可手動修正（雙向）。OSM 台灣門牌資料稀疏，地址搜尋通常到街道層級；
+// 精準錨點建議人在館內按「使用目前位置」（與打卡手機同為 GPS 實測，系統性誤差最小）。
+const SH_COORD_RE = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,，]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
+
+function shApplyCoords(lat, lng, label) {
+  document.getElementById('sh-lat').value = Number(lat).toFixed(6);
+  document.getElementById('sh-lng').value = Number(lng).toFixed(6);
+  document.getElementById('sh-addr-results').innerHTML =
+    `<span class="subtle">${escapeHtml(label)}（可於上方欄位微調，記得按「儲存參數」）</span>`;
+  toast('已帶入經緯度，記得按「儲存參數」', 'success');
+}
+
 async function shSearchAddress() {
   const q = document.getElementById('sh-addr').value.trim();
   const box = document.getElementById('sh-addr-results');
   if (!q) { box.textContent = ''; return; }
+
+  // 貼上「緯度, 經度」（Google Maps 右鍵複製格式）直接帶入，不打地理編碼
+  const m = q.match(SH_COORD_RE);
+  if (m) {
+    const lat = Number(m[1]), lng = Number(m[2]);
+    if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) { shApplyCoords(lat, lng, `已帶入座標 ${lat}, ${lng}`); return; }
+    box.textContent = '座標超出範圍（緯度 ±90、經度 ±180），請確認貼上的內容。';
+    return;
+  }
+
   box.textContent = '搜尋中…';
   try {
     const res = await fetch('https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
       q, format: 'jsonv2', limit: '5', 'accept-language': 'zh-TW', countrycodes: 'tw',
     }));
-    const items = await res.json();
+    const items = res.ok ? await res.json() : null;
     if (!Array.isArray(items) || !items.length) {
-      box.textContent = '找不到這個地址，請換個寫法（加上縣市）或直接輸入經緯度。';
+      box.textContent = '找不到這個地址（地圖資料通常只到街道層級）。建議人在館內按「使用目前位置」、貼上 Google Maps 複製的座標，或手動輸入經緯度。';
       return;
     }
     box.innerHTML = items.map((r) =>
@@ -2098,18 +2119,27 @@ async function shSearchAddress() {
         style="display:block;width:100%;text-align:left;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;margin-top:4px;background:#fff;cursor:pointer;">
         ${escapeHtml(r.display_name)}</button>`).join('');
     box.querySelectorAll('.sh-addr-pick').forEach((btn) => btn.addEventListener('click', () => {
-      document.getElementById('sh-lat').value = Number(btn.dataset.lat).toFixed(6);
-      document.getElementById('sh-lng').value = Number(btn.dataset.lng).toFixed(6);
-      box.innerHTML = `<span class="subtle">已帶入：${escapeHtml(btn.textContent.trim())}（可於上方欄位微調，記得按「儲存參數」）</span>`;
-      toast('已帶入經緯度，記得按「儲存參數」', 'success');
+      shApplyCoords(btn.dataset.lat, btn.dataset.lng, `已帶入：${btn.textContent.trim()}`);
     }));
   } catch {
-    box.textContent = '搜尋失敗（網路或服務暫時無法使用），請直接輸入經緯度。';
+    box.textContent = '搜尋失敗（網路或服務暫時無法使用），請改用「使用目前位置」或直接輸入經緯度。';
   }
 }
 document.getElementById('sh-addr-search').addEventListener('click', shSearchAddress);
 document.getElementById('sh-addr').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); shSearchAddress(); }
+});
+
+// 人在館內取當下 GPS 當館址座標——與教練打卡同一種量測，錨點最準
+document.getElementById('sh-addr-locate').addEventListener('click', () => {
+  const box = document.getElementById('sh-addr-results');
+  box.textContent = '取得目前位置中…';
+  navigator.geolocation.getCurrentPosition((pos) => {
+    shApplyCoords(pos.coords.latitude, pos.coords.longitude,
+      `已帶入目前位置（定位精度約 ${Math.round(pos.coords.accuracy)} 公尺）`);
+  }, () => {
+    box.textContent = '無法取得定位：請允許瀏覽器「位置」權限後重試，或改用地址搜尋／手動輸入。';
+  }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
 });
 
 // ── 打卡 QR code（指向本站 /checkin；vendor/qrcode.js 產生，離線可用）──
