@@ -744,6 +744,13 @@ details.session-row summary .font-semibold{
     <div class="subtle text-sm mt-1">教練掃館內 QR code（/checkin 頁）到場打卡；依固定班表計時數，乘各自時薪併入上方薪資表。</div>
     <div id="sh-body" class="hidden mt-4">
       <h4 class="font-bold text-sm mb-2">打卡參數</h4>
+      <label class="text-sm block mb-1">地址搜尋（自動帶出經緯度；帶出後仍可於下方手動微調）
+        <div class="flex gap-2 mt-1">
+          <input id="sh-addr" class="form-input" style="flex:1;" placeholder="輸入地址或地標，例：台北市信義區信義路五段7號">
+          <button id="sh-addr-search" class="btn btn-ghost btn-sm" style="white-space:nowrap;">搜尋</button>
+        </div>
+      </label>
+      <div id="sh-addr-results" class="text-sm mb-3"></div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <label class="text-sm">館址緯度
           <input id="sh-lat" class="form-input mt-1" placeholder="25.0330"></label>
@@ -755,6 +762,11 @@ details.session-row summary .font-semibold{
           <input id="sh-window" type="number" min="0" max="240" class="form-input mt-1"></label>
       </div>
       <div class="mt-2"><button id="sh-settings-save" class="btn btn-primary btn-sm">儲存參數</button></div>
+
+      <h4 class="font-bold text-sm mb-2 mt-5">打卡 QR code</h4>
+      <div class="subtle text-sm">列印貼在館內，教練用手機掃描即可開啟打卡頁（<span id="sh-qr-url"></span>）。</div>
+      <div id="sh-qr" class="mt-2"></div>
+      <div class="mt-2"><button id="sh-qr-print" class="btn btn-ghost btn-sm">列印 QR code</button></div>
 
       <h4 class="font-bold text-sm mb-2 mt-5">教練時薪與班表</h4>
       <div id="sh-coaches"></div>
@@ -879,6 +891,7 @@ details.session-row summary .font-semibold{
 
 <div id="toast" class="toast"></div>
 
+<script src="/vendor/qrcode.js"></script><!-- QR Code Generator (Kazuhiko Arase, MIT)：後台顯示/列印打卡 QR 用 -->
 <script type="module" src="/app.js"></script>
 <script type="module" src="/admin.js"></script>
 </body>

@@ -2074,7 +2074,69 @@ document.getElementById('sh-toggle').addEventListener('click', () => {
   const body = document.getElementById('sh-body');
   body.classList.toggle('hidden');
   document.getElementById('sh-toggle').textContent = body.classList.contains('hidden') ? '展開' : '收合';
-  if (!body.classList.contains('hidden')) loadShiftAdmin();
+  if (!body.classList.contains('hidden')) { loadShiftAdmin(); shRenderQr(); }
+});
+
+// ── 地址搜尋（OpenStreetMap Nominatim，免金鑰）──
+// 點選結果帶入經緯度欄；欄位保持可手動修正（帶出的座標不準時直接改）。
+async function shSearchAddress() {
+  const q = document.getElementById('sh-addr').value.trim();
+  const box = document.getElementById('sh-addr-results');
+  if (!q) { box.textContent = ''; return; }
+  box.textContent = '搜尋中…';
+  try {
+    const res = await fetch('https://nominatim.openstreetmap.org/search?' + new URLSearchParams({
+      q, format: 'jsonv2', limit: '5', 'accept-language': 'zh-TW', countrycodes: 'tw',
+    }));
+    const items = await res.json();
+    if (!Array.isArray(items) || !items.length) {
+      box.textContent = '找不到這個地址，請換個寫法（加上縣市）或直接輸入經緯度。';
+      return;
+    }
+    box.innerHTML = items.map((r) =>
+      `<button type="button" class="sh-addr-pick" data-lat="${Number(r.lat)}" data-lng="${Number(r.lon)}"
+        style="display:block;width:100%;text-align:left;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;margin-top:4px;background:#fff;cursor:pointer;">
+        ${escapeHtml(r.display_name)}</button>`).join('');
+    box.querySelectorAll('.sh-addr-pick').forEach((btn) => btn.addEventListener('click', () => {
+      document.getElementById('sh-lat').value = Number(btn.dataset.lat).toFixed(6);
+      document.getElementById('sh-lng').value = Number(btn.dataset.lng).toFixed(6);
+      box.innerHTML = `<span class="subtle">已帶入：${escapeHtml(btn.textContent.trim())}（可於上方欄位微調，記得按「儲存參數」）</span>`;
+      toast('已帶入經緯度，記得按「儲存參數」', 'success');
+    }));
+  } catch {
+    box.textContent = '搜尋失敗（網路或服務暫時無法使用），請直接輸入經緯度。';
+  }
+}
+document.getElementById('sh-addr-search').addEventListener('click', shSearchAddress);
+document.getElementById('sh-addr').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); shSearchAddress(); }
+});
+
+// ── 打卡 QR code（指向本站 /checkin；vendor/qrcode.js 產生，離線可用）──
+function shMakeQrTag(cellSize, margin) {
+  const qr = qrcode(0, 'M');   // type 0 = 依內容自動選版本
+  qr.addData(location.origin + '/checkin');
+  qr.make();
+  return qr.createImgTag(cellSize, margin);
+}
+function shRenderQr() {
+  const el = document.getElementById('sh-qr');
+  if (el.dataset.rendered === '1') return;
+  document.getElementById('sh-qr-url').textContent = location.origin + '/checkin';
+  el.innerHTML = shMakeQrTag(5, 8);
+  el.dataset.rendered = '1';
+}
+document.getElementById('sh-qr-print').addEventListener('click', () => {
+  const w = window.open('', '_blank');
+  if (!w) { toast('瀏覽器擋下了列印視窗，請允許彈出視窗', 'error'); return; }
+  w.document.write(`<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><title>到場打卡 QR code</title></head>
+<body style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:95vh;font-family:sans-serif;">
+<h1 style="margin:0 0 12px;">到場打卡</h1>
+${shMakeQrTag(12, 16)}
+<p style="font-size:14px;color:#555;">${location.origin}/checkin</p>
+<script>window.onload = () => window.print();<\/script>
+</body></html>`);
+  w.document.close();
 });
 
 loadCategories();
