@@ -96,7 +96,8 @@ import { getCoachWeek as svcGetCoachWeek, searchCustomers as svcSearchCustomers 
 import { sendBookingConfirmation } from './services/emailService.js';
 import { computePayroll, periodRange, defaultPeriod } from './services/payrollService.js';
 import { checkIn as shiftCheckIn, todayStatus as shiftTodayStatus, coachPeriodHours,
-  listShifts, createShift, updateShift, deleteShift, manualAttendance, voidAttendance } from './services/shiftService.js';
+  listShifts, createShift, updateShift, deleteShift, manualAttendance, voidAttendance,
+  listSlots, createSlot, updateSlot, deleteSlot, assignCoach, unassignCoach } from './services/shiftService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1340,6 +1341,41 @@ app.post('/api/admin/attendance', requireAdmin, asyncHandler((req, res) => {
 
 app.post('/api/admin/attendance/:id/void', requireAdmin, asyncHandler((req, res) => {
   res.json(voidAttendance(Number(req.params.id), req.user.id));
+}));
+
+// --- Admin: 固定上班時段（gym_slots）＋指派教練 ---
+app.get('/api/admin/slots', requireAdmin, asyncHandler((req, res) => {
+  res.json(listSlots());
+}));
+
+app.post('/api/admin/slots', requireAdmin, asyncHandler((req, res) => {
+  const b = req.body || {};
+  res.json(createSlot({ dayOfWeek: Number(b.day_of_week), startTime: b.start_time, endTime: b.end_time,
+    effectiveFrom: b.effective_from, effectiveTo: b.effective_to ?? null }));
+}));
+
+app.patch('/api/admin/slots/:id', requireAdmin, asyncHandler((req, res) => {
+  const b = req.body || {};
+  res.json(updateSlot(Number(req.params.id), {
+    startTime: b.start_time, endTime: b.end_time, effectiveFrom: b.effective_from,
+    effectiveTo: 'effective_to' in b ? b.effective_to : undefined,
+  }));
+}));
+
+app.delete('/api/admin/slots/:id', requireAdmin, asyncHandler((req, res) => {
+  deleteSlot(Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+app.post('/api/admin/slots/:id/coaches', requireAdmin, asyncHandler((req, res) => {
+  const coach = svcGetCoach(Number(req.body?.coach_id));
+  if (!coach) return res.status(404).json({ error: 'coach_not_found' });
+  res.json(assignCoach(Number(req.params.id), coach.id));
+}));
+
+app.delete('/api/admin/slots/:id/coaches/:coachId', requireAdmin, asyncHandler((req, res) => {
+  unassignCoach(Number(req.params.id), Number(req.params.coachId));
+  res.json({ ok: true });
 }));
 
 // --- Admin: Settings ---
