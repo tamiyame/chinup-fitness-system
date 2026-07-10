@@ -281,7 +281,7 @@ async function openCoach(id) {
         <div class="detail-spec">${tags || escapeHtml(currentCoach.specialty || '')}</div>
       </div>
     </div>
-    ${currentCoach.bio ? `<p class="text-sm" style="color:var(--ink-soft);line-height:1.6;white-space:pre-line;margin-bottom:8px">${escapeHtml(currentCoach.bio)}</p>` : ''}
+    ${currentCoach.bio ? `<p class="text-sm" style="color:rgba(255,255,255,.85);line-height:1.6;white-space:pre-line;margin-bottom:8px">${escapeHtml(currentCoach.bio)}</p>` : ''}
   `;
   show('detail');
   renderSlotControls();
