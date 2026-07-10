@@ -949,7 +949,7 @@ app.get('/api/coach/checkin/today', requireCoach, asyncHandler((req, res) => {
   const period = defaultPeriod();
   const { displayStart, displayEnd } = periodRange(period);
   const periodHours = Math.round(coachPeriodHours(coach.id, displayStart, displayEnd) * 100) / 100;
-  res.json({ ...status, period, periodHours });
+  res.json({ ...status, period, periodHours, coachName: coach.display_name });
 }));
 
 app.post('/api/coach/checkin', checkinLimiter, requireCoach, asyncHandler((req, res) => {

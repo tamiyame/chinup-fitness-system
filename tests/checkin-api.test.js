@@ -81,17 +81,19 @@ db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('checkin_la
 }
 {
   const t = await req('GET', '/api/coach/checkin/today', { token: tokC });
-  expect('today 形狀：date/slots/extras/period/periodHours', () => {
+  expect('today 形狀：date/slots/extras/period/periodHours/coachName', () => {
     assert.equal(t.status, 200);
     assert.match(t.data.date, /^\d{4}-\d{2}-\d{2}$/);
     assert.ok(Array.isArray(t.data.slots) && Array.isArray(t.data.extras));
     assert.match(t.data.period, /^\d{4}-\d{2}$/);
     assert.equal(typeof t.data.periodHours, 'number');
     assert.equal(t.data.slots[0].status, 'voided');
+    assert.equal(t.data.coachName, 'CKN-C');
   });
   const im = await req('GET', `/api/coach/checkin/today?coachId=${cId}`, { token: tokD });
-  expect('coachId query 無效——永遠回本人（D 無班表 slots 空）', () => {
+  expect('coachId query 無效——永遠回本人（D 無班表 slots 空、coachName 是 D 自己）', () => {
     assert.equal(im.status, 200); assert.equal(im.data.slots.length, 0);
+    assert.equal(im.data.coachName, 'CKN-D');
   });
 }
 {

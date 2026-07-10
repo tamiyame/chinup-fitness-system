@@ -37,6 +37,9 @@ async function api(path, opts = {}) {
 function msg(text, cls) { const el = $('ck-msg'); el.textContent = text; el.className = 'ck-msg ' + (cls || ''); }
 
 function render(d) {
+  // 顯示登入身分：QR 共用、身分靠各自手機的登入 token，打卡前先讓教練確認記在誰名下
+  $('ck-coach-name').textContent = d.coachName || '';
+  $('ck-coach').hidden = !d.coachName;
   const dt = new Date(d.date + 'T00:00:00');
   $('ck-date').textContent = `${d.date.replace(/-/g, '/')}（週${WEEK[dt.getDay()]}）`;
   const rows = d.slots.map((s) => {
