@@ -6,63 +6,65 @@
 <title>團體課程 – CHINUP Performance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/colors_and_type.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/facade.css">
 <style>
 body { visibility: hidden; }
 
-/* ── sticky price bar ── */
+/* ── sticky 選課列（深藍收尾帶語彙）── */
 #price-bar {
   position: sticky;
   bottom: 0;
   z-index: 15;
-  background: rgba(255,255,255,0.95);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-top: 1px solid var(--line);
-  padding: 12px 16px;
+  padding: 13px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 #price-bar.hidden { display: none; }
+#price-bar .pb-label { font-size: 12px; font-weight: 700; color: #fff; }
+#price-bar .pb-total { font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 900; font-size: 21px; color: #fff; font-variant-numeric: tabular-nums; }
 
-/* ── session row (selectable) ── */
+/* ── session row（sheet 內的可選列）── */
 .sess-row {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface);
   margin-bottom: 8px;
   transition: border-color 160ms, background 160ms;
   cursor: pointer;
 }
-.sess-row:hover { border-color: rgba(56,189,248,0.4); background: var(--brand-50); }
+.sess-row:hover { border-color: rgba(56,189,248,0.5); background: var(--brand-50); }
 .sess-row.selected { border-color: var(--brand-600); background: #f0f9ff; }
 .sess-row.waitlist-selected { border-color: #d97706; background: #fffbeb; }
 .sess-row-info { flex: 1; min-width: 0; }
 .sess-row-date { font-weight: 700; font-size: 14px; }
-.sess-row-time { font-size: 12px; color: var(--ink-soft); margin-top: 1px; }
-.sess-row-cap { font-size: 12px; white-space: nowrap; color: var(--ink-mute); }
+.sess-row-time { font-size: 12px; color: var(--ink-soft); margin-top: 1px; font-variant-numeric: tabular-nums; }
+.sess-row-cap { font-size: 12px; white-space: nowrap; color: var(--ink-mute); font-variant-numeric: tabular-nums; }
 
 /* ── success panel ── */
 #success-view { display: none; }
+.success-head { text-align: center; padding: 34px 0 22px; color: #fff; }
+.success-head .ok-word { font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 900; font-size: clamp(30px, 6vw, 40px); letter-spacing: -.01em; }
+.success-head p { margin-top: 8px; font-size: 14px; color: #fff; }
 
-/* ── bank info box ── */
+/* ── bank info box（sheet 內）── */
 .bank-box {
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
-  border-radius: var(--radius-sm);
-  padding: 14px 16px;
+  background: #fff;
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 16px 20px;
   font-size: 14px;
+  color: var(--ink);
 }
-.bank-box strong { display: block; font-size: 16px; font-weight: 700; margin: 4px 0 8px; color: var(--brand-900); }
+.bank-box strong { display: block; font-size: 16px; font-weight: 700; margin: 4px 0 8px; color: var(--brand-900); font-variant-numeric: tabular-nums; }
 
 /* ── full-width btn variant ── */
 .btn-full { width: 100%; display: flex; }
@@ -71,9 +73,9 @@ body { visibility: hidden; }
 .line-box {
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
-  border-radius: var(--radius-sm);
   padding: 14px 16px;
   font-size: 14px;
+  color: var(--ink);
 }
 .line-code {
   font-size: 22px;
@@ -94,7 +96,6 @@ body { visibility: hidden; }
   color: var(--brand-700);
   font-weight: 600;
   cursor: pointer;
-  border-radius: var(--radius-sm);
   transition: background 140ms;
 }
 .select-all-row:hover { background: var(--brand-50); }
@@ -136,23 +137,23 @@ body { visibility: hidden; }
 
 <main class="max-w-3xl mx-auto px-4 pb-32">
 
-  <!-- Hero -->
-  <section class="hero" style="padding-bottom:20px;">
-    <span class="hero-eyebrow">🏋️‍♂️ 團體課程</span>
-    <h1 style="font-size:clamp(24px,4vw,36px);">選課 &amp; 匯款報名</h1>
-    <p>選擇場次、填寫資料後以銀行轉帳完成報名。額滿場次可選候補。</p>
+  <!-- 海報 hero -->
+  <section class="fa-hero">
+    <div class="fa-hero-wm" id="hero-week-wm" aria-hidden="true"></div>
+    <div class="fa-hero-kicker">GROUP TRAINING · 團體課程</div>
+    <h1>把訓練，<br>排進你的一週。</h1>
+    <p>選擇場次、留下姓名電話，以銀行轉帳完成報名——免註冊、免下載。額滿場次可選候補，遞補自動通知。</p>
   </section>
 
   <!-- Loading skeleton -->
   <div id="loading" class="flex flex-col gap-4 mt-2">
-    <div class="skeleton" style="height:72px;border-radius:14px;"></div>
-    <div class="skeleton" style="height:72px;border-radius:14px;"></div>
-    <div class="skeleton" style="height:72px;border-radius:14px;"></div>
+    <div class="skeleton" style="height:72px;"></div>
+    <div class="skeleton" style="height:72px;"></div>
+    <div class="skeleton" style="height:72px;"></div>
   </div>
 
   <!-- Empty state -->
   <div id="empty" class="empty-state hidden mt-4">
-    <span class="empty-state-icon">📭</span>
     <p>目前沒有開放報名的團體課程，請稍後再查看。</p>
   </div>
 
@@ -161,10 +162,10 @@ body { visibility: hidden; }
 
   <!-- Booking form (hidden until user has selections) -->
   <section id="booking-form-section" class="hidden mt-8">
-    <div class="card">
+    <div class="card fa-sheet" style="padding:22px 20px;">
       <h2 class="section-title mb-4">填寫報名資料</h2>
 
-      <div id="form-error" class="hidden mb-4 p-3 rounded-lg text-sm" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;"></div>
+      <div id="form-error" class="hidden mb-4 p-3 text-sm" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;"></div>
 
       <form id="booking-form" autocomplete="on" novalidate>
         <div class="mb-4">
@@ -177,7 +178,7 @@ body { visibility: hidden; }
         </div>
 
         <!-- Order summary -->
-        <div id="order-summary" class="mb-4 p-3 rounded-lg text-sm" style="background:#f8fafc;border:1px solid var(--line);">
+        <div id="order-summary" class="mb-4 p-3 text-sm" style="background:#f8fafc;border:1px solid var(--line);">
           <div class="font-semibold mb-1" style="color:var(--ink);">訂單摘要</div>
           <div id="summary-pay-list" class="text-slate-600"></div>
           <div id="summary-wait-list" class="text-amber-700 mt-1"></div>
@@ -186,7 +187,7 @@ body { visibility: hidden; }
           </div>
           <div class="mt-2 pt-2" style="border-top:1px solid var(--line);">
             <span class="font-bold" style="color:var(--ink);">應付金額：</span>
-            <span id="summary-total" class="font-bold text-lg" style="color:var(--brand-700);">NT$0</span>
+            <span id="summary-total" class="font-bold text-lg" style="color:var(--brand-700);font-variant-numeric:tabular-nums;">NT$0</span>
           </div>
         </div>
 
@@ -209,15 +210,14 @@ body { visibility: hidden; }
 
   <!-- Success view -->
   <section id="success-view">
-    <div class="text-center py-6">
-      <div class="text-5xl mb-4">✅</div>
-      <h1 class="section-title text-2xl">報名成功！</h1>
-      <p class="subtle mt-1">請依下方資訊完成匯款，以確保報名生效。</p>
+    <div class="success-head">
+      <div class="ok-word">報名成功</div>
+      <p>請依下方資訊完成匯款，以確保報名生效。</p>
     </div>
 
-    <div class="card mb-4" id="success-order-info"></div>
+    <div class="card fa-sheet mb-4" style="padding:20px;" id="success-order-info"></div>
     <div class="bank-box mb-4" id="success-bank-info"></div>
-    <div id="success-waitlist" class="hidden mb-4 p-3 rounded-lg text-sm" style="background:#fffbeb;border:1px solid #fcd34d;color:#92400e;"></div>
+    <div id="success-waitlist" class="hidden mb-4 p-3 text-sm" style="background:#fffbeb;border:1px solid #fcd34d;color:#92400e;"></div>
     <div id="success-line-box" class="line-box hidden mb-4"></div>
 
     <div class="flex flex-col gap-3 mt-6">
@@ -226,19 +226,37 @@ body { visibility: hidden; }
     </div>
   </section>
 
+  <!-- 報名三步（真實流程序列） -->
+  <section class="fa-steps" id="how-steps">
+    <div class="fa-step"><b>1</b><h3>勾選場次</h3><p>同時報多堂只填一次資料。</p></div>
+    <div class="fa-step"><b>2</b><h3>送出報名</h3><p>姓名＋電話就是你的身分。</p></div>
+    <div class="fa-step"><b>3</b><h3>完成匯款</h3><p>期限內轉帳，LINE 通知確認。</p></div>
+  </section>
+
 </main>
 
-<!-- Sticky price bar -->
-<div id="price-bar" class="hidden">
+<!-- Sticky 選課列 -->
+<div id="price-bar" class="fa-tray hidden">
   <div>
-    <div class="text-xs font-semibold" style="color:var(--ink-mute);">已選付款場次</div>
-    <div id="price-bar-total" class="text-xl font-bold" style="color:var(--brand-700);">NT$0</div>
+    <div class="pb-label">已選付款場次</div>
+    <div id="price-bar-total" class="pb-total">NT$0</div>
   </div>
-  <button id="price-bar-go" class="btn btn-primary btn-sm" disabled>填寫資料 →</button>
+  <button id="price-bar-go" class="fa-tray-cta" disabled>填寫資料 →</button>
 </div>
 
 <div id="toast" class="toast"></div>
 
+<script>
+// 海報浮水印：本週 ISO 週數（純裝飾，JS 失效時空白即可）
+(() => {
+  const d = new Date();
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const wk = Math.ceil(((t - y0) / 86400000 + 1) / 7);
+  document.getElementById('hero-week-wm').textContent = 'W' + wk;
+})();
+</script>
 <script type="module" src="/group.js"></script>
 </body>
 </html>

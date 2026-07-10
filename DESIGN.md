@@ -95,7 +95,7 @@ components:
 
 晴天藍、白場地、清晰界線——整套系統是一座開闊、乾淨、有精神的運動場域。空間感來自留白與髮絲線，不來自陰影堆疊；能量感來自精確的大數字與狀態燈，不來自裝飾。所有的「證據」（時間、金額、堂數、時數）都以 Archivo 粗體 tabular 數字呈現，像場邊計分板一樣可信。
 
-系統有兩層語彙：**基底層**（colors_and_type.css tokens，全站共用）與 **Nike 技術美學層**（行語法＋Archivo 錨點，現行範圍：my-schedule／admin／coach／checkin）。公開門面頁（首頁團課、教練預約）刻意維持樸素直白，未套 Nike 層——重新設計公開頁時以 PRODUCT.md 的 brand 定位另案處理，員工與會員工具頁一律走 Nike 層。
+系統有兩層語彙：**門面層「天藍海報」**（facade.css，公開頁：index／group，後續 coaches／login）——競速天藍浸透（drenched）整個場地，白紙 sheet 浮其上，海報 hero＋巨型 Archivo 浮水印扛招生聲量；**工具層 Nike 技術美學**（行語法＋Archivo 錨點：my-schedule／admin／coach／checkin）——白場地、髮絲線、介面消失在任務裡。兩層共用同一個藍、同一套字型、同一種方角與狀態語言。
 
 明確拒絕（引自 PRODUCT.md）：「過時的土網頁」與「AI 樣板感——紫色漸層、滿版圓角卡片、emoji 當圖示、千篇一律的 SaaS 版型」。
 
@@ -126,7 +126,8 @@ components:
 - Logo 彩帶（--accent-pink/orange/yellow/green/cyan/blue）：**只准出現在 logo 與品牌插畫內**，介面禁用。
 
 ### Named Rules
-**The One-Sky Rule.** 一個畫面只有一個強調色：競速天藍。它屬於「行動」與「現在」；狀態色只說狀態，彩帶色不出 logo。臨場發明新顏色是被禁止的。
+**The One-Sky Rule.** 一個畫面只有一個強調色：競速天藍。工具頁它屬於「行動」與「現在」；門面頁它可以是整個場地（drenched），但仍是同一個藍——深藍 #0c4a6e 收尾帶、亮階 #38bdf8 只在深藍底上作 CTA。狀態色只說狀態，彩帶色不出 logo。臨場發明新顏色是被禁止的。
+**The White-on-Sky Rule.** 天藍 #0284c7 場地上的文字一律純白（4.66:1）；層級靠字重與字級，不靠降透明度的灰——半透明白是 3.x:1 的可讀性陷阱。
 
 ## 3. Typography
 
@@ -137,7 +138,8 @@ components:
 **Character:** Inter 負責安靜的內文與標題；Archivo 是計分板的聲音——凡是數字錨點（日期、時間、金額、時數、剩餘堂數）與微標籤（section-label、eyebrow、狀態字），一律 Archivo 粗體、`font-variant-numeric: tabular-nums`。
 
 ### Hierarchy
-- **Display**（Archivo 900，19–30px 依場景，行高 ~0.95，字距 -0.03em）：數字錨點——課表日期方塊、打卡時間、剩餘堂數、本期時數。永遠 tabular。
+- **Poster**（900，clamp(38px, 8vw, 60px)，行高 1.14）：門面 hero 主標，一屏一句。浮水印變體：Archivo 900、clamp(120px, 26vw, 210px)、rgba(255,255,255,.12)，純裝飾、aria-hidden。
+- **Display**（Archivo 900，19–30px 依場景，行高 ~0.95，字距 -0.03em）：數字錨點——課表日期方塊、打卡時間、剩餘堂數、本期時數；門面 tray 總額 21px、步驟數字 28px 同屬此聲部。永遠 tabular。
 - **Headline**（Inter 800，28px／display clamp 28–42px）：頁面主標。
 - **Title**（Inter 700，17–20px）：卡片標題、區塊標題；人名 900 加重（.ck-coach、.sn-title 15.5px 900）。
 - **Body**（Inter 400–500，14px，行高 1.55）：內文，行長 ≤ 65–75ch。
@@ -188,6 +190,11 @@ components:
 
 ### Navigation
 - 員工後台為分頁籤；區塊標題用 section-label（Archivo 大寫寬字距＋髮絲尾線）。手機 <768px 表格重排成卡片（pr-table RWD 語彙）。
+
+### 門面 Sheet／Tray（facade.css）
+- **Sheet 白紙卡**：`#fff`、直角、無邊框無陰影，浮在天藍場地上——課程手風琴、表單卡、FAQ、入口卡皆是 sheet。sheet 內部回到工具層規則（髮絲線、token 色）。
+- **Tray 收尾帶**：深藍 `#0c4a6e` 帶狀（sticky 選課列、頁尾），白字＋亮藍 `#38bdf8` CTA（深藍字）；tray 總額 Archivo 900 tabular。
+- **Poster hero**：kicker（Archivo 800 大寫 .26em）＋900 大標＋純白 sub copy＋右上巨型浮水印；一屏一主張。
 
 ### 行語法（Signature Component）
 清單的標準列：`grid [Archivo 錨點欄 46–56px] [內容] [狀態]`，列間 1px 髮絲線。狀態＝6px 方點＋11.5px 700 標籤（ok 綠／open 藍／warn 琥珀且旋轉 45°／mute 灰）。「下一個／進行中」的那一列加 3px 競速天藍左緣條。my-schedule、checkin、admin 週課表皆此語法。
