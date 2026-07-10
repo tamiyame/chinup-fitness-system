@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-10T00:00:00+08:00",
+  "title": "Design System: CHIN UP Performance",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "競速天藍", "canonical": "#0ea5e9", "tonalRamp": ["#0c4a6e", "#075985", "#0369a1", "#0284c7", "#0ea5e9", "#38bdf8", "#7dd3fc", "#e0f2fe"] },
+      "primary-deep": { "role": "primary", "displayName": "競速天藍・深階", "canonical": "#0284c7", "tonalRamp": ["#0c4a6e", "#075985", "#0369a1", "#0284c7", "#0ea5e9", "#38bdf8", "#bae6fd", "#f0f9ff"] },
+      "ink": { "role": "neutral", "displayName": "墨黑", "canonical": "#0f172a", "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#f1f5f9"] },
+      "canvas": { "role": "neutral", "displayName": "晨霧底", "canonical": "#f8faf9", "tonalRamp": ["#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e5e7eb", "#f1f5f9", "#f8faf9"] },
+      "ok": { "role": "tertiary", "displayName": "狀態綠", "canonical": "#047857", "tonalRamp": ["#064e3b", "#065f46", "#047857", "#059669", "#10b981", "#6ee7b7", "#a7f3d0", "#ecfdf5"] },
+      "warn": { "role": "tertiary", "displayName": "狀態琥珀", "canonical": "#a16207", "tonalRamp": ["#713f12", "#854d0e", "#a16207", "#ca8a04", "#eab308", "#facc15", "#fcd34d", "#fffbeb"] },
+      "err": { "role": "tertiary", "displayName": "狀態紅", "canonical": "#b91c1c", "tonalRamp": ["#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fecaca", "#fef2f2"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Archivo 錨點", "purpose": "數字錨點：日期、時間、金額、時數、剩餘堂數。永遠 tabular-nums。" },
+      "label": { "displayName": "Archivo 微標", "purpose": "section-label、狀態標籤、eyebrow：大寫、寬字距 .12–.2em。" }
+    },
+    "shadows": [
+      { "name": "floating", "value": "0 12px 32px -8px rgba(15,23,42,0.14)", "purpose": "懸浮層專用：彈窗、drawer、下拉。靜止元素禁用。" },
+      { "name": "brand-glow", "value": "0 6px 24px -6px rgba(56,189,248,0.35)", "purpose": "主 CTA 光暈，一頁最多一處。" },
+      { "name": "ring-focus", "value": "0 0 0 3px rgba(56,189,248,0.15)", "purpose": "鍵盤焦點環，全站一致。" }
+    ],
+    "motion": [
+      { "name": "ease-state", "value": "160ms ease", "purpose": "預設狀態轉場（hover/focus/背景）。" },
+      { "name": "ease-quick", "value": "120ms ease", "purpose": "輕互動（badge 切換、filter）。" }
+    ],
+    "breakpoints": [
+      { "name": "mobile-card", "value": "420px" },
+      { "name": "admin-rwd", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "主行動鈕（方角）",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "手機主行動：全寬方角實心天藍＋Archivo 寬字距。",
+      "html": "<button class=\"ds-btn-primary\">到 場 打 卡</button>",
+      "css": ".ds-btn-primary { width: 100%; height: 52px; border: 0; border-radius: 0; background: #0ea5e9; color: #fff; font-family: Archivo, 'Noto Sans TC', sans-serif; font-weight: 800; font-size: 15.5px; letter-spacing: 0.32em; text-indent: 0.32em; cursor: pointer; transition: background 160ms ease; } .ds-btn-primary:hover { background: #0284c7; } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(56,189,248,0.15); }"
+    },
+    {
+      "name": "危險鈕（方角紅）",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "取消/刪除動作：err 實心方角，兩段式確認。",
+      "html": "<button class=\"ds-btn-danger\">取消預約</button>",
+      "css": ".ds-btn-danger { border: 0; border-radius: 0; background: #b91c1c; color: #fff; font-weight: 700; font-size: 12.5px; letter-spacing: 0.06em; min-height: 32px; padding: 0 14px; line-height: 32px; cursor: pointer; transition: background 160ms ease; } .ds-btn-danger:hover { background: #991b1b; } .ds-btn-danger:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(185,28,28,0.15); }"
+    },
+    {
+      "name": "狀態藥丸",
+      "kind": "chip",
+      "refersTo": "card",
+      "description": "預約/訂單狀態：淡底＋同系淡框＋點前綴。",
+      "html": "<span class=\"ds-badge\">已確認</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; letter-spacing: 0.01em; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; white-space: nowrap; } .ds-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.8; }"
+    },
+    {
+      "name": "行語法列（Signature）",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "清單標準列：Archivo 錨點＋內容＋狀態點；進行中列 3px 左緣條。",
+      "html": "<div class=\"ds-row ds-row-open\"><div><span class=\"ds-row-t0\">14:00</span><span class=\"ds-row-hr\">2 HR</span></div><div class=\"ds-row-range\">14:00–16:00</div><span class=\"ds-row-status\"><span class=\"ds-row-dot\"></span>可打卡</span></div>",
+      "css": ".ds-row { position: relative; display: grid; grid-template-columns: 52px 1fr auto; column-gap: 13px; align-items: center; padding: 13px 0; border-bottom: 1px solid #e5e7eb; font-family: Inter, 'Noto Sans TC', sans-serif; } .ds-row-open { padding-left: 13px; } .ds-row-open::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; background: #0ea5e9; } .ds-row-t0 { font-family: Archivo, sans-serif; font-weight: 900; font-size: 19px; line-height: 0.95; letter-spacing: -0.02em; color: #0284c7; font-variant-numeric: tabular-nums; display: block; } .ds-row-hr { font-family: Archivo, sans-serif; font-weight: 600; font-size: 10px; letter-spacing: 0.08em; color: #94a3b8; display: block; margin-top: 3px; } .ds-row-range { font-family: Archivo, sans-serif; font-weight: 600; font-size: 13px; color: #475569; font-variant-numeric: tabular-nums; } .ds-row-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: #0284c7; } .ds-row-dot { width: 6px; height: 6px; background: #0ea5e9; }"
+    },
+    {
+      "name": "區塊標題（section-label）",
+      "kind": "nav",
+      "refersTo": "card",
+      "description": "Archivo 大寫寬字距＋髮絲尾線的分節標題。",
+      "html": "<div class=\"ds-slabel\">今日班表</div>",
+      "css": ".ds-slabel { display: flex; align-items: center; gap: 10px; font-family: Archivo, 'Noto Sans TC', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: #94a3b8; } .ds-slabel::after { content: ''; flex: 1; height: 1px; background: #e5e7eb; }"
+    },
+    {
+      "name": "輸入欄（sh-field 骨架）",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "標籤在上、16px 防 iOS 縮放、focus 天藍框＋光環。",
+      "html": "<label class=\"ds-field\"><span class=\"ds-flabel\">姓名</span><input class=\"ds-input\" type=\"text\" placeholder=\"王小明\"></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 4px; font-family: Inter, 'Noto Sans TC', sans-serif; } .ds-flabel { font-size: 13px; font-weight: 600; color: #374151; } .ds-input { border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 14px; font-size: 16px; width: 100%; outline: none; transition: border-color 160ms ease, box-shadow 160ms ease; } .ds-input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,0.15); }"
+    },
+    {
+      "name": "基底卡片",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "細線白卡 14px 圓角；新作靜止不加陰影。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">一對一教練課</div><div class=\"ds-card-desc\">60 分鐘・王教練</div></div>",
+      "css": ".ds-card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 20px; font-family: Inter, 'Noto Sans TC', sans-serif; } .ds-card-title { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: #0f172a; } .ds-card-desc { color: #475569; font-size: 14px; margin-top: 4px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "天空下的訓練場",
+    "overview": "晴天藍、白場地、清晰界線——整套系統是一座開闊、乾淨、有精神的運動場域。空間感來自留白與髮絲線，不來自陰影堆疊；能量感來自精確的大數字與狀態燈，不來自裝飾。系統有兩層語彙：基底 token 層全站共用；Nike 技術美學層（行語法＋Archivo 錨點）現行範圍為 my-schedule／admin／coach／checkin，公開門面頁另案處理。",
+    "keyCharacteristics": [
+      "平面優先：髮絲線分層，陰影只留給懸浮行動層",
+      "數字即證據：Archivo 900 tabular 錨點是每個畫面的視覺重心",
+      "狀態即語言：6px 方點＋粗標籤取代一切圖示與 emoji",
+      "方角俐落：行動鈕直角實心＋寬字距；圓角是舊語彙",
+      "繁體中文文案，直接、不囉嗦"
+    ],
+    "rules": [
+      { "name": "The One-Sky Rule", "body": "一個畫面只有一個強調色：競速天藍。它屬於「行動」與「現在」；狀態色只說狀態，彩帶色不出 logo。臨場發明新顏色是被禁止的。", "section": "colors" },
+      { "name": "The Tabular Rule", "body": "會被對帳的數字（時間、金額、堂數、時數）一律 tabular-nums＋Archivo 錨點。比例字的數字是不可信的。", "section": "typography" },
+      { "name": "The Hairline Rule", "body": "需要分界先想髮絲線，再想底色階，最後才是陰影。若一個靜止元素長出陰影，它就是錯的。", "section": "elevation" },
+      { "name": "The Rail Rule", "body": "3px 左緣條是「現在」的專屬記號——標記下一堂課、進行中時段，一個畫面最多一處。任何其他用途的彩色側條都被禁止。", "section": "elevation" },
+      { "name": "The Dot Rule", "body": "狀態一律 6px 方點＋文字標籤。不用 emoji、不用圖示字型、不畫 SVG 小圖。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 所有會被對帳的數字用 Archivo＋tabular-nums（The Tabular Rule）。",
+      "Do 分層先髮絲線、再底色階；陰影只給懸浮層與主 CTA（The Hairline Rule）。",
+      "Do 新行動鈕一律方角實心＋寬字距；focus 用 ring-focus。",
+      "Do 狀態用 6px 方點＋標籤，配色走 token 的狀態三色組。",
+      "Do 手機優先驗證：420px 卡片寬、按鈕高 ≥52px、input 16px 防縮放。",
+      "Do 文案繁體中文、直接不囉嗦；技術識別字保持原文。"
+    ],
+    "donts": [
+      "Don't 做出「過時的土網頁」：表格塊狀堆疊、系統字型、無設計的公家機關感。",
+      "Don't 做出「AI 樣板感」：紫色漸層、滿版圓角卡片、emoji 當圖示、千篇一律的 SaaS 版型。",
+      "Don't 臨場發明色票——不在 token 裡的顏色不存在（The One-Sky Rule）。",
+      "Don't 讓 logo 彩帶色流出 logo 之外。",
+      "Don't 在 3px 左緣「現在」條以外使用任何彩色側條裝飾（The Rail Rule）。",
+      "Don't 給靜止元素加陰影、給每個標題配 icon、在每個區塊上方放大寫小字 eyebrow。",
+      "Don't 在 flex 列裸放 width:100% 的 .form-input；一律用標籤在上的 sh-field 骨架。",
+      "Don't 在新介面複製圓角 .btn 舊語彙。"
+    ]
+  }
+}
