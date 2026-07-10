@@ -62,13 +62,7 @@ body { visibility: hidden; }
 }
 .tab-panel .card:hover{ transform:none; box-shadow:none; border-color:var(--ink-mute); }
 
-/* 我的預約卡：左側 sky 細條當作未取消的「即將到來」錨點 */
-.tab-bookings-card{ position:relative; padding-left:16px; }
-.tab-bookings-card::before{
-  content:""; position:absolute; left:0; top:12px; bottom:12px;
-  width:3px; background:var(--nk-acc);
-}
-.tab-bookings-card.is-cancelled::before{ background:var(--line); }
+/* （.tab-bookings-card 為分組改版前的死 CSS，已移除左緣鐵軌；實際卡為 #bk-list .bk-group）*/
 
 /* 會員名 → Archivo 質感大字 */
 .tab-bookings-card .font-semibold{
@@ -166,8 +160,8 @@ body { visibility: hidden; }
 
 /* ── 我的預約：客人分組可收合卡（緊湊 + 聚焦淡化）── */
 #bk-list .bk-group{ border:1px solid var(--line); border-radius:9px; background:#fff; margin-bottom:6px; position:relative; overflow:hidden; transition:opacity .18s ease; }
-#bk-list .bk-group::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--brand-600); }
-#bk-list .bk-group.is-allpast::before{ background:var(--line); }
+/* Rail Rule：左緣天藍鐵軌只給「下一堂」一張（首個 upcoming 群組），其餘靠圓點狀態 */
+#bk-list .bk-group.is-next::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--brand-600); }
 #bk-list.has-open .bk-group:not(.open){ opacity:.4; }
 #bk-list.has-open .bk-group:not(.open):hover{ opacity:.72; }
 .bk-head{ display:flex; align-items:center; gap:10px; padding:8px 12px 8px 15px; cursor:pointer; user-select:none; min-height:42px; }

@@ -222,16 +222,19 @@ async function renderBookings() {
     return `<div class="bk-sess"><span class="bk-sess-when">${fmtSlot(b.start_at)}${tag} ${statusDot(b)}</span><button data-id="${b.id}" class="bk-cancel cancel-btn">緊急取消</button></div>`;
   };
 
+  // Rail Rule：只有首個「有 upcoming」的群組卡掛左緣鐵軌（下一堂）
+  const nextCard = cards.find(c => c.hasUpcoming) || null;
   let html = '<div id="bk-list">';
   for (const c of cards) {
     const g = c.g;
     const allPast = c.hasUpcoming ? '' : ' is-allpast';
+    const isNext = c === nextCard ? ' is-next' : '';
     const nameTag = g.has1on2 ? ' <span class="nk-tag">1對2</span>' : '';
     if (g.gs.length === 1) {
       const b = g.gs[0];
       const canCancel = isUpcoming(b);
       html += `
-        <div class="bk-group bk-single${allPast}">
+        <div class="bk-group bk-single${allPast}${isNext}">
           <div class="bk-head">
             <div class="bk-id">
               <span class="bk-name">${escapeHtml(g.name)}</span>${nameTag}
@@ -245,7 +248,7 @@ async function renderBookings() {
     } else {
       const open = expandedMembers.has(g.memberId) ? ' open' : '';
       html += `
-        <div class="bk-group${open}${allPast}" data-mid="${g.memberId}">
+        <div class="bk-group${open}${allPast}${isNext}" data-mid="${g.memberId}">
           <div class="bk-head bk-toggle">
             <div class="bk-id">
               <span class="bk-name">${escapeHtml(g.name)}</span>${nameTag}
