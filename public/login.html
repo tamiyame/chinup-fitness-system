@@ -6,60 +6,56 @@
 <title>登入 - CHINUP Performance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/colors_and_type.css">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/facade.css">
 <style>
-  body {
-    background-image:
-      radial-gradient(1200px 600px at 20% 10%, rgba(56, 189, 248, 0.18), transparent 55%),
-      radial-gradient(900px 500px at 90% 90%, rgba(14, 165, 233, 0.12), transparent 55%);
-    min-height: 100vh;
+  /* 門面「天藍海報」— 登入：drenched sky 場地上一張白紙 sheet */
+  body { min-height: 100vh; min-height: 100dvh; }
+  .staff-kick {
+    font-family: "Archivo","Noto Sans TC",sans-serif; font-weight: 800;
+    font-size: 11px; letter-spacing: .28em; text-transform: uppercase;
+    color: #fff; margin-bottom: 14px;
   }
   .login-card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 20px;
-    padding: 36px;
-    box-shadow: var(--shadow-lg);
-    max-width: 440px; width: 100%;
-    animation: card-enter 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    background: #fff; color: var(--ink);
+    border: 0; border-radius: 0;
+    padding: 30px 26px 26px;
+    max-width: 400px; width: 100%;
+    animation: card-enter 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes card-enter {
-    from { opacity: 0; transform: translateY(24px) scale(0.96); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: none; }
   }
   .login-logo {
-    width: 88px; height: 88px;
-    margin: 0 auto 14px;
+    width: 68px; height: 68px;
+    margin: 0 auto 12px;
     display: block;
     object-fit: contain;
-    animation: logo-float 3.6s ease-in-out 0.4s infinite;
-    filter: drop-shadow(0 6px 14px rgba(14, 165, 233, 0.25));
-  }
-  @keyframes logo-float {
-    0%, 100% { transform: translateY(0); }
-    50%      { transform: translateY(-6px); }
   }
   .btn-google {
     display: flex; align-items: center; justify-content: center; gap: 10px;
-    width: 100%; padding: 11px 18px;
-    border: 1px solid var(--line); border-radius: var(--radius-sm);
-    background: white; color: #1f2937; font-weight: 600; font-size: 14px;
-    transition: all 150ms; cursor: pointer;
+    width: 100%; padding: 12px 18px;
+    border: 1px solid var(--line); border-radius: 0;
+    background: #fff; color: #1f2937; font-weight: 600; font-size: 14px;
+    transition: background 150ms, border-color 150ms; cursor: pointer;
     text-decoration: none;
   }
-  .btn-google:hover { background: #f9fafb; border-color: #9ca3af; }
+  .btn-google:hover { background: #f9fafb; border-color: var(--ink-mute); }
   .google-icon { width: 18px; height: 18px; flex-shrink: 0; }
 
-  .divider { display: flex; align-items: center; gap: 10px; color: var(--ink-mute); font-size: 12px; margin: 20px 0; }
+  .divider { display: flex; align-items: center; gap: 10px; color: var(--ink-mute); font-size: 12px; margin: 18px 0; }
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 
+  @media (prefers-reduced-motion: reduce) { .login-card { animation: none; } }
 </style>
 </head>
-<body class="flex items-center justify-center p-6">
+<body class="flex flex-col items-center justify-center p-6">
 
+<div class="staff-kick">Staff Access</div>
 <div class="login-card">
   <div class="text-center mb-6">
     <img src="/logo.png" alt="CHINUP Performance" class="login-logo">

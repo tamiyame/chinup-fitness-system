@@ -75,3 +75,43 @@ body { background: var(--brand-700); color: #fff; }
 .entry-card.solo .entry-cta .arr { background: var(--brand-100); }
 .entry-card.group .entry-watermark { color: rgba(2,132,199,.10); }
 .entry-card.solo .entry-watermark { color: rgba(12,74,110,.10); }
+
+/* ===========================================================
+   coaches（一對一預約）門面化
+   教練卡 → 白紙 sheet（方角平面）；詳細頁挑時段 on sky（文字轉白）
+   =========================================================== */
+
+/* section 標籤 → sky 場地上的白字 */
+.section-all-label { color: rgba(255,255,255,.82); }
+
+/* 教練卡 → 白紙 sheet：方角、平面、hover 只換水洗底 */
+.ccard { border-radius: 0; border: 0; box-shadow: none; margin-bottom: 10px; transition: background 160ms ease; }
+.ccard:hover { transform: none; box-shadow: none; background: var(--brand-50); }
+.ccard.expanded { border-radius: 0; }
+.ccard-avatar { border-radius: 0; }
+.ccard-expand { border-radius: 0; box-shadow: none; margin-bottom: 10px; }
+
+/* 預約 CTA → 方角實心＋寬字距（門面鈕語彙） */
+.ctaA { border-radius: 0; box-shadow: none; font-family: "Archivo","Noto Sans TC",sans-serif; font-weight: 800; letter-spacing: .14em; }
+
+/* mini 時段預覽 → 方角 */
+.miniSlot, .miniSlot-more { border-radius: 0; }
+
+/* ---------- 詳細頁（挑時段）on sky ---------- */
+#back-to-list { color: #fff; }
+.detail-name { color: #fff; }
+.detail-spec { color: rgba(255,255,255,.82); }
+.slot-title, .page-title { color: #fff; }
+.slot-day-head { color: #fff; }
+.slot-day-head small { color: rgba(255,255,255,.72); }
+.slot-empty, .timegrid-empty { color: rgba(255,255,255,.78); }
+
+/* 週次導覽鈕 / 日期 pill / 時段卡 → 方角白紙（沿用既有白底 on sky） */
+.day-nav-btn { border-radius: 0; }
+.daypill { border-radius: 0; }
+.timeslot { border-radius: 0; }
+
+/* ---------- booking modal → 方角（懸浮白層） ---------- */
+#booking-modal > div { border-radius: 0; }
+#booking-modal .session-type-btn { border-radius: 0; }
+#booking-modal input { border-radius: 0; }
