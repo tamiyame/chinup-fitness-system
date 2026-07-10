@@ -864,7 +864,7 @@ function renderBkReassign() {
           $('bke-results').innerHTML = ''; search.value = picked.name;
           const all = await api(`/api/coach/packages?memberId=${picked.id}`);
           const valid = all.filter(p => p.is_valid);
-          if (!valid.length) { $('bke-pkg').innerHTML = '<div class="regm-sub" style="color:#b45309;">此客人沒有可用方案，請先於會員管理或登錄彈窗開方案。</div>'; return; }
+          if (!valid.length) { $('bke-pkg').innerHTML = '<div class="regm-sub" style="color:var(--warn-fg);">此客人沒有可用方案，請先於會員管理或登錄彈窗開方案。</div>'; return; }
           const PT = { '1on1': '一對一', '1on2': '一對二' };
           $('bke-pkg').innerHTML = `<select id="bke-pkgsel" class="form-select">${valid.map(p => `<option value="${p.id}">${PT[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}</option>`).join('')}</select><button id="bke-reassign-go" class="btn-primary" style="margin-top:6px;">確認改指定</button>`;
           $('bke-reassign-go').onclick = async () => {
