@@ -4,36 +4,62 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>到場打卡 | CHIN UP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/colors_and_type.css">
   <link rel="stylesheet" href="/style.css">
   <style>
+    /* 到場打卡 · 課表同語彙（沿用 my-schedule 行語法：時間錨點＋狀態點＋左緣提示條） */
     .ck-wrap{ max-width:420px; margin:0 auto; padding:24px 16px 48px; }
-    .ck-card{ background:#fff; border-radius:16px; padding:20px; box-shadow:0 2px 12px rgba(15,23,42,.06); }
-    .ck-coach{ font-size:.8rem; color:#64748b; margin-bottom:4px; }
-    .ck-coach b{ color:#0f172a; font-weight:700; }
-    .ck-date{ font-weight:800; font-size:1.05rem; }
-    .ck-slot{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #eef2f7; font-size:.95rem; }
-    .ck-slot:last-child{ border-bottom:none; }
-    .ck-chip{ font-size:.75rem; padding:2px 8px; border-radius:999px; background:#eef2f7; color:#475569; white-space:nowrap; }
-    .ck-chip.done{ background:#dcfce7; color:#166534; }
-    .ck-chip.open{ background:#dbeafe; color:#1d4ed8; }
-    .ck-btn{ width:100%; margin-top:16px; padding:14px 0; border:none; border-radius:12px; background:#0284c7; color:#fff; font-size:1.05rem; font-weight:800; cursor:pointer; }
+    .ck-card{ background:var(--surface); border-radius:16px; padding:22px 18px 24px; box-shadow:0 2px 12px rgba(15,23,42,.06); }
+    .ck-head{ display:flex; align-items:center; gap:10px; font-family:"Archivo","Noto Sans TC",sans-serif; font-weight:700; font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-mute); }
+    .ck-head::after{ content:""; flex:1; height:1px; background:var(--line); }
+    .ck-id{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-top:14px; }
+    .ck-coach{ font-weight:900; font-size:20px; letter-spacing:-.01em; color:var(--ink); min-width:0; }
+    .ck-coach .lead{ font-weight:500; font-size:12.5px; color:var(--ink-mute); letter-spacing:.04em; margin-right:4px; }
+    .ck-date{ font-family:"Archivo","Noto Sans TC",sans-serif; font-weight:700; font-size:13px; letter-spacing:.04em; color:var(--ink-soft); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .ck-date b{ font-weight:900; color:var(--ink); }
+    .ck-slots{ margin-top:6px; }
+    .ck-row{ position:relative; display:grid; grid-template-columns:52px 1fr auto; column-gap:13px; align-items:center; padding:13px 0; border-bottom:1px solid var(--line); }
+    .ck-row:last-child{ border-bottom:none; }
+    .ck-row.is-open{ padding-left:13px; margin-left:-13px; }
+    .ck-row.is-open::before{ content:""; position:absolute; left:0; top:10px; bottom:10px; width:3px; background:var(--brand-600); }
+    .ck-t0{ font-family:"Archivo",sans-serif; font-weight:900; font-size:19px; line-height:.95; letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums; display:block; }
+    .ck-row.is-open .ck-t0{ color:var(--brand-700); }
+    .ck-hr{ font-family:"Archivo",sans-serif; font-weight:600; font-size:10px; letter-spacing:.08em; color:var(--ink-mute); display:block; margin-top:3px; }
+    .ck-range{ font-family:"Archivo",sans-serif; font-weight:600; font-size:13px; letter-spacing:.02em; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+    .ck-status{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; letter-spacing:.03em; white-space:nowrap; }
+    .ck-dot{ width:6px; height:6px; flex:none; }
+    .ck-status.ok{ color:var(--ok-fg); } .ck-status.ok .ck-dot{ background:var(--ok-fg); }
+    .ck-status.open{ color:var(--brand-700); } .ck-status.open .ck-dot{ background:var(--brand-600); }
+    .ck-status.warn{ color:var(--warn-fg); } .ck-status.warn .ck-dot{ background:var(--warn-fg); transform:rotate(45deg); }
+    .ck-status.mute{ color:var(--ink-mute); } .ck-status.mute .ck-dot{ background:var(--ink-mute); }
+    .ck-none{ padding:18px 0; font-size:13.5px; color:var(--ink-mute); border-bottom:1px solid var(--line); }
+    .ck-btn{ width:100%; margin-top:20px; height:52px; border:0; border-radius:0; background:var(--brand-600); color:#fff; font-family:"Archivo","Noto Sans TC",sans-serif; font-weight:800; font-size:15.5px; letter-spacing:.32em; text-indent:.32em; cursor:pointer; }
     .ck-btn:disabled{ opacity:.5; cursor:default; }
     .ck-msg{ margin-top:12px; font-size:.9rem; line-height:1.5; }
-    .ck-msg.ok{ color:#166534; }
-    .ck-msg.err{ color:#b91c1c; }
-    .ck-period{ margin-top:14px; font-size:.8rem; color:#64748b; text-align:center; }
+    .ck-msg.ok{ color:var(--ok-fg); }
+    .ck-msg.err{ color:var(--err-fg); }
+    .ck-period{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-top:18px; padding-top:14px; border-top:1px solid var(--line); }
+    .ck-plabel{ font-family:"Archivo","Noto Sans TC",sans-serif; font-weight:700; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-mute); }
+    .ck-pval{ font-family:"Archivo",sans-serif; font-weight:900; font-size:20px; letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .ck-pval small{ font-family:"Noto Sans TC",sans-serif; font-weight:700; font-size:11px; color:var(--ink-mute); letter-spacing:.05em; margin-left:3px; }
   </style>
 </head>
-<body>
+<body class="brand-canvas">
   <div class="ck-wrap">
     <div class="ck-card">
-      <div class="ck-coach" id="ck-coach" hidden>登入身分：<b id="ck-coach-name"></b></div>
-      <div class="ck-date" id="ck-date">載入中…</div>
-      <div id="ck-slots"></div>
+      <div class="ck-head">到場打卡 CHECK-IN</div>
+      <div class="ck-id">
+        <div class="ck-coach" id="ck-coach" hidden><span class="lead">教練</span><span id="ck-coach-name"></span></div>
+        <div class="ck-date" id="ck-date">載入中…</div>
+      </div>
+      <div class="ck-slots" id="ck-slots"></div>
       <button class="ck-btn" id="ck-punch">到場打卡</button>
       <div class="ck-msg" id="ck-msg"></div>
-      <div class="ck-period" id="ck-period"></div>
+      <div class="ck-period" id="ck-period-row" hidden>
+        <span class="ck-plabel" id="ck-period-label"></span>
+        <span class="ck-pval" id="ck-period"></span>
+      </div>
     </div>
   </div>
   <script src="/checkin.js"></script>
