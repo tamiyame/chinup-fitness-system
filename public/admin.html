@@ -283,7 +283,7 @@ body { visibility: hidden; }
 .badge-cancelled,.badge-rejected{ color:var(--err-fg); }
 .badge-completed{ color:var(--ink-soft); }
 .badge-waitlisted{ color:var(--warn-fg); }
-.badge-pending,.badge-coach{ color:#6d28d9; }
+.badge-pending,.badge-coach{ color:var(--info-fg); }
 .badge-closed{ color:var(--ink-mute); }
 .badge-leave{ color:var(--err-fg); }
 /* 候補的小點轉 45° 成菱形（與前台一致的「警示」語彙）*/
@@ -291,7 +291,7 @@ body { visibility: hidden; }
 /* 場次開放/關閉切換鈕：仍是可點互動，但需看得出可按 → 加細框 + padding */
 .session-toggle{
   border:1px solid var(--line) !important;
-  border-radius:7px;
+  border-radius:0;
   padding:4px 10px !important;
   background:var(--surface) !important;
 }
@@ -301,7 +301,7 @@ body { visibility: hidden; }
 
 /* ---------- 按鈕 → 實心俐落、觸控高度 ≥40px、小圓角 ---------- */
 .btn{
-  border-radius:8px;
+  border-radius:0;
   font-family:"Noto Sans TC",sans-serif; font-weight:700;
   letter-spacing:.01em;
   min-height:40px;
