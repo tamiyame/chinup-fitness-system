@@ -762,7 +762,7 @@ async function renderMemberPackages(memberId, mountEl) {
   mountEl.innerHTML = '<p class="subtle" style="font-size:12px;">載入方案中…</p>';
   let pkgs = [];
   try { pkgs = await api(`/api/coach/packages?memberId=${memberId}&includeArchived=1`); }
-  catch { mountEl.innerHTML = '<p class="subtle" style="font-size:12px;color:#dc2626;">方案載入失敗</p>'; return; }
+  catch { mountEl.innerHTML = '<p class="subtle" style="font-size:12px;color:var(--err-fg);">方案載入失敗</p>'; return; }
 
   const rowHtml = pkgs.map(p => {
     const arch = !!p.archived_at;
