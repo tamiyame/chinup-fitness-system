@@ -5,11 +5,11 @@ if (!token) location.replace('/login.html?redirect=' + encodeURIComponent('/chec
 const $ = (id) => document.getElementById(id);
 const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
 const STATUS_CHIP = {
-  done: ['已打卡 ✓', 'done'],
+  done: ['已打卡', 'ok'],
   open: ['可打卡', 'open'],
-  upcoming: ['尚未開放', ''],
-  closed: ['已結束', ''],
-  voided: ['已註銷', ''],
+  upcoming: ['尚未開放', 'mute'],
+  closed: ['已結束', 'mute'],
+  voided: ['已註銷', 'warn'],
 };
 const ERR_TEXT = {
   not_at_gym: (d) => `你似乎不在館內${d?.distance_m != null ? `（距離約 ${d.distance_m} 公尺）` : ''}，請到館內再打卡。`,
@@ -41,15 +41,23 @@ function render(d) {
   $('ck-coach-name').textContent = d.coachName || '';
   $('ck-coach').hidden = !d.coachName;
   const dt = new Date(d.date + 'T00:00:00');
-  $('ck-date').textContent = `${d.date.replace(/-/g, '/')}（週${WEEK[dt.getDay()]}）`;
+  const [, mm, dd] = d.date.split('-');
+  $('ck-date').innerHTML = `<b>${mm}/${dd}</b> 週${WEEK[dt.getDay()]}`;
+  // 行語法同 my-schedule：時間錨點＋起訖＋狀態點；可打卡列加左緣提示條
+  const row = (s, label, cls) =>
+    `<div class="ck-row${cls === 'open' ? ' is-open' : ''}">
+      <div><span class="ck-t0">${s.startTime}</span><span class="ck-hr">${s.hours} HR</span></div>
+      <div class="ck-range">${s.startTime}–${s.endTime}</div>
+      <span class="ck-status ${cls}"><span class="ck-dot"></span>${label}</span>
+    </div>`;
   const rows = d.slots.map((s) => {
-    const [label, cls] = STATUS_CHIP[s.status] || [s.status, ''];
-    return `<div class="ck-slot"><span>${s.startTime}–${s.endTime}（${s.hours} 小時）</span><span class="ck-chip ${cls}">${label}</span></div>`;
-  }).concat(d.extras.map((x) =>
-    `<div class="ck-slot"><span>${x.startTime}–${x.endTime}（${x.hours} 小時）</span><span class="ck-chip done">補登 ✓</span></div>`
-  ));
-  $('ck-slots').innerHTML = rows.join('') || '<div class="ck-slot"><span>今天沒有你的班表時段</span></div>';
-  $('ck-period').textContent = `本期（${d.period}）已累計 ${d.periodHours} 小時`;
+    const [label, cls] = STATUS_CHIP[s.status] || [s.status, 'mute'];
+    return row(s, label, cls);
+  }).concat(d.extras.map((x) => row(x, '補登', 'ok')));
+  $('ck-slots').innerHTML = rows.join('') || '<div class="ck-none">今天沒有你的班表時段</div>';
+  $('ck-period-label').textContent = `本期累計 · ${d.period}`;
+  $('ck-period').innerHTML = `${d.periodHours}<small>小時</small>`;
+  $('ck-period-row').hidden = false;
 }
 
 async function load() {
