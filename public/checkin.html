@@ -9,6 +9,8 @@
   <style>
     .ck-wrap{ max-width:420px; margin:0 auto; padding:24px 16px 48px; }
     .ck-card{ background:#fff; border-radius:16px; padding:20px; box-shadow:0 2px 12px rgba(15,23,42,.06); }
+    .ck-coach{ font-size:.8rem; color:#64748b; margin-bottom:4px; }
+    .ck-coach b{ color:#0f172a; font-weight:700; }
     .ck-date{ font-weight:800; font-size:1.05rem; }
     .ck-slot{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #eef2f7; font-size:.95rem; }
     .ck-slot:last-child{ border-bottom:none; }
@@ -26,6 +28,7 @@
 <body>
   <div class="ck-wrap">
     <div class="ck-card">
+      <div class="ck-coach" id="ck-coach" hidden>登入身分：<b id="ck-coach-name"></b></div>
       <div class="ck-date" id="ck-date">載入中…</div>
       <div id="ck-slots"></div>
       <button class="ck-btn" id="ck-punch">到場打卡</button>
