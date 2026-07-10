@@ -15,37 +15,30 @@
   .tab-bar {
     display: flex;
     gap: 0;
-    background: #f1f5f9;
-    border-radius: 10px;
-    padding: 4px;
+    background: var(--canvas);
+    border: 1px solid var(--line);
+    border-radius: 0;
+    padding: 3px;
     margin-bottom: 16px;
   }
   .tab-btn {
     flex: 1;
     text-align: center;
     padding: 8px 0;
-    font-size: 14px;
-    border-radius: 7px;
-    color: #64748b;
+    font-family: "Archivo", "Noto Sans TC", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    border-radius: 0;
+    color: var(--ink-soft);
     cursor: pointer;
     transition: background .15s, color .15s;
   }
   .tab-btn.active {
-    background: #fff;
-    color: #0f172a;
-    font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+    background: var(--ink);
+    color: #fff;
+    font-weight: 700;
   }
-  .pill-kind {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    margin-right: 6px;
-  }
-  .pill-1on1  { background: #dbeafe; color: #1e40af; }
-  .pill-group { background: #fce7f3; color: #9d174d; }
   .past-toggle {
     display: flex;
     align-items: center;
@@ -116,6 +109,9 @@
     margin: 6px 0 4px;
   }
   .section-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  /* 動作鈕方角化：對齊 DESIGN.md 方角語彙（本頁 legacy .btn 去圓角去光暈；nav 不受影響） */
+  main .btn-primary, main .btn-ghost { border-radius: 0; box-shadow: none; }
+  main .btn-primary:hover { box-shadow: none; }
   /* Lookup form */
   .lookup-field {
     display: flex;
@@ -138,8 +134,8 @@
     transition: border-color .15s;
   }
   .lookup-field input:focus {
-    border-color: var(--brand-500, #6366f1);
-    box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+    border-color: var(--brand-600);
+    box-shadow: var(--ring-focus);
   }
   /* 我的方案（套餐）· Nike 語彙：細線卡 + Archivo 大字剩餘數 + 進度條 */
   #packages-section { margin: 4px 0 18px; }
@@ -265,7 +261,6 @@
       <div class="section-label">Upcoming · 即將到來</div>
       <div id="upcoming-list" class="sn-list"></div>
       <div id="upcoming-empty" class="empty-state" style="display:none;">
-        <span class="empty-state-icon">📭</span>
         <p id="upcoming-empty-msg">尚無預約</p>
         <div class="flex gap-2 justify-center mt-3 flex-wrap">
           <a href="/" class="btn btn-ghost">瀏覽課程</a>
