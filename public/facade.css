@@ -1,0 +1,77 @@
+/* ===========================================================
+   CHIN UP · 門面層「天藍海報」（drenched）
+   疊在 colors_and_type.css + style.css 之後，僅公開門面頁載入：
+   index / group（之後：coaches / login）。
+   語彙：競速天藍場地、白紙 sheet、方角實心鈕、深藍收尾帶。
+   對比底線：sky #0284c7 上的內文一律純白（4.66:1）。
+   =========================================================== */
+
+body { background: var(--brand-700); color: #fff; }
+
+/* ---------- navbar on sky ---------- */
+.navbar { background: var(--brand-700); border-bottom: 1px solid rgba(255,255,255,.28); box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.brand-mark { color: #fff; }
+.brand-dot { background: #fff; }
+.nav-link, .nav-link-mobile { color: #fff; }
+.nav-link:hover, .nav-link.active { color: #fff; }
+.nav-link.active::after { background: #fff; }
+.nav-toggle-btn { color: #fff; border-color: rgba(255,255,255,.4); }
+#nav-mobile { background: var(--brand-700); border-bottom: 1px solid rgba(255,255,255,.28); }
+
+/* ---------- 海報 hero ---------- */
+.fa-hero { position: relative; overflow: hidden; padding: 46px 0 34px; }
+.fa-hero-kicker { font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 800; font-size: 11px; letter-spacing: .26em; text-transform: uppercase; color: #fff; }
+.fa-hero h1 { font-size: clamp(38px, 8vw, 60px); font-weight: 900; letter-spacing: -.015em; line-height: 1.14; color: #fff; margin-top: 10px; }
+.fa-hero p { margin-top: 14px; font-size: 15px; color: #fff; max-width: 32em; }
+.fa-hero-wm { position: absolute; right: -20px; top: -18px; font-family: "Archivo", sans-serif; font-weight: 900; font-size: clamp(120px, 26vw, 210px); line-height: 1; color: rgba(255,255,255,.12); letter-spacing: -.05em; pointer-events: none; user-select: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---------- 白紙 sheet ---------- */
+.fa-sheet { background: #fff; color: var(--ink); border: 0; border-radius: 0; }
+.fa-label { font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 800; font-size: 11.5px; letter-spacing: .24em; text-transform: uppercase; color: #fff; margin: 8px 0 14px; }
+
+/* 課程手風琴（day-group）→ sheet 化；文字色回到墨色（body 是白字，sheet 內必須重設） */
+.day-group { background: #fff; color: var(--ink); border: 0; border-radius: 0; box-shadow: none; margin-bottom: 12px; }
+.day-group[open] { box-shadow: none; border: 0; }
+.day-group summary { border-radius: 0; }
+
+/* ---------- 方角鈕（門面版）---------- */
+.btn { border-radius: 0; }
+.btn-primary { border-radius: 0; box-shadow: none; font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 800; letter-spacing: .14em; }
+.btn-primary:hover { box-shadow: none; }
+.btn-ghost { border-radius: 0; border: 1.5px solid var(--ink); color: var(--ink); background: #fff; font-weight: 700; }
+.form-input { border-radius: 0; }
+
+/* sheet 上的表單卡沿用 .card 結構 → 直角化 */
+.card { border-radius: 0; border: 0; box-shadow: none; }
+
+/* ---------- 三步流程（真實序列）---------- */
+.fa-steps { border-top: 1px solid rgba(255,255,255,.28); margin-top: 40px; padding-top: 24px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.fa-step b { font-family: "Archivo", sans-serif; font-weight: 900; font-size: 28px; line-height: 1; color: #fff; display: block; font-variant-numeric: tabular-nums; }
+.fa-step h3 { font-size: 14.5px; font-weight: 900; color: #fff; margin-top: 8px; }
+.fa-step p { font-size: 12.5px; color: #fff; margin-top: 4px; }
+@media (max-width: 560px) { .fa-steps { grid-template-columns: 1fr; gap: 14px; } }
+
+/* ---------- 深藍收尾帶／sticky tray ---------- */
+.fa-tray { background: var(--brand-900); color: #fff; }
+.fa-tray .fa-tray-cta { border: 0; background: var(--brand-500); color: var(--brand-900); font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 900; font-size: 13.5px; letter-spacing: .18em; text-indent: .18em; padding: 13px 22px; cursor: pointer; white-space: nowrap; }
+.fa-tray .fa-tray-cta:disabled { opacity: .45; cursor: default; }
+
+/* ---------- 空狀態／skeleton on sky ---------- */
+.skeleton { background: rgba(255,255,255,.22); }
+.empty-state { background: #fff; color: var(--ink-soft); border: 0; border-radius: 0; }
+.empty-state-icon { display: none; }
+
+/* ---------- toast 不動；頁尾小字 ---------- */
+.fa-foot { padding: 30px 0 60px; color: #fff; font-size: 12px; }
+
+/* ---------- 入口卡（index）One-Sky 化：同一個藍的深淺取代玫瑰紅雙色 ---------- */
+.day-group .day-chip { border-radius: 0; }
+.entry-card.group, .entry-card.solo { background: #fff; box-shadow: none; }
+.entry-card.group .entry-badge { background: var(--brand-600); }
+.entry-card.solo .entry-badge { background: var(--brand-900); }
+.entry-card.group .entry-cta { color: var(--brand-700); }
+.entry-card.solo .entry-cta { color: var(--brand-900); }
+.entry-card.group .entry-cta .arr { background: var(--brand-100); }
+.entry-card.solo .entry-cta .arr { background: var(--brand-100); }
+.entry-card.group .entry-watermark { color: rgba(2,132,199,.10); }
+.entry-card.solo .entry-watermark { color: rgba(12,74,110,.10); }

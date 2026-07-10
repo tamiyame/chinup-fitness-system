@@ -6,11 +6,20 @@
 <title>CHINUP Performance 報名系統</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/colors_and_type.css">
 <link rel="stylesheet" href="/style.css">
-<style>body { visibility: hidden; }</style>
+<link rel="stylesheet" href="/facade.css">
+<style>
+body { visibility: hidden; }
+/* 入口卡 sheet 化＋FAQ on sky */
+.entry-card { border-radius: 0; border: 0; box-shadow: none; }
+.entry-card:hover { transform: none; box-shadow: 0 12px 32px -8px rgba(12,74,110,.45); }
+.faq-item { background: #fff; border: 0; border-radius: 0; border-top: 1px solid var(--line); }
+.faq-item:first-child { border-top: 0; }
+.faq { background: #fff; border-radius: 0; border: 0; margin-top: 12px; }
+</style>
 </head>
 <body>
 
@@ -54,10 +63,11 @@
 
 <main class="max-w-6xl mx-auto px-6">
 
-  <section class="hero">
-    <span class="hero-eyebrow">💪 CHINUP Performance</span>
-    <h1>開始你的訓練之旅</h1>
-    <p>選擇適合你的課程類型，線上報名或預約教練。</p>
+  <section class="fa-hero">
+    <div class="fa-hero-wm" aria-hidden="true">CHIN UP</div>
+    <div class="fa-hero-kicker">CHINUP Performance</div>
+    <h1>開始你的<br>訓練之旅。</h1>
+    <p>選擇適合你的課程類型——團體課程線上報名，或預約一對一教練。免註冊、免下載，電話就是你的身分。</p>
   </section>
 
   <section class="entry pb-16">
