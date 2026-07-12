@@ -8,7 +8,20 @@ const { createGroupOrder, confirmGroupOrder, refundGroupOrder, listPendingOrders
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 console.log('[refund test] start');
-db.exec("DELETE FROM notifications; DELETE FROM bookings; DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM coaches; DELETE FROM users WHERE phone LIKE '0989%' OR email LIKE 'rf-%'");
+db.exec(`
+  PRAGMA foreign_keys = OFF;
+  DELETE FROM notifications;
+  DELETE FROM group_order_refunds;
+  DELETE FROM bookings;
+  DELETE FROM registrations;
+  DELETE FROM group_orders;
+  DELETE FROM discount_redemptions;
+  DELETE FROM course_sessions;
+  DELETE FROM course_templates;
+  DELETE FROM coaches;
+  DELETE FROM users WHERE phone LIKE '0989%' OR email LIKE 'rf-%';
+  PRAGMA foreign_keys = ON;
+`);
 
 const pad = n => String(n).padStart(2,'0');
 const day = (d) => { const x = new Date(Date.now() + d*86400000); return `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`; };

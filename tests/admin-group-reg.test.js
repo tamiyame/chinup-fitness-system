@@ -3,7 +3,7 @@ import { db } from '../src/db/connection.js';
 import { createTemplate } from '../src/services/courseService.js';
 import {
   createGroupOrder, confirmGroupOrder, refundGroupOrder, promoteWaitlist, sessionOccupied,
-  adminBackfillRegistration,
+  adminBackfillRegistration, adminCancelRegistration,
 } from '../src/services/groupOrderService.js';
 
 function expect(label, fn) {
@@ -198,6 +198,113 @@ reset();
   expect('cancelled 場次 → 409 session_cancelled', () => {
     try { adminBackfillRegistration({ sessionId: sB, name: 'AGR-子', phone: '0996300009', paid: false, actorId }); assert.fail('no throw'); }
     catch (e) { assert.equal(e.status, 409); assert.equal(e.message, 'session_cancelled'); }
+  });
+}
+
+// ── §4 adminCancelRegistration ────────────────────────────────
+reset();
+{
+  db.prepare("INSERT INTO discount_codes (code, discount_type, discount_value, active) VALUES ('AGRF100','fixed',100,1)").run();
+  db.prepare("INSERT INTO discount_codes (code, discount_type, discount_value, active) VALUES ('AGRP10','percent',10,1)").run();
+  const tpl = createTemplate({
+    name: 'AGR-取消班', min_capacity: 1, max_capacity: 2,
+    day_of_week: ((new Date()).getDay() + 2) % 7, start_time: '19:00',
+    recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(40),
+    registration_deadline_hours: 1, price_per_session: 500,
+  });
+  const ss = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC').all(tpl.templateId).map((r) => r.id);
+  const [sA, sB, sC, sD] = ss;
+  const actorId = Number(db.prepare("INSERT INTO users (name, email, role, is_admin) VALUES ('AGR-管理2', 'agr-admin2@x.com', 'coach', 1)").run().lastInsertRowid);
+  const regOf = (phone, sid) => db.prepare('SELECT r.* FROM registrations r JOIN users u ON u.id=r.user_id WHERE u.phone=? AND r.session_id=?').get(phone, sid);
+
+  // a) pending 多場訂單取消一場 → 金額重算；固定額折扣重新報價
+  const o1 = createGroupOrder({ name: 'AGR-取甲', phone: '0996400001', paySessionIds: [sA, sB], waitlistSessionIds: [], discountCode: 'AGRF100' });
+  expect('前置：900（1000-100）', () => assert.equal(db.prepare('SELECT total_amount FROM group_orders WHERE id=?').get(o1.orderId).total_amount, 900));
+  adminCancelRegistration({ registrationId: regOf('0996400001', sA).id, actorId });
+  expect('pending 取消一場 → 重算 500-100=400', () => {
+    const o = db.prepare('SELECT * FROM group_orders WHERE id=?').get(o1.orderId);
+    assert.equal(o.original_amount, 500); assert.equal(o.discount_amount, 100); assert.equal(o.total_amount, 400);
+    assert.equal(regOf('0996400001', sA).status, 'cancelled');
+    assert.equal(regOf('0996400001', sB).status, 'pending');
+  });
+
+  // b) 百分比折扣重新報價
+  const o2 = createGroupOrder({ name: 'AGR-取乙', phone: '0996400002', paySessionIds: [sC, sD], waitlistSessionIds: [], discountCode: 'AGRP10' });
+  adminCancelRegistration({ registrationId: regOf('0996400002', sC).id, actorId });
+  expect('percent 取消一場 → 500-10%=450', () => {
+    assert.equal(db.prepare('SELECT total_amount FROM group_orders WHERE id=?').get(o2.orderId).total_amount, 450);
+  });
+
+  // c) 折扣碼停用 → 折扣歸零（建單時碼有效，取消時已停用）
+  const o3 = createGroupOrder({ name: 'AGR-取丙', phone: '0996400003', paySessionIds: [sA, sB], waitlistSessionIds: [], discountCode: 'AGRF100' });
+  db.prepare("UPDATE discount_codes SET active=0 WHERE code='AGRF100'").run();
+  adminCancelRegistration({ registrationId: regOf('0996400003', sA).id, actorId });
+  expect('折扣碼失效 → 折扣歸零、應付=新原價', () => {
+    const o = db.prepare('SELECT * FROM group_orders WHERE id=?').get(o3.orderId);
+    assert.equal(o.original_amount, 500); assert.equal(o.discount_amount, null); assert.equal(o.total_amount, 500);
+  });
+
+  // d) 最後一場取消 → 整單取消＋釋放折扣
+  adminCancelRegistration({ registrationId: regOf('0996400001', sB).id, actorId });
+  expect('最後一場 → 整單取消、redemption 釋放', () => {
+    const o = db.prepare('SELECT * FROM group_orders WHERE id=?').get(o1.orderId);
+    assert.equal(o.status, 'cancelled'); assert.ok(o.cancelled_at);
+    assert.equal(db.prepare("SELECT COUNT(*) AS c FROM discount_redemptions WHERE kind='group_order' AND ref_id=?").get(o1.orderId).c, 0);
+  });
+
+  // e) 已收款訂單取消一場 → 部分退款明細（預設 amount_due；可自訂；驗上限）
+  const o4 = createGroupOrder({ name: 'AGR-取丁', phone: '0996400004', paySessionIds: [sC, sD], waitlistSessionIds: [] });
+  confirmGroupOrder({ orderId: o4.orderId, actorId });
+  adminCancelRegistration({ registrationId: regOf('0996400004', sC).id, actorId });
+  expect('paid 取消 → 預設退 amount_due=500、訂單維持 paid、金額不動', () => {
+    const rows = db.prepare('SELECT * FROM group_order_refunds WHERE order_id=?').all(o4.orderId);
+    assert.equal(rows.length, 1); assert.equal(rows[0].amount, 500); assert.equal(rows[0].refunded_by, actorId);
+    const o = db.prepare('SELECT * FROM group_orders WHERE id=?').get(o4.orderId);
+    assert.equal(o.status, 'paid'); assert.equal(o.total_amount, 1000); assert.equal(o.refunded_at, null);
+  });
+  expect('自訂退款金額 300', () => {
+    adminCancelRegistration({ registrationId: regOf('0996400004', sD).id, actorId, refundAmount: 300 });
+    const rows = db.prepare('SELECT amount FROM group_order_refunds WHERE order_id=? ORDER BY id ASC').all(o4.orderId);
+    assert.deepEqual(rows.map((r) => r.amount), [500, 300]);
+  });
+  expect('退款金額超過原價 → 400 invalid_refund_amount', () => {
+    const o5 = createGroupOrder({ name: 'AGR-取戊', phone: '0996400005', paySessionIds: [sA], waitlistSessionIds: [] });
+    confirmGroupOrder({ orderId: o5.orderId, actorId });
+    try { adminCancelRegistration({ registrationId: regOf('0996400005', sA).id, actorId, refundAmount: 600 }); assert.fail('no throw'); }
+    catch (e) { assert.equal(e.status, 400); assert.equal(e.message, 'invalid_refund_amount'); }
+  });
+
+  // f) 候補列取消：無金流
+  const o6 = createGroupOrder({ name: 'AGR-取己', phone: '0996400006', paySessionIds: [], waitlistSessionIds: [sB] });
+  adminCancelRegistration({ registrationId: regOf('0996400006', sB).id, actorId });
+  expect('waitlisted 取消 → cancelled、無退款列', () => {
+    assert.equal(regOf('0996400006', sB).status, 'cancelled');
+    assert.equal(db.prepare('SELECT COUNT(*) AS c FROM group_order_refunds').get().c, 2); // e) 的 500＋300 兩筆；600 那次 400 已 rollback
+  });
+
+  // g) 舊資料（order_id NULL 的 confirmed）
+  const legacyUid = Number(db.prepare("INSERT INTO users (name, phone, role) VALUES ('AGR-舊', '0996400007', 'user')").run().lastInsertRowid);
+  const legacyRegId = Number(db.prepare("INSERT INTO registrations (session_id, user_id, status, order_id, amount_due) VALUES (?, ?, 'confirmed', NULL, NULL)").run(sB, legacyUid).lastInsertRowid);
+  adminCancelRegistration({ registrationId: legacyRegId, actorId });
+  expect('legacy confirmed → 直接 cancelled', () => {
+    assert.equal(db.prepare('SELECT status FROM registrations WHERE id=?').get(legacyRegId).status, 'cancelled');
+  });
+
+  // h) 已取消再取消 → 409
+  expect('重複取消 → 409 not_cancellable', () => {
+    try { adminCancelRegistration({ registrationId: legacyRegId, actorId }); assert.fail('no throw'); }
+    catch (e) { assert.equal(e.status, 409); assert.equal(e.message, 'not_cancellable'); }
+  });
+
+  // i) 取消釋名額 → 未來場次自動遞補
+  // sA 此刻佔用者＝戊(confirmed, e)＋庚(pending, 下行)＝2＝cap → 滿
+  const o7 = createGroupOrder({ name: 'AGR-取庚', phone: '0996400008', paySessionIds: [sA], waitlistSessionIds: [] });
+  createGroupOrder({ name: 'AGR-取辛', phone: '0996400009', paySessionIds: [], waitlistSessionIds: [sA] });
+  adminCancelRegistration({ registrationId: regOf('0996400008', sA).id, actorId });
+  expect('取消未來場次 → 候補遞補為 pending＋24h 單', () => {
+    const b = regOf('0996400009', sA);
+    assert.equal(b.status, 'pending');
+    assert.ok(b.order_id);
   });
 }
 

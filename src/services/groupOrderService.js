@@ -3,7 +3,7 @@ import { ApiError } from './registration.js';
 import { findOrCreateUserByPhone, getUserByPhoneAndName, createCustomerNoPhone } from './userService.js';
 import { notify, notifyCourseCoach, notifyAdmins } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
-import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl, getGroupOrderExpiryHours } from './discountService.js';
+import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl, getGroupOrderExpiryHours, quoteDiscount } from './discountService.js';
 import { listScheduleViewPackages } from './packageService.js';
 
 // 一般 pending 訂單的付款期限改由 app_settings 的 group_order_expiry_hours 控制（預設 72h，後台可調）。
@@ -512,6 +512,71 @@ export function adminBackfillRegistration({ sessionId, userId = null, name = nul
     notifyCourseCoach({ coachId: s.coach_id, sessionId, type: 'course_registered_coach',
       vars: { member_name: user.name, course_name: tpl.name, start_at: fmtMD(s.start_at) } });
     return { ok: true, registrationId: Number(regId), orderId, status: regStatus };
+  });
+}
+
+/** admin 取消單筆報名（範本 drawer 名單列）。
+ *  waitlisted → 直接取消；
+ *  pending（掛待核對訂單）→ 取消並重算訂單金額（折扣同碼對新小計重新報價、不動用量；
+ *    碼已失效 → 折扣歸零）；最後一場 → 整單取消＋釋放折扣；
+ *  confirmed＋訂單已收款 → 取消並寫 group_order_refunds 部分退款
+ *    （預設該場 amount_due，可帶 refundAmount 調整，0 ≤ 整數 ≤ amount_due）；訂單維持 paid；
+ *  confirmed＋無訂單（舊資料）→ 只標取消。
+ *  釋名額後遞補（promoteWaitlist 內建過去場次守門）；只通知教練。 */
+export function adminCancelRegistration({ registrationId, actorId, refundAmount = null }) {
+  return tx(() => {
+    const reg = getReg.get(registrationId);
+    if (!reg) throw new ApiError(404, 'registration_not_found');
+    if (!['pending', 'confirmed', 'waitlisted'].includes(reg.status)) throw new ApiError(409, 'not_cancellable');
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(reg.user_id);
+    const s = getSession.get(reg.session_id);
+    const tpl = getTemplate.get(s.template_id);
+    const order = reg.order_id ? getOrder.get(reg.order_id) : null;
+    const wasOccupying = reg.status === 'confirmed' || reg.status === 'pending';
+    const now = nowLocal();
+
+    db.prepare("UPDATE registrations SET status='cancelled' WHERE id=?").run(registrationId);
+
+    if (reg.status === 'pending' && order && order.status === 'pending') {
+      const remaining = db.prepare(
+        "SELECT COALESCE(SUM(amount_due), 0) AS subtotal, COUNT(*) AS c FROM registrations WHERE order_id=? AND status='pending'"
+      ).get(order.id);
+      if (remaining.c === 0) {
+        // 最後一場付款場次 → 整單取消（掛單候補列維持候補，遞補時會開自己的單）
+        db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=? WHERE id=?").run(now, order.id);
+        releaseRedemption({ kind: 'group_order', refId: order.id });
+      } else {
+        let discountAmount = null, finalTotal = remaining.subtotal;
+        if (order.discount_code) {
+          try {
+            const q = quoteDiscount({ code: order.discount_code, amount: remaining.subtotal });
+            if (q) { discountAmount = q.discountAmount; finalTotal = q.finalTotal; }
+          } catch { /* 折扣碼已失效/停用 → 折扣歸零，應付=新原價 */ }
+        }
+        db.prepare('UPDATE group_orders SET original_amount=?, discount_amount=?, total_amount=? WHERE id=?')
+          .run(remaining.subtotal, discountAmount, finalTotal, order.id);
+      }
+    } else if (reg.status === 'confirmed' && order && order.paid_at) {
+      let amount = reg.amount_due ?? 0;
+      if (refundAmount != null) {
+        if (!Number.isInteger(refundAmount) || refundAmount < 0 || refundAmount > (reg.amount_due ?? 0)) {
+          throw new ApiError(400, 'invalid_refund_amount');
+        }
+        amount = refundAmount;
+      }
+      db.prepare('INSERT INTO group_order_refunds (order_id, registration_id, amount, refunded_at, refunded_by) VALUES (?, ?, ?, ?, ?)')
+        .run(order.id, registrationId, amount, now, actorId);
+    } else {
+      // waitlisted 或 legacy confirmed（order_id NULL / 訂單非 paid）：無金流；整單已無 active 列則釋放折扣
+      releaseOrderRedemptionIfInactive(reg.order_id);
+    }
+
+    if (wasOccupying) {
+      notifyCourseCoach({ coachId: s.coach_id, sessionId: reg.session_id, type: 'course_member_cancelled_coach',
+        vars: { member_name: user.name, course_name: tpl.name, start_at: s.start_at } });
+      promoteWaitlist(reg.session_id);
+    }
+    return { ok: true };
   });
 }
 
