@@ -1,9 +1,9 @@
 import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
-import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js';
+import { findOrCreateUserByPhone, getUserByPhoneAndName, createCustomerNoPhone } from './userService.js';
 import { notify, notifyCourseCoach, notifyAdmins } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
-import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl, getGroupOrderExpiryHours } from './discountService.js';
+import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl, getGroupOrderExpiryHours, quoteDiscount } from './discountService.js';
 import { listScheduleViewPackages } from './packageService.js';
 
 // 一般 pending 訂單的付款期限改由 app_settings 的 group_order_expiry_hours 控制（預設 72h，後台可調）。
@@ -365,6 +365,7 @@ export function promoteWaitlist(sessionId) {
   return tx(() => {
     const s = getSession.get(sessionId);
     if (!s || s.status === 'cancelled') return;
+    if (s.start_at <= nowLocal()) return;  // 已開始/已結束不遞補：避免把候補塞進上完的課還開 24h 付款單
     const tpl = getTemplate.get(s.template_id);
     if (sessionOccupied(sessionId) >= tpl.max_capacity) return;
     const next = getWaitQueue.get(sessionId);
@@ -432,6 +433,151 @@ export function expirePendingOrders() {
     }
   }
   return { expired };
+}
+
+/** admin 補報名：管理者從範本 drawer 為客人補一場報名。
+ *  paid=true → 獨立「已核對」訂單＋confirmed（已付款的單不事後長大）；
+ *  paid=false → 併入該客人未逾期 pending 單（金額累加、期限取 max(now+72h)），無則開新 72h 單；
+ *  滿額：未來場次 → 候補（不收款、不建單）；過去場次 → 409（候補對過去無意義）。
+ *  不支援折扣碼；只通知教練（業主定案）。 */
+export function adminBackfillRegistration({ sessionId, userId = null, name = null, phone = null, paid = false, actorId }) {
+  return tx(() => {
+    const s = getSession.get(sessionId);
+    if (!s) throw new ApiError(404, 'session_not_found');
+    if (s.status === 'cancelled') throw new ApiError(409, 'session_cancelled');
+    const tpl = getTemplate.get(s.template_id);
+    if (!tpl) throw new ApiError(404, 'template_not_found');
+
+    // 解析客人：userId 優先（僅限一般會員）；否則姓名＋電話（選填）find-or-create，與登錄預約同規則
+    let user;
+    if (userId) {
+      user = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'user'").get(userId);
+      if (!user) throw new ApiError(404, 'user_not_found');
+    } else {
+      const hasPhone = phone != null && String(phone).trim() !== '';
+      user = hasPhone ? findOrCreateUserByPhone({ phone: String(phone).trim(), name })
+                      : createCustomerNoPhone({ name });
+    }
+
+    const dup = getAnyReg.get(sessionId, user.id);
+    if (dup && ['pending', 'confirmed', 'waitlisted'].includes(dup.status)) {
+      throw new ApiError(409, 'already_registered');
+    }
+
+    const now = nowLocal();
+    const isPast = s.start_at <= now;
+    const price = tpl.price_per_session;
+
+    if (sessionIsFull(sessionId)) {
+      if (isPast) throw new ApiError(409, 'session_full');
+      if (paid) throw new ApiError(400, 'paid_requires_seat'); // UI 已擋，後端防呆
+      let regId;
+      if (dup) { reactivateReg.run('waitlisted', null, null, dup.id); regId = dup.id; }
+      else regId = insertReg.run(sessionId, user.id, 'waitlisted', null, null).lastInsertRowid;
+      notifyCourseCoach({ coachId: s.coach_id, sessionId, type: 'course_waitlisted_coach',
+        vars: { member_name: user.name, course_name: tpl.name, start_at: s.start_at } });
+      return { ok: true, registrationId: Number(regId), orderId: null, status: 'waitlisted' };
+    }
+
+    let orderId, regStatus;
+    if (paid) {
+      orderId = Number(insertOrder.run(user.id, user.name, user.phone || '', price, now).lastInsertRowid);
+      db.prepare("UPDATE group_orders SET status='paid', paid_at=?, paid_by=?, original_amount=? WHERE id=?")
+        .run(now, actorId, price, orderId);
+      regStatus = 'confirmed';
+    } else {
+      const existing = db.prepare(
+        "SELECT id FROM group_orders WHERE member_id=? AND status='pending' AND expires_at >= ? ORDER BY id DESC LIMIT 1"
+      ).get(user.id, now);
+      const expiry = offsetLocal(getGroupOrderExpiryHours() * 3600_000);
+      if (existing) {
+        orderId = existing.id;
+        db.prepare(`
+          UPDATE group_orders
+          SET total_amount = total_amount + ?, original_amount = COALESCE(original_amount, 0) + ?,
+              expires_at = MAX(expires_at, ?)
+          WHERE id = ?
+        `).run(price, price, expiry, orderId);
+      } else {
+        orderId = Number(insertOrder.run(user.id, user.name, user.phone || '', price, expiry).lastInsertRowid);
+        db.prepare('UPDATE group_orders SET original_amount = ? WHERE id = ?').run(price, orderId);
+      }
+      regStatus = 'pending';
+    }
+
+    let regId;
+    if (dup) { reactivateReg.run(regStatus, orderId, price, dup.id); regId = dup.id; }
+    else regId = insertReg.run(sessionId, user.id, regStatus, orderId, price).lastInsertRowid;
+
+    notifyCourseCoach({ coachId: s.coach_id, sessionId, type: 'course_registered_coach',
+      vars: { member_name: user.name, course_name: tpl.name, start_at: fmtMD(s.start_at) } });
+    return { ok: true, registrationId: Number(regId), orderId, status: regStatus };
+  });
+}
+
+/** admin 取消單筆報名（範本 drawer 名單列）。
+ *  waitlisted → 直接取消；
+ *  pending（掛待核對訂單）→ 取消並重算訂單金額（折扣同碼對新小計重新報價、不動用量；
+ *    碼已失效 → 折扣歸零）；最後一場 → 整單取消＋釋放折扣；
+ *  confirmed＋訂單已收款 → 取消並寫 group_order_refunds 部分退款
+ *    （預設該場 amount_due，可帶 refundAmount 調整，0 ≤ 整數 ≤ amount_due）；訂單維持 paid；
+ *  confirmed＋無訂單（舊資料）→ 只標取消。
+ *  釋名額後遞補（promoteWaitlist 內建過去場次守門）；只通知教練。 */
+export function adminCancelRegistration({ registrationId, actorId, refundAmount = null }) {
+  return tx(() => {
+    const reg = getReg.get(registrationId);
+    if (!reg) throw new ApiError(404, 'registration_not_found');
+    if (!['pending', 'confirmed', 'waitlisted'].includes(reg.status)) throw new ApiError(409, 'not_cancellable');
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(reg.user_id);
+    const s = getSession.get(reg.session_id);
+    const tpl = getTemplate.get(s.template_id);
+    const order = reg.order_id ? getOrder.get(reg.order_id) : null;
+    const wasOccupying = reg.status === 'confirmed' || reg.status === 'pending';
+    const now = nowLocal();
+
+    db.prepare("UPDATE registrations SET status='cancelled' WHERE id=?").run(registrationId);
+
+    if (reg.status === 'pending' && order && order.status === 'pending') {
+      const remaining = db.prepare(
+        "SELECT COALESCE(SUM(amount_due), 0) AS subtotal, COUNT(*) AS c FROM registrations WHERE order_id=? AND status='pending'"
+      ).get(order.id);
+      if (remaining.c === 0) {
+        // 最後一場付款場次 → 整單取消（掛單候補列維持候補，遞補時會開自己的單）
+        db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=? WHERE id=?").run(now, order.id);
+        releaseRedemption({ kind: 'group_order', refId: order.id });
+      } else {
+        let discountAmount = null, finalTotal = remaining.subtotal;
+        if (order.discount_code) {
+          try {
+            const q = quoteDiscount({ code: order.discount_code, amount: remaining.subtotal });
+            if (q) { discountAmount = q.discountAmount; finalTotal = q.finalTotal; }
+          } catch { /* 折扣碼已失效/停用 → 折扣歸零，應付=新原價 */ }
+        }
+        db.prepare('UPDATE group_orders SET original_amount=?, discount_amount=?, total_amount=? WHERE id=?')
+          .run(remaining.subtotal, discountAmount, finalTotal, order.id);
+      }
+    } else if (reg.status === 'confirmed' && order && order.paid_at) {
+      let amount = reg.amount_due ?? 0;
+      if (refundAmount != null) {
+        if (!Number.isInteger(refundAmount) || refundAmount < 0 || refundAmount > (reg.amount_due ?? 0)) {
+          throw new ApiError(400, 'invalid_refund_amount');
+        }
+        amount = refundAmount;
+      }
+      db.prepare('INSERT INTO group_order_refunds (order_id, registration_id, amount, refunded_at, refunded_by) VALUES (?, ?, ?, ?, ?)')
+        .run(order.id, registrationId, amount, now, actorId);
+    } else {
+      // waitlisted 或 legacy confirmed（order_id NULL / 訂單非 paid）：無金流；整單已無 active 列則釋放折扣
+      releaseOrderRedemptionIfInactive(reg.order_id);
+    }
+
+    if (wasOccupying) {
+      notifyCourseCoach({ coachId: s.coach_id, sessionId: reg.session_id, type: 'course_member_cancelled_coach',
+        vars: { member_name: user.name, course_name: tpl.name, start_at: s.start_at } });
+      promoteWaitlist(reg.session_id);
+    }
+    return { ok: true };
+  });
 }
 
 /** 公開：所有「尚有可報名場次」的 published template，回完整週期（不可報名場次帶 state 供灰色顯示）。 */

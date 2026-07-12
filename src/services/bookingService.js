@@ -385,12 +385,13 @@ export function listConfirmedPayments() {
     SELECT 'group_order' AS type, o.id, o.customer_name, o.customer_phone,
            o.total_amount AS amount,
            (SELECT COUNT(*) FROM registrations r WHERE r.order_id = o.id AND r.amount_due IS NOT NULL) || ' 場次' AS detail,
-           NULL AS session_type, o.paid_at, o.refunded_at, pu.name AS paid_by_name
+           NULL AS session_type, o.paid_at, o.refunded_at, pu.name AS paid_by_name,
+           (SELECT COALESCE(SUM(gr.amount), 0) FROM group_order_refunds gr WHERE gr.order_id = o.id) AS refund_sum
     FROM group_orders o
     LEFT JOIN users pu ON pu.id = o.paid_by
     WHERE o.paid_at IS NOT NULL
     ORDER BY o.paid_at DESC LIMIT 50
-  `).all();
+  `).all().map((o) => ({ ...o, partial_refund: !o.refunded_at && o.refund_sum > 0 }));
   return [...bookings, ...orders]
     .sort((a, b) => (a.paid_at < b.paid_at ? 1 : a.paid_at > b.paid_at ? -1 : 0))
     .slice(0, 50);

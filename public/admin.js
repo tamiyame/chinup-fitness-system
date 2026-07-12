@@ -335,7 +335,17 @@ async function deleteTemplate(id) {
   }
 }
 
+let drawerTemplateId = null;
+const drawerSessions = new Map(); // sid → { start_at, occupied, max }
+
+function localNowStr() {
+  const p = (n) => String(n).padStart(2, '0');
+  const d = new Date();
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 async function openDrawer(templateId) {
+  drawerTemplateId = templateId; drawerSessions.clear();
   const d = document.getElementById('drawer');
   const c = document.getElementById('drawer-content');
   d.style.display = 'block';
@@ -345,21 +355,27 @@ async function openDrawer(templateId) {
     document.getElementById('drawer-title').textContent = `${t.name}`;
     if (!t.sessions.length) { c.innerHTML = '<div class="subtle">尚無場次</div>'; return; }
 
-    c.innerHTML = t.sessions.map(s => `
+    c.innerHTML = t.sessions.map(s => {
+      drawerSessions.set(s.id, { start_at: s.start_at, occupied: s.occupied, max: t.max_capacity });
+      return `
       <details class="session-row">
         <summary>
           <div>
             <div class="font-semibold">${fmtDate(s.start_at)}</div>
-            <div class="subtle mt-1">正取 ${s.confirmed_count}/${t.max_capacity} · 候補 ${s.waitlist_count}</div>
+            <div class="subtle mt-1 session-counts" data-session-id="${s.id}">正取 ${s.confirmed_count}/${t.max_capacity} · 候補 ${s.waitlist_count}</div>
           </div>
-          ${s.status === 'open'
-            ? `<button type="button" class="badge ${s.is_open === 0 ? 'badge-closed' : 'badge-open'} session-toggle" data-session-id="${s.id}" data-open="${s.is_open === 0 ? '0' : '1'}" title="點擊切換開放／關閉此場次">${s.is_open === 0 ? '關閉' : '開放'}</button>`
-            : `<span class="badge badge-${s.status}">${SESSION_STATUS_LABEL[s.status]}</span>`}
+          <div class="flex items-center gap-2">
+            ${s.status !== 'cancelled' ? `<button type="button" class="badge badge-confirmed session-backfill" data-session-id="${s.id}" title="為客人補此場報名">補報名</button>` : ''}
+            ${s.status === 'open'
+              ? `<button type="button" class="badge ${s.is_open === 0 ? 'badge-closed' : 'badge-open'} session-toggle" data-session-id="${s.id}" data-open="${s.is_open === 0 ? '0' : '1'}" title="點擊切換開放／關閉此場次">${s.is_open === 0 ? '關閉' : '開放'}</button>`
+              : `<span class="badge badge-${s.status}">${SESSION_STATUS_LABEL[s.status]}</span>`}
+          </div>
         </summary>
         <div class="px-5 pb-4 session-roster" data-session-id="${s.id}">
           <div class="subtle">載入中…</div>
         </div>
-      </details>`).join('');
+      </details>`;
+    }).join('');
 
     c.querySelectorAll('details.session-row').forEach(det => {
       det.addEventListener('toggle', async () => {
@@ -371,24 +387,8 @@ async function openDrawer(templateId) {
         const sid = Number(inner.dataset.sessionId);
         try {
           const list = await api(`/api/admin/sessions/${sid}/registrations`);
-          if (!list.length) { inner.innerHTML = '<div class="subtle py-2">尚無人報名</div>'; inner.dataset.loaded = '1'; return; }
-          inner.innerHTML = list.map(r => {
-            const inactive = r.status === 'cancelled' || r.status === 'rejected';
-            return `
-            <div class="reg-row"${inactive ? ' style="opacity:.45"' : ''}>
-              <div>
-                <div class="font-medium">${escapeHtml(r.user_name)}</div>
-                <div class="subtle text-xs">${escapeHtml(r.email || r.phone || '')}</div>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="badge badge-${r.status}">${REG_STATUS_LABEL[r.status] || r.status}</span>
-                ${r.position ? `<span class="subtle text-xs">#${r.position}</span>` : ''}
-              </div>
-            </div>`;
-          }).join('');
-          inner.dataset.loaded = '1';
+          renderRoster(inner, list);
         } catch (e) {
-          // 失敗顯示錯誤並允許收合後重開重試（不標 loaded）
           inner.innerHTML = `<div class="text-red-500 py-2">名單載入失敗：${escapeHtml(e.message)}</div>`;
         }
       });
@@ -398,10 +398,188 @@ async function openDrawer(templateId) {
   }
 }
 
+function renderRoster(inner, list) {
+  if (!list.length) { inner.innerHTML = '<div class="subtle py-2">尚無人報名</div>'; inner.dataset.loaded = '1'; return; }
+  inner.innerHTML = list.map(r => {
+    const inactive = r.status === 'cancelled' || r.status === 'rejected';
+    const cancellable = ['pending', 'confirmed', 'waitlisted'].includes(r.status);
+    const needsRefund = r.status === 'confirmed' && r.order_paid_at && !r.order_refunded_at;
+    return `
+    <div class="reg-row"${inactive ? ' style="opacity:.45"' : ''}>
+      <div>
+        <div class="font-medium">${escapeHtml(r.user_name)}</div>
+        <div class="subtle text-xs">${escapeHtml(r.email || r.phone || '')}</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="badge badge-${r.status}">${REG_STATUS_LABEL[r.status] || r.status}</span>
+        ${r.position ? `<span class="subtle text-xs">#${r.position}</span>` : ''}
+        ${cancellable ? `<button type="button" class="badge badge-cancelled reg-cancel" data-reg-id="${r.id}" data-user-name="${escapeHtml(r.user_name)}" data-needs-refund="${needsRefund ? '1' : '0'}" data-amount-due="${r.amount_due ?? ''}" data-order-discount="${r.order_discount_amount > 0 ? '1' : '0'}">取消</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  inner.dataset.loaded = '1';
+}
+
+async function reloadRoster(sid) {
+  const inner = document.querySelector(`#drawer-content .session-roster[data-session-id="${sid}"]`);
+  if (!inner) return;
+  const list = await api(`/api/admin/sessions/${sid}/registrations`);
+  renderRoster(inner, list);
+}
+
+async function refreshSessionSummary(sid) {
+  try {
+    const t = await api(`/api/admin/templates/${drawerTemplateId}`);
+    const s = t.sessions.find(x => x.id === sid);
+    if (!s) return;
+    drawerSessions.set(sid, { start_at: s.start_at, occupied: s.occupied, max: t.max_capacity });
+    const el = document.querySelector(`#drawer-content .session-counts[data-session-id="${sid}"]`);
+    if (el) el.textContent = `正取 ${s.confirmed_count}/${t.max_capacity} · 候補 ${s.waitlist_count}`;
+  } catch { /* 摘要刷新失敗不阻斷主流程 */ }
+}
+
+function openBackfillPanel(sid) {
+  const inner = document.querySelector(`#drawer-content .session-roster[data-session-id="${sid}"]`);
+  if (!inner) return;
+  const det = inner.closest('details');
+  det.open = true;
+  document.querySelectorAll('.backfill-panel').forEach(p => p.remove()); // 同時只開一個
+  const meta = drawerSessions.get(sid) || {};
+  const isPast = meta.start_at ? meta.start_at <= localNowStr() : false;
+  const isFull = meta.occupied >= meta.max;
+
+  const panel = document.createElement('div');
+  panel.className = 'backfill-panel';
+  panel.dataset.sessionId = sid;
+  panel.innerHTML = `
+    <div class="font-semibold mb-2">補報名</div>
+    <div class="bf-mode-search">
+      <input type="search" class="form-input bf-search" placeholder="搜尋既有客人（姓名或電話）…" autocomplete="off">
+      <div class="bf-results"></div>
+      <button type="button" class="btn btn-ghost btn-sm bf-show-new">＋ 新增客人</button>
+    </div>
+    <div class="bf-mode-new" style="display:none;">
+      <input type="text" class="form-input bf-name" placeholder="姓名（必填）">
+      <input type="tel" class="form-input bf-phone" placeholder="電話（選填，之後可於會員管理補）">
+      <button type="button" class="btn btn-ghost btn-sm bf-show-search">← 改搜尋既有客人</button>
+    </div>
+    <div class="bf-chosen subtle text-sm" style="display:none;"></div>
+    <label class="bf-paid-row"><input type="checkbox" class="bf-paid"> 已收款（直接列入已核對匯款）</label>
+    <div class="bf-hint subtle text-xs"></div>
+    <div class="flex gap-2 mt-2">
+      <button type="button" class="btn btn-primary btn-sm bf-submit">送出補報名</button>
+      <button type="button" class="btn btn-ghost btn-sm bf-close">關閉</button>
+    </div>`;
+  inner.parentNode.insertBefore(panel, inner);
+
+  const hint = panel.querySelector('.bf-hint');
+  const paidCb = panel.querySelector('.bf-paid');
+  const submitBtn = panel.querySelector('.bf-submit');
+  if (isFull && isPast) { hint.textContent = '此場已滿且已結束，無法補報名。'; submitBtn.disabled = true; }
+  else if (isFull) { hint.textContent = '此場已滿：送出後將列為候補（不收款）。'; paidCb.checked = false; paidCb.disabled = true; }
+  else if (isPast) { hint.textContent = '此場已結束：補登歷史報名。'; }
+
+  panel.querySelector('.bf-show-new').addEventListener('click', () => {
+    panel.querySelector('.bf-mode-search').style.display = 'none';
+    panel.querySelector('.bf-mode-new').style.display = '';
+    delete panel.dataset.userId;
+    panel.querySelector('.bf-chosen').style.display = 'none';
+  });
+  panel.querySelector('.bf-show-search').addEventListener('click', () => {
+    panel.querySelector('.bf-mode-new').style.display = 'none';
+    panel.querySelector('.bf-mode-search').style.display = '';
+  });
+  panel.querySelector('.bf-close').addEventListener('click', () => panel.remove());
+
+  let searchTimer = null;
+  const resultsEl = panel.querySelector('.bf-results');
+  panel.querySelector('.bf-search').addEventListener('input', (ev) => {
+    clearTimeout(searchTimer);
+    const q = ev.target.value.trim();
+    if (!q) { resultsEl.innerHTML = ''; return; }
+    searchTimer = setTimeout(async () => {
+      try {
+        const list = await api(`/api/coach/customers/search?q=${encodeURIComponent(q)}`);
+        resultsEl.innerHTML = list.length
+          ? list.map(u => `<button type="button" class="bf-result" data-user-id="${u.id}" data-name="${escapeHtml(u.name)}">${escapeHtml(u.name)}<span class="subtle text-xs">　${escapeHtml(u.phone || '無電話')}</span></button>`).join('')
+          : '<div class="subtle text-xs" style="padding:6px 8px;">查無客人，可點「＋ 新增客人」</div>';
+        resultsEl.querySelectorAll('.bf-result').forEach(btn => btn.addEventListener('click', () => {
+          panel.dataset.userId = btn.dataset.userId;
+          const chosen = panel.querySelector('.bf-chosen');
+          chosen.textContent = `已選：${btn.dataset.name}`;
+          chosen.style.display = '';
+          resultsEl.innerHTML = '';
+        }));
+      } catch { resultsEl.innerHTML = '<div class="text-red-500 text-xs">搜尋失敗</div>'; }
+    }, 250);
+  });
+
+  submitBtn.addEventListener('click', async () => {
+    const paid = paidCb.checked;
+    let body;
+    if (panel.dataset.userId) body = { userId: Number(panel.dataset.userId), paid };
+    else {
+      const name = panel.querySelector('.bf-name').value.trim();
+      const phone = panel.querySelector('.bf-phone').value.trim();
+      if (!name) { toast('請先選擇客人，或切到「新增客人」填寫姓名', 'error'); return; }
+      body = { name, phone: phone || null, paid };
+    }
+    submitBtn.disabled = true;
+    try {
+      const r = await api(`/api/admin/sessions/${sid}/registrations`, { method: 'POST', body });
+      toast(r.status === 'waitlisted' ? '此場已滿，已列為候補' : paid ? '補報名完成（已收款）' : '補報名完成（待核對匯款）', 'success');
+      panel.remove();
+      await reloadRoster(sid);
+      refreshSessionSummary(sid);
+      loadPendingOrders(); loadConfirmedPayments();
+    } catch (e) {
+      const msgs = { already_registered: '此客人已報名過本場次', session_full: '此場已滿（過去場次不可候補）', paid_requires_seat: '已滿場次只能候補，不能標已收款', session_cancelled: '未開課場次不可補報名', phone_unavailable: '此電話屬員工帳號，不可用於報名', invalid_phone: '電話格式不正確（8–15 碼數字）', missing_name: '請填寫姓名', user_not_found: '找不到此客人' };
+      toast(msgs[e.data?.error] || `補報名失敗：${escapeHtml(e.message)}`, 'error');
+      submitBtn.disabled = false;
+    }
+  });
+}
+
 document.getElementById('close-drawer').addEventListener('click', () => document.getElementById('drawer').style.display = 'none');
 
 // 切換單一場次開放/關閉（事件委派，掛一次即可；按鈕在 <summary> 內，需阻止展開）
 document.getElementById('drawer-content').addEventListener('click', async (e) => {
+  const bfBtn = e.target.closest('.session-backfill');
+  if (bfBtn) {
+    e.preventDefault(); e.stopPropagation();
+    openBackfillPanel(Number(bfBtn.dataset.sessionId));
+    return;
+  }
+  const cbtn = e.target.closest('.reg-cancel');
+  if (cbtn) {
+    e.preventDefault(); e.stopPropagation();
+    if (cbtn.disabled) return;
+    const regId = Number(cbtn.dataset.regId);
+    const sid = Number(cbtn.closest('.session-roster').dataset.sessionId);
+    const body = {};
+    if (cbtn.dataset.needsRefund === '1') {
+      const def = cbtn.dataset.amountDue || '0';
+      const discountNote = cbtn.dataset.orderDiscount === '1' ? '\n（此單含折扣：預設值為該場定價，實收較低，可自行下修）' : '';
+      const input = prompt(`此報名所屬訂單已收款。${discountNote}\n取消「${cbtn.dataset.userName}」並記錄部分退款，金額 NT$（預設為該場原價，可修改）：`, def);
+      if (input === null) return;
+      const amt = Number(String(input).trim());
+      if (!Number.isInteger(amt) || amt < 0) { toast('退款金額需為 0 以上整數', 'error'); return; }
+      body.refundAmount = amt;
+    } else if (!confirm(`確定取消「${cbtn.dataset.userName}」的此場報名？`)) return;
+    cbtn.disabled = true;
+    try {
+      await api(`/api/admin/registrations/${regId}/cancel`, { method: 'POST', body });
+      toast('已取消報名', 'success');
+      await reloadRoster(sid);
+      refreshSessionSummary(sid);
+      loadPendingOrders(); loadConfirmedPayments();
+    } catch (err) {
+      const msgs = { registration_not_found: '找不到報名', not_cancellable: '此報名狀態不可取消', invalid_refund_amount: '退款金額需為 0～該場原價的整數' };
+      toast(msgs[err.data?.error] || `取消失敗：${escapeHtml(err.message)}`, 'error');
+      cbtn.disabled = false;
+    }
+    return;
+  }
   const btn = e.target.closest('.session-toggle');
   if (!btn) return;
   e.preventDefault();
@@ -1368,7 +1546,7 @@ async function loadConfirmedPayments() {
               <strong>${escapeHtml(x.customer_name)}</strong>
               ${typeBadge}${refundBadge}
               <span class="subtle text-sm">${escapeHtml(detail || '')}</span>
-              <span class="subtle text-sm" style="display:inline-flex;align-items:center;gap:5px;">${ICO.cash.replace('class="nk-ico"', 'style="width:14px;height:14px;flex:none;"')} ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}</span>
+              <span class="subtle text-sm" style="display:inline-flex;align-items:center;gap:5px;">${ICO.cash.replace('class="nk-ico"', 'style="width:14px;height:14px;flex:none;"')} ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}${x.refund_sum > 0 && !x.refunded_at ? ' · 已退 NT$' + Number(x.refund_sum).toLocaleString() : ''}</span>
             </div>
             <div class="subtle text-xs">核對 ${escapeHtml(fmtDate(x.paid_at))} · 經手 ${escapeHtml(x.paid_by_name || '—')}</div>
           </div>

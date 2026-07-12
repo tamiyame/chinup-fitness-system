@@ -343,6 +343,17 @@ CREATE TABLE IF NOT EXISTS renewal_reminders (
   sent_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_renewal_reminders_key ON renewal_reminders(kind, member_id, ref_id);
+
+CREATE TABLE IF NOT EXISTS group_order_refunds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES group_orders(id) ON DELETE CASCADE,
+  registration_id INTEGER REFERENCES registrations(id) ON DELETE SET NULL,
+  amount INTEGER NOT NULL,
+  refunded_at TEXT NOT NULL,
+  refunded_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_group_order_refunds_order ON group_order_refunds(order_id);
 `;
 
 // Indexes for Phase 3C columns are kept OUT of the SCHEMA string so that
