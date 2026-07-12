@@ -117,6 +117,16 @@ const listSessionsForTemplate = db.prepare('SELECT * FROM course_sessions WHERE 
 // 後台顯示一律改用即時計數。正取排除請假(on_leave)。
 const liveConfirmedCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id = ? AND status = 'confirmed' AND on_leave = 0");
 const liveWaitlistCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id = ? AND status = 'waitlisted'");
+// 補報名 UI 滿額判定用：與 groupOrderService.occupiedStmt 同口徑
+// （confirmed 一律算；pending 只在其訂單未逾期時算；不 import 避免服務間耦合）
+const liveOccupiedCount = db.prepare(`
+  SELECT COUNT(*) AS c
+  FROM registrations r
+  LEFT JOIN group_orders o ON o.id = r.order_id
+  WHERE r.session_id = ? AND r.on_leave = 0
+    AND ( r.status = 'confirmed'
+          OR (r.status = 'pending' AND o.id IS NOT NULL AND o.expires_at >= ?) )
+`);
 
 export function listTemplates() {
   return listTemplatesStmt.all();
@@ -125,11 +135,13 @@ export function listTemplates() {
 export function getTemplate(id) {
   const t = db.prepare('SELECT * FROM course_templates WHERE id = ?').get(id);
   if (!t) throw new ApiError(404, 'template_not_found');
-  // 即時計算正取/候補人數（覆蓋可能過時的快取欄位）。
+  const now = nowLocal();
+  // 即時計算正取/候補人數（覆蓋可能過時的快取欄位）＋佔位數（滿額判定含未逾期 pending）。
   t.sessions = listSessionsForTemplate.all(id).map((s) => ({
     ...s,
     confirmed_count: liveConfirmedCount.get(s.id).c,
     waitlist_count: liveWaitlistCount.get(s.id).c,
+    occupied: liveOccupiedCount.get(s.id, now).c,
   }));
   return t;
 }
@@ -162,9 +174,12 @@ export function listOpenSessions() {
 
 export function listRegistrationsBySession(sessionId) {
   return db.prepare(`
-    SELECT r.*, u.name AS user_name, u.email, u.phone
+    SELECT r.*, u.name AS user_name, u.email, u.phone,
+           o.paid_at AS order_paid_at, o.refunded_at AS order_refunded_at,
+           o.discount_amount AS order_discount_amount
     FROM registrations r
     JOIN users u ON u.id = r.user_id
+    LEFT JOIN group_orders o ON o.id = r.order_id
     WHERE r.session_id = ?
     ORDER BY r.registered_at DESC, r.id DESC
   `).all(sessionId);

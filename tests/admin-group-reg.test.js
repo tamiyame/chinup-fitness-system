@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
-import { createTemplate } from '../src/services/courseService.js';
+import { createTemplate, getTemplate, listRegistrationsBySession } from '../src/services/courseService.js';
 import {
   createGroupOrder, confirmGroupOrder, refundGroupOrder, promoteWaitlist, sessionOccupied,
   adminBackfillRegistration, adminCancelRegistration,
@@ -336,6 +336,34 @@ reset();
     const row = listConfirmedPayments().find((x) => x.type === 'group_order' && x.id === o.orderId);
     assert.ok(row.refunded_at);
     assert.equal(row.partial_refund, false);
+  });
+}
+
+// ── §6 drawer 伺服器欄位（occupied / order_paid_at）──────────
+reset();
+{
+  const tpl = createTemplate({
+    name: 'AGR-欄位班', min_capacity: 1, max_capacity: 2,
+    day_of_week: ((new Date()).getDay() + 2) % 7, start_time: '19:00',
+    recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(15),
+    registration_deadline_hours: 1, price_per_session: 500,
+  });
+  const sid = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC').get(tpl.templateId).id;
+  const actorId = Number(db.prepare("INSERT INTO users (name, email, role, is_admin) VALUES ('AGR-管理4', 'agr-admin4@x.com', 'coach', 1)").run().lastInsertRowid);
+  const o = createGroupOrder({ name: 'AGR-欄甲', phone: '0996600001', paySessionIds: [sid], waitlistSessionIds: [] });
+  expect('getTemplate sessions 帶 occupied（含未逾期 pending）', () => {
+    const t = getTemplate(tpl.templateId);
+    const s = t.sessions.find((x) => x.id === sid);
+    assert.equal(s.occupied, 1);       // pending 未逾期 → 佔位
+    assert.equal(s.confirmed_count, 0); // 正取仍 0
+  });
+  confirmGroupOrder({ orderId: o.orderId, actorId });
+  expect('roster 列帶 order_paid_at / order_refunded_at', () => {
+    const rows = listRegistrationsBySession(sid);
+    const row = rows.find((r) => r.phone === '0996600001');
+    assert.ok(row.order_paid_at);
+    assert.equal(row.order_refunded_at, null);
+    assert.equal(row.order_discount_amount, null); // 無折扣訂單：core+M1 延伸斷言
   });
 }
 
