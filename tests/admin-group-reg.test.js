@@ -55,13 +55,19 @@ reset();
   createGroupOrder({ name: 'AGR-乙', phone: '0996200002', paySessionIds: [], waitlistSessionIds: [sid] });
   agePast(sid);
 
+  // 先把甲的報名直接標取消（raw SQL、不經 refund，避免觸發遞補），讓名額真正空出：
+  // 沒有 start_at 守門時，直接呼叫 promoteWaitlist 會把乙遞補成 pending 並開 24h 單。
+  db.prepare("UPDATE registrations SET status='cancelled' WHERE order_id=?").run(oA.orderId);
   promoteWaitlist(sid);
-  expect('過去場次：直接呼叫不遞補', () => {
+  expect('過去場次：名額已空、直接呼叫仍不遞補', () => {
+    assert.equal(sessionOccupied(sid), 0);  // 前置確認：名額確實已空，走不到滿額短路
     const b = db.prepare("SELECT r.status FROM registrations r JOIN users u ON u.id=r.user_id WHERE u.phone='0996200002' AND r.session_id=?").get(sid);
     assert.equal(b.status, 'waitlisted');
     assert.equal(db.prepare("SELECT COUNT(*) AS c FROM group_orders o JOIN users u ON u.id=o.member_id WHERE u.phone='0996200002'").get().c, 0);
   });
 
+  // 還原甲為 confirmed，改走「整單退款」路徑（refundGroupOrder 內部會取消甲並呼叫 promoteWaitlist）
+  db.prepare("UPDATE registrations SET status='confirmed' WHERE order_id=?").run(oA.orderId);
   refundGroupOrder({ orderId: oA.orderId, actorId });
   expect('過去場次：整單退款也不遞補', () => {
     const b = db.prepare("SELECT r.status FROM registrations r JOIN users u ON u.id=r.user_id WHERE u.phone='0996200002' AND r.session_id=?").get(sid);
