@@ -365,6 +365,7 @@ export function promoteWaitlist(sessionId) {
   return tx(() => {
     const s = getSession.get(sessionId);
     if (!s || s.status === 'cancelled') return;
+    if (s.start_at <= nowLocal()) return;  // 已開始/已結束不遞補：避免把候補塞進上完的課還開 24h 付款單
     const tpl = getTemplate.get(s.template_id);
     if (sessionOccupied(sessionId) >= tpl.max_capacity) return;
     const next = getWaitQueue.get(sessionId);
