@@ -1368,7 +1368,7 @@ async function loadConfirmedPayments() {
               <strong>${escapeHtml(x.customer_name)}</strong>
               ${typeBadge}${refundBadge}
               <span class="subtle text-sm">${escapeHtml(detail || '')}</span>
-              <span class="subtle text-sm" style="display:inline-flex;align-items:center;gap:5px;">${ICO.cash.replace('class="nk-ico"', 'style="width:14px;height:14px;flex:none;"')} ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}</span>
+              <span class="subtle text-sm" style="display:inline-flex;align-items:center;gap:5px;">${ICO.cash.replace('class="nk-ico"', 'style="width:14px;height:14px;flex:none;"')} ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}${x.refund_sum > 0 ? ' · 已退 NT$' + Number(x.refund_sum).toLocaleString() : ''}</span>
             </div>
             <div class="subtle text-xs">核對 ${escapeHtml(fmtDate(x.paid_at))} · 經手 ${escapeHtml(x.paid_by_name || '—')}</div>
           </div>

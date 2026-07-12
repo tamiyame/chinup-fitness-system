@@ -5,6 +5,7 @@ import {
   createGroupOrder, confirmGroupOrder, refundGroupOrder, promoteWaitlist, sessionOccupied,
   adminBackfillRegistration, adminCancelRegistration,
 } from '../src/services/groupOrderService.js';
+import { listConfirmedPayments } from '../src/services/bookingService.js';
 
 function expect(label, fn) {
   try { fn(); console.log(`  ✓ ${label}`); }
@@ -305,6 +306,36 @@ reset();
     const b = regOf('0996400009', sA);
     assert.equal(b.status, 'pending');
     assert.ok(b.order_id);
+  });
+}
+
+// ── §5 listConfirmedPayments 部分退款 ─────────────────────────
+reset();
+{
+  const tpl = createTemplate({
+    name: 'AGR-對帳班', min_capacity: 1, max_capacity: 3,
+    day_of_week: ((new Date()).getDay() + 2) % 7, start_time: '19:00',
+    recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(20),
+    registration_deadline_hours: 1, price_per_session: 500,
+  });
+  const ss = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC').all(tpl.templateId).map((r) => r.id);
+  const actorId = Number(db.prepare("INSERT INTO users (name, email, role, is_admin) VALUES ('AGR-管理3', 'agr-admin3@x.com', 'coach', 1)").run().lastInsertRowid);
+  const o = createGroupOrder({ name: 'AGR-帳甲', phone: '0996500001', paySessionIds: [ss[0], ss[1]], waitlistSessionIds: [] });
+  confirmGroupOrder({ orderId: o.orderId, actorId });
+  const reg = db.prepare('SELECT r.* FROM registrations r JOIN users u ON u.id=r.user_id WHERE u.phone=? AND r.session_id=?').get('0996500001', ss[0]);
+  adminCancelRegistration({ registrationId: reg.id, actorId, refundAmount: 300 });
+  expect('listConfirmedPayments 團課列帶 refund_sum/partial_refund', () => {
+    const row = listConfirmedPayments().find((x) => x.type === 'group_order' && x.id === o.orderId);
+    assert.equal(row.refund_sum, 300);
+    assert.equal(row.partial_refund, true);
+    assert.equal(row.amount, 1000);
+    assert.equal(row.refunded_at, null);
+  });
+  refundGroupOrder({ orderId: o.orderId, actorId });
+  expect('整單退款後 partial_refund=false（已退款 badge 優先）', () => {
+    const row = listConfirmedPayments().find((x) => x.type === 'group_order' && x.id === o.orderId);
+    assert.ok(row.refunded_at);
+    assert.equal(row.partial_refund, false);
   });
 }
 
