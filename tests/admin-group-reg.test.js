@@ -156,6 +156,27 @@ reset();
     assert.equal(db.prepare('SELECT status FROM registrations WHERE id=?').get(r1.registrationId).status, 'pending');
   });
 
+  // g2) 滿額候補撞 cancelled 舊列 → 同列復原為 waitlisted（order_id/amount_due 清空）
+  db.prepare("UPDATE registrations SET status='cancelled' WHERE id=?").run(r4.registrationId);
+  const r4b = adminBackfillRegistration({ sessionId: sA, name: 'AGR-己', phone: '0996300004', paid: false, actorId });
+  expect('滿額候補撞 cancelled 舊列 → 同列復原為 waitlisted', () => {
+    assert.equal(r4b.registrationId, r4.registrationId);
+    assert.equal(r4b.status, 'waitlisted');
+    const reg = db.prepare('SELECT * FROM registrations WHERE id=?').get(r4.registrationId);
+    assert.equal(reg.status, 'waitlisted'); assert.equal(reg.order_id, null); assert.equal(reg.amount_due, null);
+  });
+
+  // g3) paid 撞 cancelled 舊列 → 同列復原為 confirmed＋新已核對訂單（sB 此刻僅丁 pending 佔 1/2）
+  const rp1 = adminBackfillRegistration({ sessionId: sB, name: 'AGR-卯', phone: '0996300010', paid: false, actorId });
+  db.prepare("UPDATE registrations SET status='cancelled' WHERE id=?").run(rp1.registrationId);
+  const rp2 = adminBackfillRegistration({ sessionId: sB, name: 'AGR-卯', phone: '0996300010', paid: true, actorId });
+  expect('paid 撞 cancelled 舊列 → 同列復原為 confirmed＋新已核對訂單', () => {
+    assert.equal(rp2.registrationId, rp1.registrationId);
+    const reg = db.prepare('SELECT * FROM registrations WHERE id=?').get(rp1.registrationId);
+    assert.equal(reg.status, 'confirmed'); assert.equal(reg.order_id, rp2.orderId); assert.equal(reg.amount_due, 500);
+    assert.equal(db.prepare('SELECT status FROM group_orders WHERE id=?').get(rp2.orderId).status, 'paid');
+  });
+
   // h) userId 路徑＋員工守門
   const memberId = db.prepare("SELECT id FROM users WHERE phone='0996300001'").get().id;
   const r7 = adminBackfillRegistration({ sessionId: sD, userId: memberId, paid: false, actorId });
