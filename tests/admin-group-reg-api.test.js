@@ -18,6 +18,7 @@ console.log('[admin-group-reg-api test] start');
 function cleanup() {
   db.exec(`
     DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
+    DELETE FROM registrations WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
     DELETE FROM group_orders WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
     DELETE FROM users WHERE phone LIKE '0995%';
   `);
