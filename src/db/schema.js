@@ -346,7 +346,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_renewal_reminders_key ON renewal_reminders
 
 CREATE TABLE IF NOT EXISTS group_order_refunds (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  order_id INTEGER NOT NULL REFERENCES group_orders(id),
+  order_id INTEGER NOT NULL REFERENCES group_orders(id) ON DELETE CASCADE,
   registration_id INTEGER REFERENCES registrations(id) ON DELETE SET NULL,
   amount INTEGER NOT NULL,
   refunded_at TEXT NOT NULL,
