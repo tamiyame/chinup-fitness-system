@@ -14,7 +14,15 @@ function expect(label, fn) { try { fn(); console.log(`  ✓ ${label}`); } catch 
 function dstr(days) { const d = new Date(); d.setDate(d.getDate() + days); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
 
 console.log('[admin-group-reg-api test] start');
-db.exec("DELETE FROM users WHERE phone LIKE '0995%'");
+// 冪等清理：先清子表（group_orders.member_id 無 cascade 會擋 users 刪除），頭尾雙清比照 refund-api
+function cleanup() {
+  db.exec(`
+    DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
+    DELETE FROM group_orders WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
+    DELETE FROM users WHERE phone LIKE '0995%';
+  `);
+}
+cleanup();
 
 const login = await req('POST', '/api/auth/login', { body: { email: 'admin@chinup.local', password: 'admin1234' } });
 const token = login.data?.token;
@@ -60,4 +68,5 @@ expect('roster 顯示已取消', () => assert.equal(roster2.data.find((r) => r.i
 const del = await req('DELETE', `/api/admin/templates/${tplId}`, { token });
 expect('範本刪除 ok（refund 列 ON DELETE SET NULL 不擋 cascade）', () => assert.equal(del.status, 200));
 
+cleanup();
 console.log('[admin-group-reg-api test] done');

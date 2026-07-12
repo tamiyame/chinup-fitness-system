@@ -19,7 +19,7 @@ function reset() {
     DELETE FROM course_sessions;
     DELETE FROM course_templates;
     DELETE FROM discount_codes WHERE code LIKE 'AGR%';
-    DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0996%');
+    DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0996%' OR name LIKE 'AGR-%');
     DELETE FROM users WHERE phone LIKE '0996%' OR name LIKE 'AGR-%';
   `);
 }
