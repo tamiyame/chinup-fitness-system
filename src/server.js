@@ -55,6 +55,8 @@ import {
   getPublicSchedule as svcPublicSchedule,
   listPendingOrders as svcListPendingOrders,
   refundGroupOrder as svcRefundGroupOrder,
+  adminBackfillRegistration as svcAdminBackfillReg,
+  adminCancelRegistration as svcAdminCancelReg,
 } from './services/groupOrderService.js';
 import { listActiveCoaches as svcListActive, saveAvatar as svcSaveAvatar } from './services/coachService.js';
 import {
@@ -471,6 +473,29 @@ app.patch('/api/admin/sessions/:id', requireAdmin, asyncHandler((req, res) => {
   const { is_open } = req.body || {};
   if (typeof is_open !== 'boolean') return res.status(400).json({ error: 'invalid_is_open' });
   res.json(setSessionOpen(Number(req.params.id), is_open));
+}));
+
+// admin 補報名：從範本 drawer 為客人補一場（paid=true 直接已核對；false 走待核對 72h）
+app.post('/api/admin/sessions/:id/registrations', requireAdmin, asyncHandler((req, res) => {
+  const { userId, name, phone, paid } = req.body || {};
+  res.status(201).json(svcAdminBackfillReg({
+    sessionId: Number(req.params.id),
+    userId: userId != null ? Number(userId) : null,
+    name: name != null ? String(name) : null,
+    phone: phone != null ? String(phone) : null,
+    paid: paid === true,
+    actorId: req.user.id,
+  }));
+}));
+
+// admin 取消單筆報名（已收款訂單 → 記部分退款，可帶 refundAmount 調整）
+app.post('/api/admin/registrations/:id/cancel', requireAdmin, asyncHandler((req, res) => {
+  const { refundAmount } = req.body || {};
+  res.json(svcAdminCancelReg({
+    registrationId: Number(req.params.id),
+    actorId: req.user.id,
+    refundAmount: refundAmount != null ? Number(refundAmount) : null,
+  }));
 }));
 
 // --- Course categories ---
