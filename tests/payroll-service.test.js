@@ -210,13 +210,14 @@ expect('totals = 各教練加總', () => {
 {
   const uid = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('PR駐場','pr-shift@x.com','coach')").run().lastInsertRowid);
   const cid = Number(db.prepare("INSERT INTO coaches (user_id, display_name, is_active, hourly_rate) VALUES (?, 'PR駐場', 1, 500)").run(uid).lastInsertRowid);
+  // created_by 用本段自建的 uid（硬編 1 在累積 DB 無 users.id=1 時會 FK 失敗）
   const ins = db.prepare(`INSERT INTO shift_attendance (coach_id, shift_id, work_date, start_time, end_time, hours, source, created_by)
-    VALUES (?, NULL, ?, '09:00', '11:00', 2, 'manual', 1)`);
-  ins.run(cid, '2031-01-10');
-  ins.run(cid, '2031-02-05');            // 迄端含
-  ins.run(cid, '2031-02-06');            // 期外
+    VALUES (?, NULL, ?, '09:00', '11:00', 2, 'manual', ?)`);
+  ins.run(cid, '2031-01-10', uid);
+  ins.run(cid, '2031-02-05', uid);       // 迄端含
+  ins.run(cid, '2031-02-06', uid);       // 期外
   const voided = Number(db.prepare(`INSERT INTO shift_attendance (coach_id, shift_id, work_date, start_time, end_time, hours, source, created_by, voided_at)
-    VALUES (?, NULL, '2031-01-20', '09:00', '10:00', 1, 'manual', 1, '2031-01-21T00:00:00')`).run(cid).lastInsertRowid);
+    VALUES (?, NULL, '2031-01-20', '09:00', '10:00', 1, 'manual', ?, '2031-01-21T00:00:00')`).run(cid, uid).lastInsertRowid);
 
   const r = computePayroll({ period: '2031-02' });
   const c = r.coaches.find((x) => x.coachId === cid);
@@ -240,7 +241,7 @@ expect('totals = 各教練加總', () => {
     db.prepare("UPDATE coaches SET hourly_rate = 333, is_active = 0 WHERE id = ?").run(cid);
     db.exec(`DELETE FROM shift_attendance WHERE coach_id = ${cid}`);
     db.prepare(`INSERT INTO shift_attendance (coach_id, shift_id, work_date, start_time, end_time, hours, source, created_by)
-      VALUES (?, NULL, '2031-01-15', '09:00', '10:30', 1.5, 'manual', 1)`).run(cid);
+      VALUES (?, NULL, '2031-01-15', '09:00', '10:30', 1.5, 'manual', ?)`).run(cid, uid);
     const c3 = computePayroll({ period: '2031-02' }).coaches.find((x) => x.coachId === cid);
     assert.ok(c3, '停用教練期內有駐場資料仍應列出');
     assert.equal(c3.shift.salary, 500);
