@@ -434,7 +434,7 @@ export function expirePendingOrders() {
   return { expired };
 }
 
-/** 公開：所有有未來場次的 published template，含每場 occupied / is_full。 */
+/** 公開：所有「尚有可報名場次」的 published template，回完整週期（不可報名場次帶 state 供灰色顯示）。 */
 export function getPublicGroupCourses() {
   const now = nowLocal();
   const templates = db.prepare(`
@@ -447,24 +447,34 @@ export function getPublicGroupCourses() {
     ORDER BY t.created_at DESC
   `).all();
   return templates.map((t) => {
+    // 完整週期：過去/已截止/流課場次一併回傳（前端灰色顯示、不可點）。
+    // 唯一仍隱藏的是「未來、open、被管理者暫停(is_open=0)」的場次（暫停＝對客人完全隱藏）。
     const sessions = db.prepare(`
-      SELECT id, session_date, start_at, end_at, status, registration_deadline
+      SELECT id, session_date, start_at, end_at, status, registration_deadline, is_open
       FROM course_sessions
-      WHERE template_id = ? AND status = 'open' AND is_open = 1 AND start_at > ?
+      WHERE template_id = ? AND NOT (start_at > ? AND status = 'open' AND is_open = 0)
       ORDER BY start_at ASC
     `).all(t.id, now).map((s) => {
       const occupied = sessionOccupied(s.id);
       // 額滿徽章顯示目前候補人數用
       const waitlistCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id=? AND status='waitlisted'").get(s.id).c;
+      // selectable 比照送單側 validateSelectable，另補截止時間（processDeadlines 整點批次前的空窗）
+      const selectable = s.status === 'open' && s.is_open === 1 && s.start_at > now
+        && (!s.registration_deadline || s.registration_deadline > now);
+      const state = selectable ? 'selectable'
+        : s.status === 'cancelled' ? 'not_held'
+        : s.start_at <= now ? 'ended'
+        : 'deadline_passed';
       return {
         ...s, occupied, max_capacity: t.max_capacity,
         is_full: occupied >= t.max_capacity,
         waitlist_count: waitlistCount,
         price_per_session: t.price_per_session,
+        selectable, state,
       };
     });
     return { ...t, sessions };
-  }).filter((t) => t.sessions.length > 0);
+  }).filter((t) => t.sessions.some((s) => s.selectable));
 }
 
 /** 公開：用電話+姓名查課表（1v1 bookings + group registrations）+ 剩堂數。 */
