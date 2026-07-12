@@ -124,14 +124,14 @@ function toggleSession(sessionId, type, session, templateName, price) {
 function syncSelectAll(tpl) {
   const cb = document.querySelector(`.select-all-cb[data-tpl="${tpl.id}"]`);
   if (!cb) return;
-  const nonFull = tpl.sessions.filter(s => !s.is_full);
+  const nonFull = tpl.sessions.filter(s => s.state === 'selectable' && !s.is_full);
   const allChosen = nonFull.length > 0 && nonFull.every(s => selected.has(s.id));
   cb.checked = allChosen;
   cb.indeterminate = !allChosen && nonFull.some(s => selected.has(s.id));
 }
 
 function selectAllToggle(tpl, forceOn) {
-  const nonFull = tpl.sessions.filter(s => !s.is_full);
+  const nonFull = tpl.sessions.filter(s => s.state === 'selectable' && !s.is_full);
   const shouldSelect = forceOn !== undefined ? forceOn : !nonFull.every(s => selected.has(s.id));
   for (const s of nonFull) {
     if (shouldSelect) {
@@ -159,7 +159,7 @@ function selectAllToggle(tpl, forceOn) {
 
 // ── render ────────────────────────────────────────────────────────────────────
 function renderTemplate(tpl) {
-  const nonFull = tpl.sessions.filter(s => !s.is_full);
+  const nonFull = tpl.sessions.filter(s => s.state === 'selectable' && !s.is_full);
   const hasNonFull = nonFull.length > 0;
 
   const priceLabel = tpl.price_per_session > 0
@@ -206,6 +206,22 @@ function renderSessionRow(s, tpl) {
   const timeStr = `${formatTime(dt)}–${formatTime(dtEnd)}`;
   const capStr = `已佔 ${s.occupied} / 上限 ${s.max_capacity}`;
   const pct = Math.min(100, Math.round((s.occupied / s.max_capacity) * 100));
+
+  // 不可報名場次：灰色唯讀列（無 checkbox、不可點）。已結束/已截止保留容量數字當紀錄，流課只顯徽章。
+  if (s.state && s.state !== 'selectable') {
+    const label = { ended: '已結束', not_held: '未開課', deadline_passed: '已截止' }[s.state] || '不可報名';
+    return `
+    <div class="sess-row sess-row-disabled" data-sid="${s.id}">
+      <div class="sess-row-info">
+        <div class="sess-row-date">${escapeHtml(dateStr)}</div>
+        <div class="sess-row-time">${escapeHtml(timeStr)}</div>
+      </div>
+      <div style="text-align:right;">
+        ${s.state === 'not_held' ? '' : `<div class="sess-row-cap">${escapeHtml(capStr)}</div>`}
+        <span class="badge badge-closed" style="font-size:11px;margin-top:3px;display:inline-flex;">${label}</span>
+      </div>
+    </div>`;
+  }
 
   if (s.is_full) {
     return `
@@ -348,7 +364,7 @@ async function loadCourses() {
     listEl.classList.remove('hidden');
 
     // bind click handlers on session rows
-    listEl.querySelectorAll('.sess-row').forEach(row => {
+    listEl.querySelectorAll('.sess-row:not(.sess-row-disabled)').forEach(row => {
       row.addEventListener('click', (e) => {
         // don't double-fire from checkbox (let row click manage state)
         if (e.target.tagName === 'INPUT') return;
