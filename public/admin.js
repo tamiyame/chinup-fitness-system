@@ -336,7 +336,7 @@ async function deleteTemplate(id) {
 }
 
 let drawerTemplateId = null;
-const drawerSessions = new Map(); // sid → { start_at, occupied, max }
+const drawerSessions = new Map(); // sid → { start_at, occupied, max, status }
 
 function localNowStr() {
   const p = (n) => String(n).padStart(2, '0');
@@ -432,7 +432,7 @@ async function refreshSessionSummary(sid) {
     const t = await api(`/api/admin/templates/${drawerTemplateId}`);
     const s = t.sessions.find(x => x.id === sid);
     if (!s) return;
-    drawerSessions.set(sid, { start_at: s.start_at, occupied: s.occupied, max: t.max_capacity });
+    drawerSessions.set(sid, { start_at: s.start_at, occupied: s.occupied, max: t.max_capacity, status: s.status });
     const el = document.querySelector(`#drawer-content .session-counts[data-session-id="${sid}"]`);
     if (el) el.textContent = `正取 ${s.confirmed_count}/${t.max_capacity} · 候補 ${s.waitlist_count}`;
   } catch { /* 摘要刷新失敗不阻斷主流程 */ }
