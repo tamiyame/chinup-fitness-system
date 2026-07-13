@@ -336,7 +336,7 @@ async function deleteTemplate(id) {
 }
 
 let drawerTemplateId = null;
-const drawerSessions = new Map(); // sid → { start_at, occupied, max }
+const drawerSessions = new Map(); // sid → { start_at, occupied, max, status }
 
 function localNowStr() {
   const p = (n) => String(n).padStart(2, '0');
@@ -356,7 +356,7 @@ async function openDrawer(templateId) {
     if (!t.sessions.length) { c.innerHTML = '<div class="subtle">尚無場次</div>'; return; }
 
     c.innerHTML = t.sessions.map(s => {
-      drawerSessions.set(s.id, { start_at: s.start_at, occupied: s.occupied, max: t.max_capacity });
+      drawerSessions.set(s.id, { start_at: s.start_at, occupied: s.occupied, max: t.max_capacity, status: s.status });
       return `
       <details class="session-row">
         <summary>
@@ -365,7 +365,7 @@ async function openDrawer(templateId) {
             <div class="subtle mt-1 session-counts" data-session-id="${s.id}">正取 ${s.confirmed_count}/${t.max_capacity} · 候補 ${s.waitlist_count}</div>
           </div>
           <div class="flex items-center gap-2">
-            ${s.status !== 'cancelled' ? `<button type="button" class="badge badge-confirmed session-backfill" data-session-id="${s.id}" title="為客人補此場報名">補報名</button>` : ''}
+            ${(s.status !== 'cancelled' || s.start_at <= localNowStr()) ? `<button type="button" class="badge badge-confirmed session-backfill" data-session-id="${s.id}" title="為客人補此場報名">補報名</button>` : ''}
             ${s.status === 'open'
               ? `<button type="button" class="badge ${s.is_open === 0 ? 'badge-closed' : 'badge-open'} session-toggle" data-session-id="${s.id}" data-open="${s.is_open === 0 ? '0' : '1'}" title="點擊切換開放／關閉此場次">${s.is_open === 0 ? '關閉' : '開放'}</button>`
               : `<span class="badge badge-${s.status}">${SESSION_STATUS_LABEL[s.status]}</span>`}
@@ -432,7 +432,7 @@ async function refreshSessionSummary(sid) {
     const t = await api(`/api/admin/templates/${drawerTemplateId}`);
     const s = t.sessions.find(x => x.id === sid);
     if (!s) return;
-    drawerSessions.set(sid, { start_at: s.start_at, occupied: s.occupied, max: t.max_capacity });
+    drawerSessions.set(sid, { start_at: s.start_at, occupied: s.occupied, max: t.max_capacity, status: s.status });
     const el = document.querySelector(`#drawer-content .session-counts[data-session-id="${sid}"]`);
     if (el) el.textContent = `正取 ${s.confirmed_count}/${t.max_capacity} · 候補 ${s.waitlist_count}`;
   } catch { /* 摘要刷新失敗不阻斷主流程 */ }
@@ -447,6 +447,7 @@ function openBackfillPanel(sid) {
   const meta = drawerSessions.get(sid) || {};
   const isPast = meta.start_at ? meta.start_at <= localNowStr() : false;
   const isFull = meta.occupied >= meta.max;
+  const isCancelled = meta.status === 'cancelled';
 
   const panel = document.createElement('div');
   panel.className = 'backfill-panel';
@@ -475,7 +476,8 @@ function openBackfillPanel(sid) {
   const hint = panel.querySelector('.bf-hint');
   const paidCb = panel.querySelector('.bf-paid');
   const submitBtn = panel.querySelector('.bf-submit');
-  if (isFull && isPast) { hint.textContent = '此場已滿且已結束，無法補報名。'; submitBtn.disabled = true; }
+  if (isCancelled) { hint.textContent = '此場原判未開課：補報名成功後將恢復為「已成班」（計入薪資與上課統計）。'; }
+  else if (isFull && isPast) { hint.textContent = '此場已滿且已結束，無法補報名。'; submitBtn.disabled = true; }
   else if (isFull) { hint.textContent = '此場已滿：送出後將列為候補（不收款）。'; paidCb.checked = false; paidCb.disabled = true; }
   else if (isPast) { hint.textContent = '此場已結束：補登歷史報名。'; }
 
@@ -531,9 +533,14 @@ function openBackfillPanel(sid) {
       panel.remove();
       await reloadRoster(sid);
       refreshSessionSummary(sid);
+      if (meta.status === 'cancelled') { // 補報即復活：就地把「未開課」徽章換成「已成班」
+        meta.status = 'confirmed';
+        const badge = document.querySelector(`#drawer-content .session-backfill[data-session-id="${sid}"]`)?.parentElement?.querySelector('.badge-cancelled');
+        if (badge) { badge.classList.replace('badge-cancelled', 'badge-confirmed'); badge.textContent = SESSION_STATUS_LABEL.confirmed; }
+      }
       loadPendingOrders(); loadConfirmedPayments();
     } catch (e) {
-      const msgs = { already_registered: '此客人已報名過本場次', session_full: '此場已滿（過去場次不可候補）', paid_requires_seat: '已滿場次只能候補，不能標已收款', session_cancelled: '未開課場次不可補報名', phone_unavailable: '此電話屬員工帳號，不可用於報名', invalid_phone: '電話格式不正確（8–15 碼數字）', missing_name: '請填寫姓名', user_not_found: '找不到此客人' };
+      const msgs = { already_registered: '此客人已報名過本場次', session_full: '此場已滿（過去場次不可候補）', paid_requires_seat: '已滿場次只能候補，不能標已收款', session_cancelled: '未開課場次需過了上課時間才能補登', phone_unavailable: '此電話屬員工帳號，不可用於報名', invalid_phone: '電話格式不正確（8–15 碼數字）', missing_name: '請填寫姓名', user_not_found: '找不到此客人' };
       toast(msgs[e.data?.error] || `補報名失敗：${escapeHtml(e.message)}`, 'error');
       submitBtn.disabled = false;
     }

@@ -65,6 +65,20 @@ expect('退款明細寫入 200 元', () => {
 const roster2 = await req('GET', `/api/admin/sessions/${sid}/registrations`, { token });
 expect('roster 顯示已取消', () => assert.equal(roster2.data.find((r) => r.id === row.id).status, 'cancelled'));
 
+// 過去未開課補登（補報即復活）＋未來未開課仍 409
+const sidPast = tpl.data.sessions[1].id;
+const sidFuture = tpl.data.sessions[2].id;
+db.prepare("UPDATE course_sessions SET session_date=?, start_at=?, end_at=?, registration_deadline=?, status='cancelled' WHERE id=?")
+  .run(dstr(-3), `${dstr(-3)}T19:00:00`, `${dstr(-3)}T20:00:00`, `${dstr(-3)}T18:00:00`, sidPast);
+db.prepare("UPDATE course_sessions SET status='cancelled' WHERE id=?").run(sidFuture);
+
+const revive = await req('POST', `/api/admin/sessions/${sidPast}/registrations`, { token, body: { name: 'AGRAPI復活客', phone: '0995000002', paid: true } });
+expect('過去未開課補登 → 201 confirmed', () => { assert.equal(revive.status, 201); assert.equal(revive.data.status, 'confirmed'); });
+expect('場次復活成已成班', () => assert.equal(db.prepare('SELECT status FROM course_sessions WHERE id=?').get(sidPast).status, 'confirmed'));
+
+const futureCancelled = await req('POST', `/api/admin/sessions/${sidFuture}/registrations`, { token, body: { name: 'AGRAPI復活客', phone: '0995000002', paid: false } });
+expect('未來未開課補報 → 409 session_cancelled', () => { assert.equal(futureCancelled.status, 409); assert.equal(futureCancelled.data.error, 'session_cancelled'); });
+
 // 收尾：刪測試範本（cascade 清 sessions/regs；refunds.registration_id → NULL）
 const del = await req('DELETE', `/api/admin/templates/${tplId}`, { token });
 expect('範本刪除 ok（refund 列 ON DELETE SET NULL 不擋 cascade）', () => assert.equal(del.status, 200));
