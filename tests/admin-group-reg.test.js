@@ -3,9 +3,10 @@ import { db } from '../src/db/connection.js';
 import { createTemplate, getTemplate, listRegistrationsBySession } from '../src/services/courseService.js';
 import {
   createGroupOrder, confirmGroupOrder, refundGroupOrder, promoteWaitlist, sessionOccupied,
-  adminBackfillRegistration, adminCancelRegistration,
+  adminBackfillRegistration, adminCancelRegistration, getPublicGroupCourses,
 } from '../src/services/groupOrderService.js';
 import { listConfirmedPayments } from '../src/services/bookingService.js';
+import { computePayroll } from '../src/services/payrollService.js';
 
 function expect(label, fn) {
   try { fn(); console.log(`  ✓ ${label}`); }
@@ -21,6 +22,7 @@ function reset() {
     DELETE FROM course_templates;
     DELETE FROM discount_codes WHERE code LIKE 'AGR%';
     DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0996%' OR name LIKE 'AGR-%');
+    DELETE FROM coaches WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0996%' OR name LIKE 'AGR-%');
     DELETE FROM users WHERE phone LIKE '0996%' OR name LIKE 'AGR-%';
   `);
 }
@@ -364,6 +366,104 @@ reset();
     assert.ok(row.order_paid_at);
     assert.equal(row.order_refunded_at, null);
     assert.equal(row.order_discount_amount, null); // 無折扣訂單：core+M1 延伸斷言
+  });
+}
+
+// ── §7 過去未開課場次補登（補報即復活）────────────────────────
+reset();
+{
+  // 佈景：cycle +1..+20 天、每週一場 → 3 場（約 +2/+9/+16）。
+  // s1 → 過去＋cancelled（主角）；s2 → 未來＋cancelled（409 對照）；s3 維持未來 open（讓範本仍出現在公開頁）。
+  const tpl = createTemplate({
+    name: 'AGR-復活班', min_capacity: 1, max_capacity: 3,
+    day_of_week: ((new Date()).getDay() + 2) % 7, start_time: '19:00',
+    recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(20),
+    registration_deadline_hours: 1, price_per_session: 500,
+  });
+  const ss = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC').all(tpl.templateId).map((r) => r.id);
+  const [s1, s2] = ss;
+  agePast(s1);
+  db.prepare("UPDATE course_sessions SET status='cancelled' WHERE id IN (?, ?)").run(s1, s2);
+  const actorId = Number(db.prepare("INSERT INTO users (name, role) VALUES ('AGR-操作者', 'user')").run().lastInsertRowid);
+  const sessionStatus = (id) => db.prepare('SELECT status FROM course_sessions WHERE id=?').get(id).status;
+  const pubSession = (id) => {
+    const t = getPublicGroupCourses().find((x) => x.id === tpl.templateId);
+    return t ? t.sessions.find((x) => x.id === id) : null;
+  };
+
+  expect('未來的未開課場次補報 → 409 session_cancelled（paid/unpaid 皆擋）', () => {
+    assert.throws(() => adminBackfillRegistration({ sessionId: s2, name: 'AGR-復活客', phone: '0996700001', paid: false, actorId }), /session_cancelled/);
+    assert.throws(() => adminBackfillRegistration({ sessionId: s2, name: 'AGR-復活客', phone: '0996700001', paid: true, actorId }), /session_cancelled/);
+  });
+
+  expect('復活前：公開頁該場 state=not_held', () => {
+    const s = pubSession(s1);
+    assert.ok(s, '範本應仍在公開頁（s3 selectable）');
+    assert.equal(s.state, 'not_held');
+    assert.equal(s.selectable, false);
+  });
+
+  let r1;
+  expect('過去未開課＋未付補報 → pending 單＋場次復活成已成班', () => {
+    r1 = adminBackfillRegistration({ sessionId: s1, name: 'AGR-復活客', phone: '0996700001', paid: false, actorId });
+    assert.equal(r1.status, 'pending');
+    assert.ok(r1.orderId);
+    assert.equal(sessionStatus(s1), 'confirmed');
+    const o = db.prepare('SELECT status, total_amount FROM group_orders WHERE id=?').get(r1.orderId);
+    assert.equal(o.status, 'pending');
+    assert.equal(o.total_amount, 500);
+  });
+
+  expect('復活後：公開頁該場 state=ended（非 not_held、不可選）', () => {
+    const s = pubSession(s1);
+    assert.equal(s.state, 'ended');
+    assert.equal(s.selectable, false);
+  });
+
+  expect('取消唯一一筆補報 → 整單取消、場次維持已成班不回退', () => {
+    adminCancelRegistration({ registrationId: r1.registrationId, actorId });
+    assert.equal(db.prepare('SELECT status FROM group_orders WHERE id=?').get(r1.orderId).status, 'cancelled');
+    assert.equal(sessionStatus(s1), 'confirmed');
+  });
+}
+
+// ── §7b 原 rejected 客人重補（同列 reactivate）＋已收款補報計入薪資 ──
+{
+  const coachUserId = Number(db.prepare("INSERT INTO users (name, role) VALUES ('AGR-教練', 'coach')").run().lastInsertRowid);
+  const coachId = Number(db.prepare("INSERT INTO coaches (user_id, display_name, is_active) VALUES (?, 'AGR-教練', 1)").run(coachUserId).lastInsertRowid);
+  const tpl = createTemplate({
+    name: 'AGR-薪資班', min_capacity: 1, max_capacity: 3,
+    day_of_week: ((new Date()).getDay() + 2) % 7, start_time: '19:00',
+    recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(8),
+    registration_deadline_hours: 1, price_per_session: 600, coach_id: coachId,
+  });
+  const sid = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC').get(tpl.templateId).id;
+  // 客人先正常報名（pending），再模擬 processDeadlines 判未開課：reg→rejected、場次 cancelled。
+  // 場次改「固定過去日」2020-01-10 → 薪資期別 2020-02（2020-01-06 ~ 2020-02-06）可做確定性斷言。
+  const oC = createGroupOrder({ name: 'AGR-丙', phone: '0996700002', paySessionIds: [sid], waitlistSessionIds: [] });
+  const oldRegId = db.prepare('SELECT id FROM registrations WHERE session_id=? AND user_id=?').get(sid, oC.memberId).id;
+  db.prepare("UPDATE registrations SET status='rejected' WHERE id=?").run(oldRegId);
+  db.prepare("UPDATE course_sessions SET session_date='2020-01-10', start_at='2020-01-10T19:00:00', end_at='2020-01-10T20:00:00', registration_deadline='2020-01-10T18:00:00', status='cancelled' WHERE id=?").run(sid);
+
+  let r;
+  expect('原 rejected 客人已收款補報 → 同列 reactivate＋confirmed＋獨立已核對單＋復活', () => {
+    r = adminBackfillRegistration({ sessionId: sid, userId: oC.memberId, paid: true, actorId: oC.memberId });
+    assert.equal(r.registrationId, oldRegId);   // 同一列復原，不重複列（UNIQUE(session_id,user_id)）
+    assert.equal(r.status, 'confirmed');
+    assert.notEqual(r.orderId, oC.orderId);     // 獨立 paid 單，不掛回原 pending 單
+    const o = db.prepare('SELECT status, paid_at FROM group_orders WHERE id=?').get(r.orderId);
+    assert.equal(o.status, 'paid');
+    assert.ok(o.paid_at);
+    assert.equal(db.prepare('SELECT status FROM course_sessions WHERE id=?').get(sid).status, 'confirmed');
+  });
+
+  expect('復活場次計入薪資（期別 2020-02：headcount 1、revenue 600、明細含該場）', () => {
+    const pr = computePayroll({ period: '2020-02' });
+    const c = pr.coaches.find((x) => x.coachId === coachId);
+    assert.ok(c, '教練應出現在薪資清單');
+    assert.equal(c.group.headcount, 1);
+    assert.equal(c.group.revenue, 600);
+    assert.ok(c.group.details.some((d) => d.sessionId === sid));
   });
 }
 
