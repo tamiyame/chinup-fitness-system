@@ -26,18 +26,15 @@ body { visibility: hidden; }
 /* tabular 數字 + Archivo 工具 class（純視覺，JS 不依賴）*/
 .tnum, .nk-num { font-variant-numeric: tabular-nums; }
 
-/* ---------- Hero：大寫 kicker + 尾線 + Archivo 900 標題 ---------- */
-.hero-eyebrow{
-  font-family:"Archivo",sans-serif; font-weight:800;
-  font-size:11px; letter-spacing:.22em; text-transform:uppercase;
-  color:var(--ink-mute);
-  background:transparent; border:none; border-radius:0;
-  padding:0; gap:10px;
-  display:flex; align-items:center;
+/* ---------- 頁面標題：與 coach 同款 kicker + 尾線 + 大標（切換頁面高度一致）---------- */
+.nk-kicker{
+  font-family:"Archivo",sans-serif; font-weight:700; font-size:11px;
+  text-transform:uppercase; letter-spacing:.2em; color:var(--ink-mute);
+  display:flex; align-items:center; gap:10px; margin-bottom:8px;
 }
-.hero-eyebrow::after{ content:""; width:42px; height:1px; background:var(--line); }
-.hero h1{
-  font-family:"Archivo","Noto Sans TC",sans-serif;
+.nk-kicker::after{ content:""; flex:1; height:1px; background:var(--line); }
+.page-title{
+  font-family:"Noto Sans TC",sans-serif;
   font-weight:900; letter-spacing:-.02em;
 }
 
@@ -431,12 +428,11 @@ details.session-row summary .font-semibold{
   </div>
 </nav>
 
-<main class="max-w-6xl mx-auto px-6">
-  <section class="hero">
-    <span class="hero-eyebrow">Admin · Console</span>
-    <h1>課程管理後台</h1>
-    <p>建立團體課程範本、檢視每場次報名狀態、並手動處理截止與寄送提醒。</p>
-  </section>
+<main class="max-w-6xl mx-auto px-6 py-8">
+  <div class="nk-kicker">ADMIN · 管理後台</div>
+  <div class="flex items-center gap-4 flex-wrap mb-1">
+    <h1 class="page-title">課程管理後台</h1>
+  </div>
 
   <!-- ===== 後台分頁 ===== -->
   <div id="admin-tabs" class="flex gap-1 border-b mb-6 overflow-x-auto">
