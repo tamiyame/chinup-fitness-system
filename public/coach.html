@@ -44,16 +44,16 @@ body { visibility: hidden; }
   background:var(--warn-bg); color:var(--warn-fg);
 }
 
-/* ---------- 分頁 Tab（我的預約 / 可預約時段 / 個人資料）---------- */
+/* ---------- 分頁 Tab（登錄預約 / 我的預約 / 可預約時段 / 個人資料）— 與 admin #admin-tabs 同款 ---------- */
 .tab{
-  font-family:"Noto Sans TC",sans-serif; font-weight:700;
-  font-size:14px; letter-spacing:.01em;
-  padding:10px 16px; min-height:42px;
+  font-family:"Archivo","Noto Sans TC",sans-serif;
+  font-weight:800; font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+  padding:11px 14px 12px;
   border-bottom:2px solid transparent; color:var(--ink-mute);
   transition:color .15s ease, border-color .15s ease;
 }
 .tab:hover{ color:var(--ink-soft); }
-.tab.tab-active{ color:var(--nk-acc-strong); border-bottom-color:var(--nk-acc); font-weight:800; }
+.tab.tab-active{ color:var(--nk-acc-strong); border-bottom-color:var(--nk-acc-strong); }
 
 /* ---------- 卡片：俐落方框、無懸浮抬升、細線分隔感 ---------- */
 .tab-panel .card{
