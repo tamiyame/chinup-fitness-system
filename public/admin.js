@@ -121,23 +121,38 @@ function renderTemplates() {
   bindLoadMore(container, () => renderTemplates());
 }
 
+let notifsCache = [];
+
 async function loadNotifs() {
   try {
-    const rows = await api('/api/admin/notifications');
-    const el = document.getElementById('notifs');
-    if (!rows.length) { el.innerHTML = '<div class="p-6 subtle text-center">無紀錄</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>時間</th><th>收件者</th><th>類型</th><th>通道</th><th>主旨</th></tr></thead><tbody>' +
-      rows.map(r => `
+    notifsCache = await api('/api/admin/notifications');
+    renderNotifs();
+  } catch (e) {
+    document.getElementById('notifs').innerHTML = `<div class="p-6 text-red-500 text-center">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderNotifs() {
+  const el = document.getElementById('notifs');
+  if (!notifsCache.length) {
+    el.innerHTML = `
+      <div class="empty-state">
+        ${ICO.check.replace('nk-ico', 'nk-empty-ico')}
+        <p>無紀錄</p>
+      </div>`;
+    return;
+  }
+  const { visible, rest } = limitSlice('notifs', notifsCache);
+  el.innerHTML = '<table class="data-table"><thead><tr><th>時間</th><th>收件者</th><th>類型</th><th>通道</th><th>主旨</th></tr></thead><tbody>' +
+    visible.map(r => `
         <tr>
           <td data-label="時間" class="subtle">${fmtDate(r.sent_at)}</td>
           <td data-label="收件者">${escapeHtml(r.email)}</td>
           <td data-label="類型"><span class="badge badge-${typeBadge(r.type)}">${typeLabel(r.type)}</span></td>
           <td data-label="通道">${escapeHtml(r.channel)}</td>
           <td data-label="主旨" class="cell-span">${escapeHtml(r.subject)}</td>
-        </tr>`).join('') + '</tbody></table>';
-  } catch (e) {
-    document.getElementById('notifs').innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
-  }
+        </tr>`).join('') + '</tbody></table>' + moreButtonHtml('notifs', rest);
+  bindLoadMore(el, () => renderNotifs());
 }
 
 function fmtSize(bytes) {
@@ -667,10 +682,10 @@ async function loadUsers() {
 
   // 一次性綁定搜尋欄 + 顯示已封存切換（靜態元素，跨重繪持續存在）
   if (!usersWired) {
-    document.getElementById('user-search')?.addEventListener('input', renderUsersTable);
-    document.getElementById('show-archived')?.addEventListener('change', renderUsersTable);
-    document.getElementById('line-search')?.addEventListener('input', renderLineTable);
-    document.getElementById('line-filter')?.addEventListener('change', renderLineTable);
+    document.getElementById('user-search')?.addEventListener('input', () => { _shownMap.delete('members'); renderUsersTable(); });
+    document.getElementById('show-archived')?.addEventListener('change', () => { _shownMap.delete('members'); renderUsersTable(); });
+    document.getElementById('line-search')?.addEventListener('input', () => { _shownMap.delete('line'); renderLineTable(); });
+    document.getElementById('line-filter')?.addEventListener('change', () => { _shownMap.delete('line'); renderLineTable(); });
     usersWired = true;
   }
 
@@ -679,7 +694,7 @@ async function loadUsers() {
     renderUsersTable();
     renderLineTable();
   } catch (e) {
-    document.getElementById('users-table').innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
+    document.getElementById('users-table').innerHTML = `<div class="p-6 text-red-500 text-center">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -695,9 +710,15 @@ function renderUsersTable() {
     (r.name || '').toLowerCase().includes(q) || (r.phone || '').toLowerCase().includes(q));
 
   if (!rows.length) {
-    el.innerHTML = `<div class="p-6 subtle text-center">${q || showArchived ? '無符合的會員' : '無會員'}</div>`;
+    el.innerHTML = `
+      <div class="empty-state">
+        ${ICO.users.replace('nk-ico', 'nk-empty-ico')}
+        <p>${q || showArchived ? '無符合的會員' : '無會員'}</p>
+      </div>`;
     return;
   }
+
+  const { visible, rest } = limitSlice('members', rows);
 
   el.innerHTML = `
     <table class="data-table">
@@ -710,10 +731,11 @@ function renderUsersTable() {
         <th>加入時間</th>
       </tr></thead>
       <tbody>
-        ${rows.map(r => renderUserRow(r)).join('')}
+        ${visible.map(r => renderUserRow(r)).join('')}
       </tbody>
-    </table>`;
+    </table>` + moreButtonHtml('members', rest);
 
+  bindLoadMore(el, () => renderUsersTable());
   bindUserRowLongPress(el);
 }
 
@@ -782,7 +804,17 @@ function renderLineTable() {
   if (filter === 'bound') rows = rows.filter(r => !!r.line_user_id);
   else if (filter === 'unbound') rows = rows.filter(r => !r.line_user_id);
 
-  if (!rows.length) { el.innerHTML = `<div class="p-6 subtle text-center">無符合的使用者</div>`; return; }
+  if (!rows.length) {
+    el.innerHTML = `
+      <div class="empty-state">
+        ${ICO.users.replace('nk-ico', 'nk-empty-ico')}
+        <p>無符合的使用者</p>
+        <p class="subtle text-sm">調整搜尋或篩選條件後再試</p>
+      </div>`;
+    return;
+  }
+
+  const { visible, rest } = limitSlice('line', rows);
 
   el.innerHTML = `
     <table class="data-table">
@@ -795,7 +827,7 @@ function renderLineTable() {
         <th style="width:120px;"></th>
       </tr></thead>
       <tbody>
-        ${rows.map(r => {
+        ${visible.map(r => {
           const archived = !!r.archived_at;
           const archBadge = archived ? ' <span class="badge badge-cancelled" style="font-size:10px;">已封存</span>' : '';
           const bound = !!r.line_user_id;
@@ -815,8 +847,9 @@ function renderLineTable() {
           </tr>`;
         }).join('')}
       </tbody>
-    </table>`;
+    </table>` + moreButtonHtml('line', rest);
 
+  bindLoadMore(el, () => renderLineTable());
   el.querySelectorAll('[data-line-unbind]').forEach(btn => btn.addEventListener('click', () => doLineUnbind(Number(btn.dataset.lineUnbind))));
 }
 
