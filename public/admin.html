@@ -624,13 +624,14 @@ details.session-row summary .font-semibold{
 
   <!-- discount codes -->
   <section id="discount-codes" class="mb-10">
-    <div class="flex items-center justify-between mb-4">
+    <div class="a-sec-head">
       <h2 class="section-title">折扣碼管理</h2>
+      <span class="a-sec-line"></span>
     </div>
 
     <!-- 1對1 / 1對2 single-session price -->
     <div class="card mb-4">
-      <div class="font-semibold mb-3">1對1 / 1對2 單堂價</div>
+      <h3 class="card-title mb-3">1對1 / 1對2 單堂價</h3>
       <div class="flex items-center gap-3 flex-wrap mb-3">
         <label class="form-label mb-0" style="width:120px;">1對1（NT$）</label>
         <input id="one-on-one-price" type="number" min="1" step="1" class="form-input" style="width:140px;" placeholder="1500">
@@ -645,7 +646,7 @@ details.session-row summary .font-semibold{
 
     <!-- 收款帳號 + 官方 LINE 連結（顯示於報名成功頁）-->
     <div class="card mb-4">
-      <div class="font-semibold mb-3">收款與 LINE 設定</div>
+      <h3 class="card-title mb-3">收款與 LINE 設定</h3>
       <label class="form-label" for="bank-info">匯款帳號（報名成功頁顯示）</label>
       <input id="bank-info" type="text" class="form-input mb-3" style="width:100%;" placeholder="合作金庫 (006) 0640765-607824 戶名：許秉毅">
       <label class="form-label" for="line-official-url">官方 LINE 加入連結（成功頁「加入官方 LINE」按鈕；留空則不顯示按鈕）</label>
@@ -659,7 +660,7 @@ details.session-row summary .font-semibold{
 
     <!-- Google 日曆整合 + 時段容量 -->
     <div class="card mb-4">
-      <div class="font-semibold mb-3">Google 日曆與時段容量</div>
+      <h3 class="card-title mb-3">Google 日曆與時段容量</h3>
       <label class="form-label" for="gcal-calendar-id">Google 日曆 ID（留空 = 關閉日曆同步；日曆需先共用給 Service Account「進行變更」）</label>
       <input id="gcal-calendar-id" type="text" class="form-input mb-3" style="width:100%;" placeholder="xxx@group.calendar.google.com 或 Gmail 位址">
       <div class="flex items-center gap-3 flex-wrap mb-3">
@@ -675,7 +676,7 @@ details.session-row summary .font-semibold{
 
     <!-- create discount code form -->
     <div class="card mb-4">
-      <h3 class="font-semibold mb-3">建立折扣碼</h3>
+      <h3 class="card-title mb-3">建立折扣碼</h3>
       <form id="discount-code-form" class="space-y-3">
         <input type="hidden" id="discount-code-edit-id">
         <div class="grid grid-cols-2 gap-3">
@@ -734,7 +735,9 @@ details.session-row summary .font-semibold{
     </div>
 
     <!-- discount codes list -->
-    <div id="discount-codes-list" class="grid gap-3"></div>
+    <div class="card p-0 overflow-hidden">
+      <div id="discount-codes-list" class="a-rows"></div>
+    </div>
   </section>
   </div>
 
