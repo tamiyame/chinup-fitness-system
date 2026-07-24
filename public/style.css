@@ -1170,16 +1170,6 @@ details.session-row summary:hover { background: #f8faf9; }
 .reg-bk-colored .reg-sub{color:rgba(255,255,255,.85);}
 .reg-bk-colored:hover{filter:brightness(.92);}
 
-/* 後台教練色卡 */
-.coach-color-dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex:none;cursor:pointer;}
-.coach-color-dot.coach-color-none{background:#fff;position:relative;}
-.coach-color-dot.coach-color-none::after{content:"";position:absolute;inset:4px;border-radius:50%;border:2px solid #93c5fd;}
-.coach-color-panel{margin:-4px 0 10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;}
-.coach-color-grid{display:grid;grid-template-columns:repeat(13,26px);gap:8px;margin-bottom:10px;}
-.coach-color-opt{width:26px;height:26px;border-radius:50%;border:none;cursor:pointer;color:#fff;font-size:13px;font-weight:800;line-height:1;}
-.coach-color-opt:hover{transform:scale(1.15);}
-@media (max-width:640px){.coach-color-grid{grid-template-columns:repeat(8,26px);}}
-
 /* 拖拉改時段 */
 .reg-bk{touch-action:none;cursor:grab;}
 .reg-bk:active{cursor:grabbing;}
