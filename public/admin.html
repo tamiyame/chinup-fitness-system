@@ -786,18 +786,19 @@ details.session-row summary .font-semibold{
 
   <div id="apanel-line" class="tab-panel hidden">
   <section class="pb-16">
-    <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
-      <div class="flex items-center gap-3 flex-wrap">
-        <h2 class="section-title">LINE 綁定管理</h2>
-        <input id="line-search" type="search" class="form-input" placeholder="搜尋姓名或電話…" style="max-width:240px;margin-bottom:0;" autocomplete="off" />
-        <select id="line-filter" class="form-input" style="max-width:140px;margin-bottom:0;">
+    <div class="a-sec-head">
+      <h2 class="section-title">LINE 綁定管理</h2>
+      <span class="a-sec-line"></span>
+      <div class="a-sec-tools">
+        <input id="line-search" type="search" class="form-input a-search" placeholder="搜尋姓名或電話…" autocomplete="off" />
+        <select id="line-filter" class="form-input a-filter">
           <option value="all">全部</option>
           <option value="bound">已綁定</option>
           <option value="unbound">未綁定</option>
         </select>
       </div>
-      <span class="subtle" style="font-size:13px;">解除綁定後，請該使用者用正確號碼重新綁定</span>
     </div>
+    <p class="subtle text-sm mb-3">解除綁定後，請該使用者用正確號碼重新綁定</p>
     <div class="card p-0 overflow-hidden">
       <div id="line-table"></div>
     </div>

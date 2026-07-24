@@ -669,8 +669,8 @@ async function loadUsers() {
   if (!usersWired) {
     document.getElementById('user-search')?.addEventListener('input', () => { _shownMap.delete('members'); renderUsersTable(); });
     document.getElementById('show-archived')?.addEventListener('change', () => { _shownMap.delete('members'); renderUsersTable(); });
-    document.getElementById('line-search')?.addEventListener('input', renderLineTable);
-    document.getElementById('line-filter')?.addEventListener('change', renderLineTable);
+    document.getElementById('line-search')?.addEventListener('input', () => { _shownMap.delete('line'); renderLineTable(); });
+    document.getElementById('line-filter')?.addEventListener('change', () => { _shownMap.delete('line'); renderLineTable(); });
     usersWired = true;
   }
 
@@ -789,7 +789,17 @@ function renderLineTable() {
   if (filter === 'bound') rows = rows.filter(r => !!r.line_user_id);
   else if (filter === 'unbound') rows = rows.filter(r => !r.line_user_id);
 
-  if (!rows.length) { el.innerHTML = `<div class="p-6 subtle text-center">無符合的使用者</div>`; return; }
+  if (!rows.length) {
+    el.innerHTML = `
+      <div class="empty-state">
+        ${ICO.users.replace('nk-ico', 'nk-empty-ico')}
+        <p>無符合的使用者</p>
+        <p class="subtle text-sm">調整搜尋或篩選條件後再試</p>
+      </div>`;
+    return;
+  }
+
+  const { visible, rest } = limitSlice('line', rows);
 
   el.innerHTML = `
     <table class="data-table">
@@ -802,7 +812,7 @@ function renderLineTable() {
         <th style="width:120px;"></th>
       </tr></thead>
       <tbody>
-        ${rows.map(r => {
+        ${visible.map(r => {
           const archived = !!r.archived_at;
           const archBadge = archived ? ' <span class="badge badge-cancelled" style="font-size:10px;">已封存</span>' : '';
           const bound = !!r.line_user_id;
@@ -822,8 +832,9 @@ function renderLineTable() {
           </tr>`;
         }).join('')}
       </tbody>
-    </table>`;
+    </table>` + moreButtonHtml('line', rest);
 
+  bindLoadMore(el, () => renderLineTable());
   el.querySelectorAll('[data-line-unbind]').forEach(btn => btn.addEventListener('click', () => doLineUnbind(Number(btn.dataset.lineUnbind))));
 }
 
