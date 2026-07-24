@@ -121,23 +121,38 @@ function renderTemplates() {
   bindLoadMore(container, () => renderTemplates());
 }
 
+let notifsCache = [];
+
 async function loadNotifs() {
   try {
-    const rows = await api('/api/admin/notifications');
-    const el = document.getElementById('notifs');
-    if (!rows.length) { el.innerHTML = '<div class="p-6 subtle text-center">無紀錄</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>時間</th><th>收件者</th><th>類型</th><th>通道</th><th>主旨</th></tr></thead><tbody>' +
-      rows.map(r => `
+    notifsCache = await api('/api/admin/notifications');
+    renderNotifs();
+  } catch (e) {
+    document.getElementById('notifs').innerHTML = `<div class="p-6 text-red-500 text-center">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderNotifs() {
+  const el = document.getElementById('notifs');
+  if (!notifsCache.length) {
+    el.innerHTML = `
+      <div class="empty-state">
+        ${ICO.check.replace('nk-ico', 'nk-empty-ico')}
+        <p>無紀錄</p>
+      </div>`;
+    return;
+  }
+  const { visible, rest } = limitSlice('notifs', notifsCache);
+  el.innerHTML = '<table class="data-table"><thead><tr><th>時間</th><th>收件者</th><th>類型</th><th>通道</th><th>主旨</th></tr></thead><tbody>' +
+    visible.map(r => `
         <tr>
           <td data-label="時間" class="subtle">${fmtDate(r.sent_at)}</td>
           <td data-label="收件者">${escapeHtml(r.email)}</td>
           <td data-label="類型"><span class="badge badge-${typeBadge(r.type)}">${typeLabel(r.type)}</span></td>
           <td data-label="通道">${escapeHtml(r.channel)}</td>
           <td data-label="主旨" class="cell-span">${escapeHtml(r.subject)}</td>
-        </tr>`).join('') + '</tbody></table>';
-  } catch (e) {
-    document.getElementById('notifs').innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
-  }
+        </tr>`).join('') + '</tbody></table>' + moreButtonHtml('notifs', rest);
+  bindLoadMore(el, () => renderNotifs());
 }
 
 function fmtSize(bytes) {
