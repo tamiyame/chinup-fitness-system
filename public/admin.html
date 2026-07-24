@@ -829,12 +829,13 @@ details.session-row summary .font-semibold{
 
   <!-- 期別導覽 -->
   <section class="mb-6">
-    <div class="flex items-center justify-between flex-wrap gap-3">
+    <div class="a-sec-head">
       <div>
         <h2 class="section-title">薪資計算</h2>
         <div id="pr-period-label" class="subtle text-sm mt-1">—</div>
       </div>
-      <div class="flex items-center gap-2">
+      <span class="a-sec-line"></span>
+      <div class="a-sec-tools">
         <button id="pr-prev" class="btn btn-ghost btn-sm">◀ 上一期</button>
         <button id="pr-current" class="btn btn-ghost btn-sm">本期</button>
         <button id="pr-next" class="btn btn-ghost btn-sm">下一期 ▶</button>
@@ -846,7 +847,7 @@ details.session-row summary .font-semibold{
   <!-- 抽成設定 -->
   <section class="card mb-6">
     <div class="flex items-center justify-between">
-      <h3 class="font-bold">抽成設定</h3>
+      <h3 class="card-title">抽成設定</h3>
       <button id="pr-settings-toggle" class="btn btn-ghost btn-sm">編輯</button>
     </div>
     <div id="pr-settings-summary" class="subtle text-sm mt-1">載入中…</div>
@@ -875,7 +876,7 @@ details.session-row summary .font-semibold{
   <!-- 駐場出勤 -->
   <section class="card mb-6">
     <div class="flex items-center justify-between">
-      <h3 class="font-bold">駐場出勤</h3>
+      <h3 class="card-title">駐場出勤</h3>
       <button id="sh-toggle" class="btn btn-ghost btn-sm">展開</button>
     </div>
     <div class="subtle text-sm mt-1">教練掃館內 QR code（/checkin 頁）到場打卡；依固定班表計時數，乘各自時薪併入上方薪資表。</div>
@@ -950,9 +951,12 @@ details.session-row summary .font-semibold{
 
   <!-- 彙總表 -->
   <section class="mb-10">
-    <div class="flex items-center justify-between mb-4">
+    <div class="a-sec-head">
       <h2 class="section-title">教練薪資彙總</h2>
-      <button id="pr-export" class="btn btn-ghost btn-sm">匯出 CSV</button>
+      <span class="a-sec-line"></span>
+      <div class="a-sec-tools">
+        <button id="pr-export" class="btn btn-ghost btn-sm">匯出 CSV</button>
+      </div>
     </div>
     <div class="card p-0 overflow-hidden">
       <div id="pr-table"><div class="p-4 subtle">載入中…</div></div>
