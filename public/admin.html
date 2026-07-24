@@ -395,6 +395,32 @@ details.session-row summary .font-semibold{
 .bf-result { display: block; width: 100%; text-align: left; padding: 6px 8px; border: 0; background: transparent; cursor: pointer; font-size: 14px; }
 .bf-result:hover { background: #eff6ff; }
 .bf-paid-row { display: flex; align-items: center; gap: 6px; font-size: 14px; margin: 4px 0; }
+
+/* ---------- 一致性骨架：區塊標題列 + 單卡包列 + 載入更多 ---------- */
+.a-sec-head{ display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+.a-sec-head .section-title{ white-space:nowrap; }
+.a-sec-line{ flex:1; height:1px; background:var(--line); min-width:24px; }
+.a-sec-tools{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.a-sec-tools .form-input{ margin-bottom:0; }
+.a-search{ max-width:240px; }
+.a-filter{ max-width:140px; }
+
+/* .a-rows 為語意標記 class（清單容器），無 CSS 規則 */
+.a-row{ padding:14px 16px; border-bottom:1px solid var(--line); display:grid; grid-template-columns:1fr auto; gap:6px 16px; align-items:center; }
+.a-row:last-child{ border-bottom:none; }
+.a-row:hover{ background:var(--brand-50); }
+.a-row-main{ min-width:0; }
+.a-row-title{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.a-row-sub{ margin-top:4px; }
+.a-row-actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+@media (max-width:767px){
+  .a-row{ grid-template-columns:1fr; }
+  .a-row-actions{ justify-content:flex-start; }
+}
+
+.a-more{ display:block; width:100%; border-top:1px solid var(--line); text-align:center; }
+
+/* ---------- 空狀態：移除大 emoji 圖示位置，改細描邊 + 小標 ---------- */
 </style>
 </head>
 <body>

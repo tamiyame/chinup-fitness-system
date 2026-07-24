@@ -4,6 +4,27 @@ const user = await bootAuth({ requireAdmin: true });
 // If bootAuth redirected, halt module execution so no admin content renders.
 if (!user) throw new Error('__redirected_by_auth__');
 
+// 通用「前 N 筆＋載入更多」：純前端 slice。key 區分各清單的 shown 狀態；
+// 搜尋/篩選 handler 先 _shownMap.delete(key) 再呼叫 render 即重設回 PAGE。
+const PAGE = 20;
+const _shownMap = new Map();
+function limitSlice(key, items) {
+  if (!_shownMap.has(key)) _shownMap.set(key, PAGE);
+  const shown = _shownMap.get(key);
+  return { visible: items.slice(0, shown), rest: Math.max(0, items.length - shown) };
+}
+function moreButtonHtml(key, rest) {
+  if (rest <= 0) return '';
+  return `<button type="button" class="btn btn-ghost a-more" data-more-key="${key}">載入更多（還有 ${rest} 筆）</button>`;
+}
+function bindLoadMore(container, rerender) {
+  const btn = container.querySelector('[data-more-key]');
+  if (btn) btn.addEventListener('click', () => {
+    _shownMap.set(btn.dataset.moreKey, (_shownMap.get(btn.dataset.moreKey) || PAGE) + PAGE);
+    rerender();
+  });
+}
+
 const ROLE_LABEL = { owner: '擁有者', admin: '管理者', coach: '教練', user: '會員' };
 const ROLE_BADGE = { owner: 'waitlisted', admin: 'confirmed', coach: 'coach', user: 'open' };
 
