@@ -4,6 +4,27 @@ const user = await bootAuth({ requireAdmin: true });
 // If bootAuth redirected, halt module execution so no admin content renders.
 if (!user) throw new Error('__redirected_by_auth__');
 
+// 通用「前 N 筆＋載入更多」：純前端 slice。key 區分各清單的 shown 狀態；
+// 搜尋/篩選 handler 先 _shownMap.delete(key) 再呼叫 render 即重設回 PAGE。
+const PAGE = 20;
+const _shownMap = new Map();
+function limitSlice(key, items) {
+  if (!_shownMap.has(key)) _shownMap.set(key, PAGE);
+  const shown = _shownMap.get(key);
+  return { visible: items.slice(0, shown), rest: Math.max(0, items.length - shown) };
+}
+function moreButtonHtml(key, rest) {
+  if (rest <= 0) return '';
+  return `<button type="button" class="btn btn-ghost a-more" data-more-key="${key}">載入更多（還有 ${rest} 筆）</button>`;
+}
+function bindLoadMore(container, rerender) {
+  const btn = container.querySelector('[data-more-key]');
+  if (btn) btn.addEventListener('click', () => {
+    _shownMap.set(btn.dataset.moreKey, (_shownMap.get(btn.dataset.moreKey) || PAGE) + PAGE);
+    rerender();
+  });
+}
+
 const ROLE_LABEL = { owner: '擁有者', admin: '管理者', coach: '教練', user: '會員' };
 const ROLE_BADGE = { owner: 'waitlisted', admin: 'confirmed', coach: 'coach', user: 'open' };
 
@@ -28,8 +49,9 @@ const ICO = {
   book: _svg('<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M18 19.5H7a2 2 0 0 0-2 2"/>'),
 };
 
+let templatesCache = [];
+
 async function loadTemplates() {
-  const container = document.getElementById('templates');
   try {
     const tpls = await api('/api/admin/templates');
 
@@ -47,47 +69,56 @@ async function loadTemplates() {
     document.getElementById('stat-regs').textContent = totalRegs;
     document.getElementById('stat-waitlist').textContent = totalWaitlist;
 
-    if (!tpls.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          ${ICO.book.replace('nk-ico', 'nk-empty-ico')}
-          <p>尚無課程範本</p>
-          <p class="subtle mt-1">點「＋ 新增範本」建立第一個循環課程</p>
-        </div>`;
-      return;
-    }
-    container.innerHTML = tpls.map(t => `
-      <article class="card">
-        <div class="flex items-start justify-between gap-4 flex-wrap">
-          <div class="flex-1 min-w-[260px]">
-            <div class="flex items-center gap-2 mb-1">
-              <h3 class="card-title">${escapeHtml(t.name)}</h3>
-              <span class="badge badge-${t.status === 'published' ? 'confirmed' : 'completed'}">${t.status === 'published' ? '已發布' : escapeHtml(t.status)}</span>
-            </div>
-            <p class="card-desc">${escapeHtml(t.description || '')}</p>
-            <div class="meta">
-              <span class="meta-item">${ICO.calendar} ${dow(t.day_of_week)} ${t.start_time}</span>
-              <span class="meta-item">${ICO.clock} ${t.duration_minutes} 分</span>
-              <span class="meta-item">${ICO.users} ${t.min_capacity}–${t.max_capacity} 人</span>
-              <span class="meta-item">${ICO.coach} ${escapeHtml(t.coach_name || '未指定')}</span>
-              <span class="meta-item">${ICO.repeat} ${RECURRENCE_LABEL[t.recurrence]}</span>
-              <span class="meta-item">${ICO.range} ${t.cycle_start_date} ~ ${t.cycle_end_date}</span>
-            </div>
-          </div>
-          <div class="flex gap-2">
-            <button data-id="${t.id}" class="edit-btn btn btn-ghost btn-sm">編輯</button>
-            <button data-id="${t.id}" class="view-btn btn btn-dark btn-sm">查看場次</button>
-            <button data-id="${t.id}" class="del-btn btn btn-danger btn-sm">刪除</button>
-          </div>
-        </div>
-      </article>
-    `).join('');
-    container.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => openEdit(Number(b.dataset.id))));
-    container.querySelectorAll('.view-btn').forEach(b => b.addEventListener('click', () => openDrawer(Number(b.dataset.id))));
-    container.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => deleteTemplate(Number(b.dataset.id))));
+    templatesCache = tpls;
+    renderTemplates();
   } catch (e) {
     toast(`載入範本失敗：${e.message}`, 'error');
   }
+}
+
+function renderTemplates() {
+  const container = document.getElementById('templates');
+  const tpls = templatesCache;
+  if (!tpls.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        ${ICO.book.replace('nk-ico', 'nk-empty-ico')}
+        <p>尚無課程範本</p>
+        <p class="subtle text-sm">點「＋ 新增範本」建立第一個循環課程</p>
+      </div>`;
+    return;
+  }
+  const { visible, rest } = limitSlice('templates', tpls);
+  container.innerHTML = visible.map(t => `
+    <article class="a-row">
+      <div class="a-row-main">
+        <div class="a-row-title">
+          <h3 class="card-title">${escapeHtml(t.name)}</h3>
+          <span class="badge badge-${t.status === 'published' ? 'confirmed' : 'completed'}">${t.status === 'published' ? '已發布' : escapeHtml(t.status)}</span>
+        </div>
+        <div class="a-row-sub">
+          <p class="card-desc">${escapeHtml(t.description || '')}</p>
+          <div class="meta">
+            <span class="meta-item">${ICO.calendar} ${dow(t.day_of_week)} ${t.start_time}</span>
+            <span class="meta-item">${ICO.clock} ${t.duration_minutes} 分</span>
+            <span class="meta-item">${ICO.users} ${t.min_capacity}–${t.max_capacity} 人</span>
+            <span class="meta-item">${ICO.coach} ${escapeHtml(t.coach_name || '未指定')}</span>
+            <span class="meta-item">${ICO.repeat} ${RECURRENCE_LABEL[t.recurrence]}</span>
+            <span class="meta-item">${ICO.range} ${t.cycle_start_date} ~ ${t.cycle_end_date}</span>
+          </div>
+        </div>
+      </div>
+      <div class="a-row-actions">
+        <button data-id="${t.id}" class="edit-btn btn btn-ghost btn-sm">編輯</button>
+        <button data-id="${t.id}" class="view-btn btn btn-dark btn-sm">查看場次</button>
+        <button data-id="${t.id}" class="del-btn btn btn-danger btn-sm">刪除</button>
+      </div>
+    </article>
+  `).join('') + moreButtonHtml('templates', rest);
+  container.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => openEdit(Number(b.dataset.id))));
+  container.querySelectorAll('.view-btn').forEach(b => b.addEventListener('click', () => openDrawer(Number(b.dataset.id))));
+  container.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => deleteTemplate(Number(b.dataset.id))));
+  bindLoadMore(container, () => renderTemplates());
 }
 
 async function loadNotifs() {
@@ -1292,35 +1323,44 @@ document.getElementById('create-coach-account-form')?.addEventListener('submit',
 });
 
 // --- Pending bank-transfer orders（團課訂單 + 教練課預約 合併清單） ---
+let pendingCache = [];
 async function loadPendingOrders() {
   const container = document.getElementById('pending-orders-list');
   if (!container) return;
-  container.innerHTML = '<div class="subtle p-4">載入中…</div>';
+  container.innerHTML = '<div class="p-6 subtle text-center">載入中…</div>';
   try {
     const [orders, bookings] = await Promise.all([
       api('/api/admin/group-orders'),
       api('/api/admin/bookings/pending'),
     ]);
-    const items = [
+    pendingCache = [
       ...orders.map(o => ({ kind: 'order', created_at: o.created_at, o })),
       ...bookings.map(b => ({ kind: b.group ? 'booking_group' : 'booking', created_at: b.created_at, b })),
     ].sort((a, c) => (a.created_at < c.created_at ? 1 : -1)); // 新→舊
-    if (!items.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          ${ICO.check.replace('nk-ico', 'nk-empty-ico')}
-          <p>目前沒有待核對的匯款</p>
-        </div>`;
-      return;
-    }
-    container.innerHTML = items.map(it =>
-      it.kind === 'order' ? orderCardHtml(it.o)
-      : it.kind === 'booking_group' ? pendingBookingGroupCardHtml(it.b)
-      : pendingBookingCardHtml(it.b)).join('');
-    bindPendingHandlers(container);
+    renderPendingOrders();
   } catch (e) {
-    container.innerHTML = `<div class="p-4 text-red-500">${escapeHtml(e.message)}</div>`;
+    container.innerHTML = `<div class="p-6 text-red-500 text-center">${escapeHtml(e.message)}</div>`;
   }
+}
+
+function renderPendingOrders() {
+  const container = document.getElementById('pending-orders-list');
+  if (!container) return;
+  if (!pendingCache.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        ${ICO.check.replace('nk-ico', 'nk-empty-ico')}
+        <p>目前沒有待核對的匯款</p>
+      </div>`;
+    return;
+  }
+  const { visible, rest } = limitSlice('pending', pendingCache);
+  container.innerHTML = visible.map(it =>
+    it.kind === 'order' ? orderCardHtml(it.o)
+    : it.kind === 'booking_group' ? pendingBookingGroupCardHtml(it.b)
+    : pendingBookingCardHtml(it.b)).join('') + moreButtonHtml('pending', rest);
+  bindPendingHandlers(container);
+  bindLoadMore(container, () => renderPendingOrders());
 }
 
 function orderCardHtml(o) {
@@ -1341,14 +1381,14 @@ function orderCardHtml(o) {
         </li>`).join('')
     : '<li class="subtle text-xs">（無場次）</li>';
   return `
-    <article class="card">
-      <div class="flex items-start justify-between gap-4 flex-wrap">
-        <div class="flex-1 min-w-[220px]">
-          <div class="flex items-center gap-2 mb-1">
-            <h3 class="card-title">${escapeHtml(o.customer_name)}</h3>
-            <span class="badge badge-confirmed">團課</span>
-            <span class="badge badge-waitlisted">待核對</span>
-          </div>
+    <article class="a-row">
+      <div class="a-row-main">
+        <div class="a-row-title">
+          <h3 class="card-title">${escapeHtml(o.customer_name)}</h3>
+          <span class="badge badge-confirmed">團課</span>
+          <span class="badge badge-waitlisted">待核對</span>
+        </div>
+        <div class="a-row-sub">
           <div class="meta mb-2">
             <span class="meta-item">${ICO.phone} ${escapeHtml(o.customer_phone)}</span>
             <span class="meta-item">${ICO.cash} NT$${Number(o.total_amount).toLocaleString()}</span>
@@ -1356,10 +1396,10 @@ function orderCardHtml(o) {
           </div>
           <ul class="list-disc list-inside space-y-0.5">${sessionRows}</ul>
         </div>
-        <div class="flex flex-col gap-2 min-w-[110px]">
-          <button data-id="${o.id}" class="confirm-order-btn btn btn-primary btn-sm">已收款</button>
-          <button data-id="${o.id}" class="cancel-order-btn btn btn-danger btn-sm">取消訂單</button>
-        </div>
+      </div>
+      <div class="a-row-actions">
+        <button data-id="${o.id}" class="confirm-order-btn btn btn-primary btn-sm">已收款</button>
+        <button data-id="${o.id}" class="cancel-order-btn btn btn-danger btn-sm">取消訂單</button>
       </div>
     </article>`;
 }
@@ -1370,14 +1410,14 @@ function pendingBookingGroupCardHtml(g) {
   const rows = g.sessions.map(s =>
     `<li class="subtle text-xs">${escapeHtml(fmtDate(s.start_at))}${s.final_amount != null ? `　$${Number(s.final_amount).toLocaleString()}` : ''}</li>`).join('');
   return `
-    <article class="card">
-      <div class="flex items-start justify-between gap-4 flex-wrap">
-        <div class="flex-1 min-w-[220px]">
-          <div class="flex items-center gap-2 mb-1">
-            <h3 class="card-title">${escapeHtml(g.member_name)}</h3>
-            <span class="badge badge-completed">教練課 ×${g.sessions.length} 堂</span>
-            <span class="badge badge-waitlisted">待核對</span>
-          </div>
+    <article class="a-row">
+      <div class="a-row-main">
+        <div class="a-row-title">
+          <h3 class="card-title">${escapeHtml(g.member_name)}</h3>
+          <span class="badge badge-completed">教練課 ×${g.sessions.length} 堂</span>
+          <span class="badge badge-waitlisted">待核對</span>
+        </div>
+        <div class="a-row-sub">
           <div class="meta mb-2">
             <span class="meta-item">${ICO.phone} ${escapeHtml(g.member_phone || '')}</span>
             <span class="meta-item">${ICO.cash} 合計 NT$${Number(g.total_amount).toLocaleString()}${g.discount_code ? `（折扣碼 ${escapeHtml(g.discount_code)}）` : ''}</span>
@@ -1385,10 +1425,10 @@ function pendingBookingGroupCardHtml(g) {
           </div>
           <ul class="list-disc list-inside space-y-0.5">${rows}</ul>
         </div>
-        <div class="flex flex-col gap-2 min-w-[110px]">
-          <button data-group="${g.group_id}" class="confirm-booking-group-btn btn btn-primary btn-sm">已收款</button>
-          <button data-group="${g.group_id}" class="cancel-booking-group-btn btn btn-danger btn-sm">取消預約</button>
-        </div>
+      </div>
+      <div class="a-row-actions">
+        <button data-group="${g.group_id}" class="confirm-booking-group-btn btn btn-primary btn-sm">已收款</button>
+        <button data-group="${g.group_id}" class="cancel-booking-group-btn btn btn-danger btn-sm">取消預約</button>
       </div>
     </article>`;
 }
@@ -1399,25 +1439,25 @@ function pendingBookingCardHtml(b) {
     ? `NT$${Number(b.final_amount).toLocaleString()}${b.discount_code ? `（折扣碼 ${escapeHtml(b.discount_code)}）` : ''}`
     : '—';
   return `
-    <article class="card">
-      <div class="flex items-start justify-between gap-4 flex-wrap">
-        <div class="flex-1 min-w-[220px]">
-          <div class="flex items-center gap-2 mb-1">
-            <h3 class="card-title">${escapeHtml(b.member_name)}</h3>
-            <span class="badge badge-completed">教練課</span>
-            <span class="badge badge-waitlisted">待核對</span>
-          </div>
-          <div class="meta mb-2">
+    <article class="a-row">
+      <div class="a-row-main">
+        <div class="a-row-title">
+          <h3 class="card-title">${escapeHtml(b.member_name)}</h3>
+          <span class="badge badge-completed">教練課</span>
+          <span class="badge badge-waitlisted">待核對</span>
+        </div>
+        <div class="a-row-sub">
+          <div class="meta">
             <span class="meta-item">${ICO.phone} ${escapeHtml(b.member_phone || '')}</span>
             <span class="meta-item">${ICO.cash} ${amount}</span>
             <span class="meta-item">${ICO.dumbbell} ${escapeHtml(b.coach_display_name)}（${label}）</span>
             <span class="meta-item">${ICO.clock} ${escapeHtml(fmtDate(b.start_at))}</span>
           </div>
         </div>
-        <div class="flex flex-col gap-2 min-w-[110px]">
-          <button data-id="${b.id}" class="confirm-booking-btn btn btn-primary btn-sm">已收款</button>
-          <button data-id="${b.id}" class="cancel-booking-btn btn btn-danger btn-sm">取消預約</button>
-        </div>
+      </div>
+      <div class="a-row-actions">
+        <button data-id="${b.id}" class="confirm-booking-btn btn btn-primary btn-sm">已收款</button>
+        <button data-id="${b.id}" class="cancel-booking-btn btn btn-danger btn-sm">取消預約</button>
       </div>
     </article>`;
 }
@@ -1522,47 +1562,62 @@ function bindPendingHandlers(container) {
 }
 
 // --- 已核對匯款（唯讀）---
+let confirmedCache = [];
 async function loadConfirmedPayments() {
   const container = document.getElementById('confirmed-payments-list');
   if (!container) return;
-  container.innerHTML = '<div class="subtle p-4">載入中…</div>';
+  container.innerHTML = '<div class="p-6 subtle text-center">載入中…</div>';
   try {
-    const list = await api('/api/admin/payments/confirmed');
-    if (!list.length) {
-      container.innerHTML = '<div class="subtle p-4">尚無已核對的款項</div>';
-      return;
-    }
-    container.innerHTML = list.map(x => {
-      const isBooking = x.type === 'booking';
-      const isBookingGroup = x.type === 'booking_group';
-      const typeBadge = isBookingGroup
-        ? `<span class="badge badge-completed">教練課 ×${x.count} 堂${x.session_type === '1on2' ? '（1對2）' : ''}</span>`
-        : isBooking
-          ? `<span class="badge badge-completed">教練課${x.session_type === '1on2' ? '（1對2）' : ''}</span>`
-          : '<span class="badge badge-confirmed">團課</span>';
-      const refundBadge = x.refunded_at
-        ? '<span class="badge badge-cancelled">已退款</span>'
-        : (x.partial_refund ? '<span class="badge badge-cancelled">部分退款</span>' : '');
-      const detail = isBooking ? fmtDate(x.detail) : x.detail;
-      return `
-        <article class="card confirmed-payment-row" data-type="${x.type}" data-id="${x.id}"
-                 data-name="${escapeHtml(x.customer_name)}" data-amount="${x.amount ?? ''}"
-                 data-refunded="${x.refunded_at ? '1' : '0'}">
-          <div class="flex items-center justify-between gap-3 flex-wrap">
-            <div class="flex items-center gap-2 flex-wrap"${x.refunded_at ? ' style="opacity:.55"' : ''}>
-              <strong>${escapeHtml(x.customer_name)}</strong>
-              ${typeBadge}${refundBadge}
-              <span class="subtle text-sm">${escapeHtml(detail || '')}</span>
-              <span class="subtle text-sm" style="display:inline-flex;align-items:center;gap:5px;">${ICO.cash.replace('class="nk-ico"', 'style="width:14px;height:14px;flex:none;"')} ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}${x.refund_sum > 0 && !x.refunded_at ? ' · 已退 NT$' + Number(x.refund_sum).toLocaleString() : ''}</span>
-            </div>
-            <div class="subtle text-xs">核對 ${escapeHtml(fmtDate(x.paid_at))} · 經手 ${escapeHtml(x.paid_by_name || '—')}</div>
-          </div>
-        </article>`;
-    }).join('');
-    bindConfirmedPaymentLongPress(container);
+    confirmedCache = await api('/api/admin/payments/confirmed');
+    renderConfirmedPayments();
   } catch (e) {
-    container.innerHTML = `<div class="p-4 text-red-500">${escapeHtml(e.message)}</div>`;
+    container.innerHTML = `<div class="p-6 text-red-500 text-center">${escapeHtml(e.message)}</div>`;
   }
+}
+
+function renderConfirmedPayments() {
+  const container = document.getElementById('confirmed-payments-list');
+  if (!container) return;
+  if (!confirmedCache.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        ${ICO.check.replace('nk-ico', 'nk-empty-ico')}
+        <p>尚無已核對的款項</p>
+      </div>`;
+    return;
+  }
+  const { visible, rest } = limitSlice('confirmed', confirmedCache);
+  container.innerHTML = visible.map(x => {
+    const isBooking = x.type === 'booking';
+    const isBookingGroup = x.type === 'booking_group';
+    const typeBadge = isBookingGroup
+      ? `<span class="badge badge-completed">教練課 ×${x.count} 堂${x.session_type === '1on2' ? '（1對2）' : ''}</span>`
+      : isBooking
+        ? `<span class="badge badge-completed">教練課${x.session_type === '1on2' ? '（1對2）' : ''}</span>`
+        : '<span class="badge badge-confirmed">團課</span>';
+    const refundBadge = x.refunded_at
+      ? '<span class="badge badge-cancelled">已退款</span>'
+      : (x.partial_refund ? '<span class="badge badge-cancelled">部分退款</span>' : '');
+    const detail = isBooking ? fmtDate(x.detail) : x.detail;
+    return `
+      <article class="a-row confirmed-payment-row" data-type="${x.type}" data-id="${x.id}"
+               data-name="${escapeHtml(x.customer_name)}" data-amount="${x.amount ?? ''}"
+               data-refunded="${x.refunded_at ? '1' : '0'}">
+        <div class="a-row-main">
+          <div class="a-row-title"${x.refunded_at ? ' style="opacity:.55"' : ''}>
+            <strong>${escapeHtml(x.customer_name)}</strong>
+            ${typeBadge}${refundBadge}
+            <span class="subtle text-sm">${escapeHtml(detail || '')}</span>
+            <span class="subtle text-sm" style="display:inline-flex;align-items:center;gap:5px;">${ICO.cash.replace('class="nk-ico"', 'style="width:14px;height:14px;flex:none;"')} ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}${x.refund_sum > 0 && !x.refunded_at ? ' · 已退 NT$' + Number(x.refund_sum).toLocaleString() : ''}</span>
+          </div>
+        </div>
+        <div class="a-row-actions">
+          <span class="subtle text-xs">核對 ${escapeHtml(fmtDate(x.paid_at))} · 經手 ${escapeHtml(x.paid_by_name || '—')}</span>
+        </div>
+      </article>`;
+  }).join('') + moreButtonHtml('confirmed', rest);
+  bindConfirmedPaymentLongPress(container);
+  bindLoadMore(container, () => renderConfirmedPayments());
 }
 
 // 長按已核對款項卡片（手機 touch / 桌機滑鼠按住 0.5 秒）→ 取消預約並退款。
