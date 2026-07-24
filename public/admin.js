@@ -49,8 +49,9 @@ const ICO = {
   book: _svg('<path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z"/><path d="M18 19.5H7a2 2 0 0 0-2 2"/>'),
 };
 
+let templatesCache = [];
+
 async function loadTemplates() {
-  const container = document.getElementById('templates');
   try {
     const tpls = await api('/api/admin/templates');
 
@@ -68,47 +69,56 @@ async function loadTemplates() {
     document.getElementById('stat-regs').textContent = totalRegs;
     document.getElementById('stat-waitlist').textContent = totalWaitlist;
 
-    if (!tpls.length) {
-      container.innerHTML = `
-        <div class="empty-state">
-          ${ICO.book.replace('nk-ico', 'nk-empty-ico')}
-          <p>尚無課程範本</p>
-          <p class="subtle mt-1">點「＋ 新增範本」建立第一個循環課程</p>
-        </div>`;
-      return;
-    }
-    container.innerHTML = tpls.map(t => `
-      <article class="card">
-        <div class="flex items-start justify-between gap-4 flex-wrap">
-          <div class="flex-1 min-w-[260px]">
-            <div class="flex items-center gap-2 mb-1">
-              <h3 class="card-title">${escapeHtml(t.name)}</h3>
-              <span class="badge badge-${t.status === 'published' ? 'confirmed' : 'completed'}">${t.status === 'published' ? '已發布' : escapeHtml(t.status)}</span>
-            </div>
-            <p class="card-desc">${escapeHtml(t.description || '')}</p>
-            <div class="meta">
-              <span class="meta-item">${ICO.calendar} ${dow(t.day_of_week)} ${t.start_time}</span>
-              <span class="meta-item">${ICO.clock} ${t.duration_minutes} 分</span>
-              <span class="meta-item">${ICO.users} ${t.min_capacity}–${t.max_capacity} 人</span>
-              <span class="meta-item">${ICO.coach} ${escapeHtml(t.coach_name || '未指定')}</span>
-              <span class="meta-item">${ICO.repeat} ${RECURRENCE_LABEL[t.recurrence]}</span>
-              <span class="meta-item">${ICO.range} ${t.cycle_start_date} ~ ${t.cycle_end_date}</span>
-            </div>
-          </div>
-          <div class="flex gap-2">
-            <button data-id="${t.id}" class="edit-btn btn btn-ghost btn-sm">編輯</button>
-            <button data-id="${t.id}" class="view-btn btn btn-dark btn-sm">查看場次</button>
-            <button data-id="${t.id}" class="del-btn btn btn-danger btn-sm">刪除</button>
-          </div>
-        </div>
-      </article>
-    `).join('');
-    container.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => openEdit(Number(b.dataset.id))));
-    container.querySelectorAll('.view-btn').forEach(b => b.addEventListener('click', () => openDrawer(Number(b.dataset.id))));
-    container.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => deleteTemplate(Number(b.dataset.id))));
+    templatesCache = tpls;
+    renderTemplates();
   } catch (e) {
     toast(`載入範本失敗：${e.message}`, 'error');
   }
+}
+
+function renderTemplates() {
+  const container = document.getElementById('templates');
+  const tpls = templatesCache;
+  if (!tpls.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        ${ICO.book.replace('nk-ico', 'nk-empty-ico')}
+        <p>尚無課程範本</p>
+        <p class="subtle text-sm">點「＋ 新增範本」建立第一個循環課程</p>
+      </div>`;
+    return;
+  }
+  const { visible, rest } = limitSlice('templates', tpls);
+  container.innerHTML = visible.map(t => `
+    <article class="a-row">
+      <div class="a-row-main">
+        <div class="a-row-title">
+          <h3 class="card-title">${escapeHtml(t.name)}</h3>
+          <span class="badge badge-${t.status === 'published' ? 'confirmed' : 'completed'}">${t.status === 'published' ? '已發布' : escapeHtml(t.status)}</span>
+        </div>
+        <div class="a-row-sub">
+          <p class="card-desc">${escapeHtml(t.description || '')}</p>
+          <div class="meta">
+            <span class="meta-item">${ICO.calendar} ${dow(t.day_of_week)} ${t.start_time}</span>
+            <span class="meta-item">${ICO.clock} ${t.duration_minutes} 分</span>
+            <span class="meta-item">${ICO.users} ${t.min_capacity}–${t.max_capacity} 人</span>
+            <span class="meta-item">${ICO.coach} ${escapeHtml(t.coach_name || '未指定')}</span>
+            <span class="meta-item">${ICO.repeat} ${RECURRENCE_LABEL[t.recurrence]}</span>
+            <span class="meta-item">${ICO.range} ${t.cycle_start_date} ~ ${t.cycle_end_date}</span>
+          </div>
+        </div>
+      </div>
+      <div class="a-row-actions">
+        <button data-id="${t.id}" class="edit-btn btn btn-ghost btn-sm">編輯</button>
+        <button data-id="${t.id}" class="view-btn btn btn-dark btn-sm">查看場次</button>
+        <button data-id="${t.id}" class="del-btn btn btn-danger btn-sm">刪除</button>
+      </div>
+    </article>
+  `).join('') + moreButtonHtml('templates', rest);
+  container.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => openEdit(Number(b.dataset.id))));
+  container.querySelectorAll('.view-btn').forEach(b => b.addEventListener('click', () => openDrawer(Number(b.dataset.id))));
+  container.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', () => deleteTemplate(Number(b.dataset.id))));
+  bindLoadMore(container, () => renderTemplates());
 }
 
 async function loadNotifs() {

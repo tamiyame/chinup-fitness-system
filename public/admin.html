@@ -474,9 +474,12 @@ details.session-row summary .font-semibold{
 
   <!-- categories -->
   <section class="mb-10">
-    <div class="flex items-center justify-between mb-4">
+    <div class="a-sec-head">
       <h2 class="section-title">課程分類</h2>
-      <button id="new-cat-btn" class="btn btn-ghost btn-sm">＋ 新增分類</button>
+      <span class="a-sec-line"></span>
+      <div class="a-sec-tools">
+        <button id="new-cat-btn" class="btn btn-ghost btn-sm">＋ 新增分類</button>
+      </div>
     </div>
     <div class="card p-0 overflow-hidden">
       <div id="categories-table"></div>
@@ -485,11 +488,16 @@ details.session-row summary .font-semibold{
 
   <!-- templates -->
   <section class="mb-10">
-    <div class="flex items-center justify-between mb-4">
+    <div class="a-sec-head">
       <h2 class="section-title">課程範本</h2>
-      <button id="new-btn" class="btn btn-primary">＋ 新增範本</button>
+      <span class="a-sec-line"></span>
+      <div class="a-sec-tools">
+        <button id="new-btn" class="btn btn-primary">＋ 新增範本</button>
+      </div>
     </div>
-    <div id="templates" class="grid gap-3"></div>
+    <div class="card p-0 overflow-hidden">
+      <div id="templates" class="a-rows"></div>
+    </div>
   </section>
 
   <!-- stats -->
