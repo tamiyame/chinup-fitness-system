@@ -419,6 +419,16 @@ details.session-row summary .font-semibold{
 .bf-result { display: block; width: 100%; text-align: left; padding: 6px 8px; border: 0; background: transparent; cursor: pointer; font-size: 14px; }
 .bf-result:hover { background: #eff6ff; }
 .bf-paid-row { display: flex; align-items: center; gap: 6px; font-size: 14px; margin: 4px 0; }
+
+/* 後台教練色卡 */
+.coach-color-dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex:none;cursor:pointer;}
+.coach-color-dot.coach-color-none{background:#fff;position:relative;}
+.coach-color-dot.coach-color-none::after{content:"";position:absolute;inset:4px;border-radius:50%;border:2px solid #93c5fd;}
+.coach-color-panel{margin:-4px 0 10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;}
+.coach-color-grid{display:grid;grid-template-columns:repeat(13,26px);gap:8px;margin-bottom:10px;}
+.coach-color-opt{width:26px;height:26px;border-radius:50%;border:none;cursor:pointer;color:#fff;font-size:13px;font-weight:800;line-height:1;}
+.coach-color-opt:hover{transform:scale(1.15);}
+@media (max-width:640px){.coach-color-grid{grid-template-columns:repeat(8,26px);}}
 </style>
 </head>
 <body>
@@ -745,14 +755,17 @@ details.session-row summary .font-semibold{
 
   <!-- coach management -->
   <section id="coach-mgmt" class="mb-10">
-    <div class="flex items-center justify-between mb-4">
+    <div class="a-sec-head">
       <h2 class="section-title">教練管理</h2>
+      <span class="a-sec-line"></span>
     </div>
-    <div id="coach-mgmt-list"></div>
+    <div class="card p-0 overflow-hidden">
+      <div id="coach-mgmt-list" class="a-rows"></div>
+    </div>
 
     <!-- Create coach account form -->
     <div class="card mt-4">
-      <h3 class="font-semibold mb-1">建立教練帳號</h3>
+      <h3 class="card-title mb-1">建立教練帳號</h3>
       <p class="subtle text-xs mb-3">建立後帳號狀態為「待啟用」，請於上方教練列表中點「啟用」才能讓教練登入使用。</p>
       <form id="create-coach-account-form" class="space-y-3">
         <div>

@@ -1262,20 +1262,29 @@ async function loadCoachMgmt() {
   const coaches = await api('/api/admin/coaches');
   const wrap = document.getElementById('coach-mgmt-list');
   wrap.innerHTML = '';
-  if (coaches.length === 0) wrap.innerHTML = '<p class="text-slate-500 text-sm">尚無教練</p>';
-  for (const c of coaches) {
+  if (coaches.length === 0) {
+    wrap.innerHTML = `
+      <div class="empty-state">
+        ${ICO.dumbbell.replace('nk-ico', 'nk-empty-ico')}
+        <p>尚無教練</p>
+        <p class="subtle text-sm">請於下方建立教練帳號</p>
+      </div>`;
+  }
+  const { visible, rest } = limitSlice('coaches', coaches);
+  for (const c of visible) {
     const row = document.createElement('div');
-    row.className = 'card flex items-center justify-between gap-3 mb-2';
+    row.className = 'a-row';
     row.innerHTML = `
-      <div class="flex items-center gap-3">
-        <button data-id="${c.id}" class="coach-color-dot${c.color ? '' : ' coach-color-none'}" title="行事曆顏色"
-                style="${c.color ? `background:${escapeHtml(c.color)};` : ''}"></button>
-        <div>
-          <div class="font-semibold">${escapeHtml(c.display_name)} <span class="text-xs ${c.is_active ? 'text-green-600' : 'text-amber-600'}">${c.is_active ? '啟用中' : '待啟用'}</span></div>
-          <div class="text-xs text-slate-500">${escapeHtml(c.user_email)} · ${escapeHtml(c.specialty || '')}</div>
+      <div class="a-row-main">
+        <div class="a-row-title">
+          <button data-id="${c.id}" class="coach-color-dot${c.color ? '' : ' coach-color-none'}" title="行事曆顏色"
+                  style="${c.color ? `background:${escapeHtml(c.color)};` : ''}"></button>
+          <span class="font-semibold">${escapeHtml(c.display_name)}</span>
+          ${c.is_active ? '<span class="badge badge-open">啟用中</span>' : '<span class="badge badge-waitlisted">待啟用</span>'}
         </div>
+        <div class="a-row-sub text-xs text-slate-500">${escapeHtml(c.user_email)} · ${escapeHtml(c.specialty || '')}</div>
       </div>
-      <div class="flex gap-2">
+      <div class="a-row-actions">
         <button data-id="${c.id}" data-active="${c.is_active}" class="btn btn-ghost btn-sm toggle-active">${c.is_active ? '停用' : '啟用'}</button>
         <button data-id="${c.id}" class="btn btn-danger btn-sm demote-btn">降為一般用戶</button>
       </div>
@@ -1291,6 +1300,8 @@ async function loadCoachMgmt() {
       <button class="btn btn-ghost btn-sm coach-color-default" data-id="${c.id}">預設（不指定）</button>`;
     wrap.appendChild(panel);
   }
+  wrap.insertAdjacentHTML('beforeend', moreButtonHtml('coaches', rest));
+  bindLoadMore(wrap, () => loadCoachMgmt());
   wrap.querySelectorAll('.toggle-active').forEach(b => b.addEventListener('click', async () => {
     await api(`/api/admin/coaches/${b.dataset.id}`, { method: 'PATCH', body: { is_active: b.dataset.active === '0' || b.dataset.active === 'false' ? 1 : 0 } });
     loadCoachMgmt();
