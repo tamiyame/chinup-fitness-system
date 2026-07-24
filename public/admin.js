@@ -667,8 +667,8 @@ async function loadUsers() {
 
   // 一次性綁定搜尋欄 + 顯示已封存切換（靜態元素，跨重繪持續存在）
   if (!usersWired) {
-    document.getElementById('user-search')?.addEventListener('input', renderUsersTable);
-    document.getElementById('show-archived')?.addEventListener('change', renderUsersTable);
+    document.getElementById('user-search')?.addEventListener('input', () => { _shownMap.delete('members'); renderUsersTable(); });
+    document.getElementById('show-archived')?.addEventListener('change', () => { _shownMap.delete('members'); renderUsersTable(); });
     document.getElementById('line-search')?.addEventListener('input', renderLineTable);
     document.getElementById('line-filter')?.addEventListener('change', renderLineTable);
     usersWired = true;
@@ -679,7 +679,7 @@ async function loadUsers() {
     renderUsersTable();
     renderLineTable();
   } catch (e) {
-    document.getElementById('users-table').innerHTML = `<div class="p-6 text-red-500">${escapeHtml(e.message)}</div>`;
+    document.getElementById('users-table').innerHTML = `<div class="p-6 text-red-500 text-center">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -695,9 +695,15 @@ function renderUsersTable() {
     (r.name || '').toLowerCase().includes(q) || (r.phone || '').toLowerCase().includes(q));
 
   if (!rows.length) {
-    el.innerHTML = `<div class="p-6 subtle text-center">${q || showArchived ? '無符合的會員' : '無會員'}</div>`;
+    el.innerHTML = `
+      <div class="empty-state">
+        ${ICO.users.replace('nk-ico', 'nk-empty-ico')}
+        <p>${q || showArchived ? '無符合的會員' : '無會員'}</p>
+      </div>`;
     return;
   }
+
+  const { visible, rest } = limitSlice('members', rows);
 
   el.innerHTML = `
     <table class="data-table">
@@ -710,10 +716,11 @@ function renderUsersTable() {
         <th>加入時間</th>
       </tr></thead>
       <tbody>
-        ${rows.map(r => renderUserRow(r)).join('')}
+        ${visible.map(r => renderUserRow(r)).join('')}
       </tbody>
-    </table>`;
+    </table>` + moreButtonHtml('members', rest);
 
+  bindLoadMore(el, () => renderUsersTable());
   bindUserRowLongPress(el);
 }
 
