@@ -260,7 +260,7 @@ async function loadCoachList() {
   attachCardHandlers(wrap);
 
   if (coaches.length === 0) {
-    wrap.innerHTML = '<p class="text-slate-500 text-sm">目前沒有可預約的教練</p>';
+    wrap.innerHTML = '<p class="text-white opacity-75 text-sm">目前沒有可預約的教練</p>';
   }
 }
 

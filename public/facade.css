@@ -27,6 +27,8 @@ body { background: var(--brand-700); color: #fff; }
 
 /* ---------- 白紙 sheet ---------- */
 .fa-sheet { background: #fff; color: var(--ink); border: 0; border-radius: 0; }
+/* 紙面原則：海報上任何白卡（style.css .card 未設 color）一律回墨色 */
+.card { color: var(--ink); }
 .fa-label { font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 800; font-size: 11.5px; letter-spacing: .24em; text-transform: uppercase; color: #fff; margin: 8px 0 14px; }
 
 /* 課程手風琴（day-group）→ sheet 化；文字色回到墨色（body 是白字，sheet 內必須重設） */
@@ -112,6 +114,10 @@ body { background: var(--brand-700); color: #fff; }
 .timeslot { border-radius: 0; }
 
 /* ---------- booking modal → 方角（懸浮白層） ---------- */
-#booking-modal > div { border-radius: 0; }
+/* 白層＝紙面：文字回墨色（body 在海報上是白字，不重設會整層繼承成白字白底） */
+#booking-modal > div { border-radius: 0; color: var(--ink); }
 #booking-modal .session-type-btn { border-radius: 0; }
 #booking-modal input { border-radius: 0; }
+
+/* 門面頁表單控件一律墨色：控件底是白紙，不得繼承海報的白字 */
+input, select, textarea { color: var(--ink); }
