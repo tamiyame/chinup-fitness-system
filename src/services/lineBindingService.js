@@ -117,7 +117,7 @@ export function resetAllLineBindings() {
 /**
  * 公開：客戶以 phone+name 自助產生綁定碼（我的課表頁用）。
  * 驗名 reader + role 守門（非 user 一律當查無，中性不洩員工）+ 已綁定 409。
- * 只回 { code, expires_at, line_official_url }，不回 user 列。
+ * 只回 { code, expires_at, line_official_url, line_official_id }，不回 user 列。
  */
 export function requestPublicBindCode({ phone, name }) {
   const user = getUserByPhoneAndName({ phone, name });

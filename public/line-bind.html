@@ -142,7 +142,7 @@ form.addEventListener('submit', async (ev) => {
       document.getElementById('bd-copymode').hidden = false;
       document.getElementById('bd-copy').addEventListener('click', async () => {
         try { await navigator.clipboard.writeText(String(data.code)); document.getElementById('bd-copy').textContent = '已複製 ✓'; }
-        catch { showErr('複製失敗，請長按上方數字手動複製'); }
+        catch { document.getElementById('bd-copy').textContent = '複製失敗，請長按上方數字複製'; }
       });
     }
   } catch {
