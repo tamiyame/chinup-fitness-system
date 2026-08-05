@@ -65,6 +65,8 @@ body { background: var(--brand-700); color: #fff; }
 
 /* ---------- toast 不動；頁尾小字 ---------- */
 .fa-foot { padding: 30px 0 60px; color: #fff; font-size: 12px; }
+.fa-foot { text-align: center; }
+.fa-foot a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
 
 /* ---------- 入口卡（index）One-Sky 化：同一個藍的深淺取代玫瑰紅雙色 ---------- */
 .day-group .day-chip { border-radius: 0; }

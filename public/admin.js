@@ -1714,6 +1714,8 @@ async function loadOneOnOnePrice() {
     if (bankInput) bankInput.value = r.bank_info ?? '';
     const lineInput = document.getElementById('line-official-url');
     if (lineInput) lineInput.value = r.line_official_url ?? '';
+    const lineIdInput = document.getElementById('line-official-id');
+    if (lineIdInput) lineIdInput.value = r.line_official_id ?? '';
     const gcalInput = document.getElementById('gcal-calendar-id');
     if (gcalInput) gcalInput.value = r.gcal_calendar_id ?? '';
     const capInput = document.getElementById('booking-hourly-capacity');
@@ -1758,6 +1760,7 @@ document.getElementById('save-one-on-two-price')?.addEventListener('click', asyn
 document.getElementById('save-bank-line')?.addEventListener('click', async () => {
   const bank_info = (document.getElementById('bank-info')?.value || '').trim();
   const line_official_url = (document.getElementById('line-official-url')?.value || '').trim();
+  const line_official_id = (document.getElementById('line-official-id')?.value || '').trim();
   const expiryHours = Number(document.getElementById('group-order-expiry-hours')?.value);
   if (!bank_info) {
     toast('請輸入匯款帳號', 'error');
@@ -1772,7 +1775,7 @@ document.getElementById('save-bank-line')?.addEventListener('click', async () =>
     return;
   }
   try {
-    await api('/api/admin/settings', { method: 'PATCH', body: { bank_info, line_official_url, group_order_expiry_hours: expiryHours } });
+    await api('/api/admin/settings', { method: 'PATCH', body: { bank_info, line_official_url, line_official_id, group_order_expiry_hours: expiryHours } });
     toast('收款與 LINE 設定已更新', 'success');
   } catch (e) {
     toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');

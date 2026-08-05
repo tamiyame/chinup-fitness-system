@@ -3,7 +3,7 @@
 // when user texts the bot. State stored on users table.
 import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { getUserByPhoneAndName } from './userService.js';
-import { getLineOfficialUrl } from './discountService.js';
+import { getLineOfficialUrl, getLineOfficialId } from './discountService.js';
 import { ApiError } from './registration.js';
 
 const BIND_TTL_MINUTES = 15;
@@ -117,12 +117,12 @@ export function resetAllLineBindings() {
 /**
  * 公開：客戶以 phone+name 自助產生綁定碼（我的課表頁用）。
  * 驗名 reader + role 守門（非 user 一律當查無，中性不洩員工）+ 已綁定 409。
- * 只回 { code, expires_at, line_official_url }，不回 user 列。
+ * 只回 { code, expires_at, line_official_url, line_official_id }，不回 user 列。
  */
 export function requestPublicBindCode({ phone, name }) {
   const user = getUserByPhoneAndName({ phone, name });
   if (!user || user.role !== 'user') throw new ApiError(403, 'not_found_or_mismatch');
   if (user.line_user_id) throw new ApiError(409, 'already_bound');
   const { code, expires_at } = generateBindCode(user.id);
-  return { code, expires_at, line_official_url: getLineOfficialUrl() };
+  return { code, expires_at, line_official_url: getLineOfficialUrl(), line_official_id: getLineOfficialId() };
 }

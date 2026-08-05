@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>綁定 LINE 通知 - CHINUP Performance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/colors_and_type.css">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/facade.css">
+<style>
+  /* 門面「天藍海報」— 綁定：sky 場地上一張白紙 sheet（同 login pattern） */
+  body { min-height: 100vh; min-height: 100dvh; }
+  .bind-kick {
+    font-family: "Archivo","Noto Sans TC",sans-serif; font-weight: 800;
+    font-size: 11px; letter-spacing: .28em; text-transform: uppercase;
+    color: #fff; margin-bottom: 14px;
+  }
+  .bind-card {
+    background: #fff; color: var(--ink);
+    border: 0; border-radius: 0;
+    padding: 30px 26px 26px;
+    max-width: 400px; width: 100%;
+  }
+  .bind-code {
+    font-family: "Archivo","Noto Sans TC",sans-serif; font-weight: 900;
+    font-size: 44px; letter-spacing: .14em; text-align: center;
+    font-variant-numeric: tabular-nums; user-select: all;
+    margin: 6px 0 2px; color: var(--ink);
+  }
+  .bind-step {
+    font-family: "Archivo","Noto Sans TC",sans-serif; font-weight: 800;
+    font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink-mute); margin: 18px 0 8px;
+  }
+  .bind-note { font-size: 12px; color: var(--ink-mute); text-align: center; margin-bottom: 4px; }
+  .btn-line-join, .btn-line-send {
+    display: block; width: 100%; text-align: center; text-decoration: none;
+    border-radius: 0; padding: 12px 18px; font-weight: 700; font-size: 14px;
+    cursor: pointer; border: 1px solid var(--line); background: #fff; color: var(--ink);
+  }
+  .btn-line-join:hover { background: #f9fafb; }
+  .btn-line-send {
+    background: #06c755; border-color: #06c755; color: #fff;
+    font-family: "Archivo","Noto Sans TC",sans-serif; font-weight: 900; letter-spacing: .08em;
+  }
+  .btn-line-send:hover { filter: brightness(.95); }
+</style>
+</head>
+<body class="flex flex-col items-center justify-center p-6">
+
+<div class="bind-kick">LINE Notifications</div>
+<div class="bind-card">
+  <div class="text-center mb-6">
+    <img src="/logo.png" alt="CHINUP Performance" style="width:68px;height:68px;margin:0 auto 12px;display:block;object-fit:contain;">
+    <h1 class="text-2xl font-bold" style="letter-spacing:-0.02em;">綁定 LINE，通知不漏接</h1>
+    <p class="subtle mt-1">預約成立、上課提醒、候補遞補都會直接傳到你的 LINE</p>
+  </div>
+
+  <form id="bind-form" class="space-y-4" novalidate>
+    <div>
+      <label class="form-label" for="bd-phone">電話（預約時填的）</label>
+      <input id="bd-phone" type="tel" inputmode="numeric" required class="form-input" placeholder="09xxxxxxxx" autocomplete="tel">
+    </div>
+    <div>
+      <label class="form-label" for="bd-name">姓名（預約時填的）</label>
+      <input id="bd-name" type="text" required class="form-input" placeholder="請輸入真實姓名" autocomplete="name">
+    </div>
+    <div id="bd-err" class="text-sm" style="color:#dc2626;display:none;"></div>
+    <button type="submit" class="btn btn-primary w-full" id="bd-submit">取得綁定碼</button>
+  </form>
+
+  <section id="bd-result" hidden>
+    <div id="bd-already" hidden>
+      <p style="text-align:center;font-weight:700;margin:10px 0 4px;">✓ 此帳號已綁定 LINE</p>
+      <p class="bind-note">之後的預約與提醒會直接傳到你的 LINE，可以關閉此頁了。</p>
+    </div>
+    <div id="bd-codewrap" hidden>
+      <div class="bind-step">Step 1 · 還不是好友請先加入</div>
+      <a id="bd-join" class="btn-line-join" target="_blank" rel="noopener" hidden>加入 CHINUP 官方 LINE</a>
+      <p id="bd-nojoin" class="bind-note" hidden>尚未設定官方 LINE 連結，請洽櫃台。</p>
+      <div class="bind-step">Step 2 · 你的綁定碼</div>
+      <div id="bd-code" class="bind-code"></div>
+      <p class="bind-note">15 分鐘內有效</p>
+      <div class="bind-step">Step 3 · 傳送給官方帳號</div>
+      <a id="bd-send" class="btn-line-send" hidden>開啟 LINE 傳送綁定碼</a>
+      <div id="bd-copymode" hidden>
+        <button type="button" id="bd-copy" class="btn btn-primary w-full">複製綁定碼</button>
+        <p class="bind-note" style="margin-top:8px;">到官方帳號聊天室貼上 6 位數綁定碼送出即完成。</p>
+      </div>
+      <p class="bind-note" style="margin-top:14px;">送出後即完成綁定，可關閉此頁。</p>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+const form = document.getElementById('bind-form');
+const err = document.getElementById('bd-err');
+const result = document.getElementById('bd-result');
+
+function showErr(msg) { err.textContent = msg; err.style.display = 'block'; }
+
+form.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  err.style.display = 'none';
+  const phone = document.getElementById('bd-phone').value.trim();
+  const name = document.getElementById('bd-name').value.trim();
+  if (!phone || !name) { showErr('請填寫電話與姓名'); return; }
+  const btn = document.getElementById('bd-submit');
+  btn.disabled = true; btn.textContent = '產生綁定碼中…';
+  try {
+    const res = await fetch('/api/public/line/bind-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, name }),
+    });
+    let data = null; try { data = await res.json(); } catch { /* no body */ }
+    if (res.status === 409) { form.hidden = true; result.hidden = false; document.getElementById('bd-already').hidden = false; return; }
+    if (res.status === 403) { showErr('查無資料，請用預約時填的電話與姓名'); return; }
+    if (res.status === 429) { showErr('操作太頻繁，請稍後再試'); return; }
+    if (!res.ok || !data?.code) { showErr(`發生錯誤（${res.status}），請稍後再試`); return; }
+
+    form.hidden = true; result.hidden = false;
+    document.getElementById('bd-codewrap').hidden = false;
+    document.getElementById('bd-code').textContent = String(data.code);
+
+    if (data.line_official_url) {
+      const join = document.getElementById('bd-join');
+      join.href = data.line_official_url; join.hidden = false;
+    } else {
+      document.getElementById('bd-nojoin').hidden = false;
+    }
+
+    if (data.line_official_id) {
+      const send = document.getElementById('bd-send');
+      send.href = `https://line.me/R/oaMessage/${encodeURIComponent(data.line_official_id)}/?${encodeURIComponent(String(data.code))}`;
+      send.hidden = false;
+    } else {
+      document.getElementById('bd-copymode').hidden = false;
+      document.getElementById('bd-copy').addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(String(data.code)); document.getElementById('bd-copy').textContent = '已複製 ✓'; }
+        catch { document.getElementById('bd-copy').textContent = '複製失敗，請長按上方數字複製'; }
+      });
+    }
+  } catch {
+    showErr('連線失敗，請稍後再試');
+  } finally {
+    btn.disabled = false; btn.textContent = '取得綁定碼';
+  }
+});
+</script>
+</body>
+</html>

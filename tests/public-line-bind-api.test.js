@@ -16,6 +16,7 @@ db.exec("DELETE FROM users WHERE phone LIKE '0961%'");
 const cUid = Number(db.prepare("INSERT INTO users (name,phone,role) VALUES ('PLB 客','0961000001','user')").run().lastInsertRowid);
 db.prepare("INSERT INTO users (name,phone,role,line_user_id) VALUES ('PLB 已綁','0961000002','user','Ualreadybound_plb')").run();
 db.prepare("INSERT INTO users (name,phone,role) VALUES ('PLB 教練','0961000003','coach')").run();
+db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('line_official_id','@plbtest')").run();
 
 // 1) 客戶 phone+name → 200 + 6 碼 + expires_at + line_official_url；DB 寫入 line_bind_code
 const ok = await req('POST', '/api/public/line/bind-code', { body: { phone: '0961000001', name: 'PLB 客' } });
@@ -23,6 +24,7 @@ expect('客戶產碼 → 200', () => assert.equal(ok.status, 200));
 expect('回 6 位數 code', () => assert.match(String(ok.data.code), /^\d{6}$/));
 expect('回 expires_at', () => assert.ok(ok.data.expires_at));
 expect('回 line_official_url 欄位', () => assert.ok('line_official_url' in ok.data));
+expect('回 line_official_id 欄位＝設定值（一鍵開 LINE 深連結用）', () => assert.equal(ok.data.line_official_id, '@plbtest'));
 expect('DB 寫入 line_bind_code', () => { const r = db.prepare('SELECT line_bind_code FROM users WHERE id=?').get(cUid); assert.equal(r.line_bind_code, String(ok.data.code)); });
 
 // 2) 錯名 → 403 not_found_or_mismatch
@@ -44,4 +46,5 @@ const myBound = await req('POST', '/api/public/my', { body: { phone: '0961000002
 expect('已綁定客戶查課表 → line_bound:true', () => assert.equal(myBound.data.line_bound, true));
 
 db.exec("DELETE FROM users WHERE phone LIKE '0961%'");
+db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('line_official_id','')").run();
 console.log('[public-line-bind-api test] done');

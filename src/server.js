@@ -83,7 +83,7 @@ import {
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
-import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours, listActiveDiscountCodes } from './services/discountService.js';
+import { validateDiscount, getOneOnOnePrice, getOneOnTwoPrice, getOneOnOnePriceByType, listDiscountCodes, createDiscountCode, updateDiscountCode, deleteDiscountCode, getSetting, setSetting, getBankInfo, getLineOfficialUrl, getLineOfficialId, getGcalCalendarId, getBookingHourlyCapacity, getGroupOrderExpiryHours, listActiveDiscountCodes } from './services/discountService.js';
 import { isValidPhone, findOrCreateUserByPhone, createCustomerNoPhone } from './services/userService.js';
 import { syncBookingCreate, syncBookingCancel, syncBookingUpdate } from './services/gcalSync.js';
 import {
@@ -132,6 +132,9 @@ app.get('/my-schedule', (req, res) =>
 );
 app.get('/checkin', (req, res) =>
   res.sendFile(resolve(__dirname, '../public/checkin.html'))
+);
+app.get('/line-bind', (req, res) =>
+  res.sendFile(resolve(__dirname, '../public/line-bind.html'))
 );
 
 app.use(express.static(resolve(__dirname, '../public')));
@@ -1410,6 +1413,7 @@ function settingsPayload() {
     one_on_two_price: Number(getSetting('one_on_two_price') || '2000'),
     bank_info: getBankInfo(),
     line_official_url: getLineOfficialUrl(),
+    line_official_id: getLineOfficialId(),
     gcal_calendar_id: getGcalCalendarId(),
     booking_hourly_capacity: getBookingHourlyCapacity(),
     group_order_expiry_hours: getGroupOrderExpiryHours(),
@@ -1449,6 +1453,11 @@ app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
     const url = String(b.line_official_url).trim();
     if (url && !/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'invalid_line_url' });
     writes.push(['line_official_url', url]); // 空字串代表清除（不顯示按鈕）
+  }
+  if (b.line_official_id !== undefined) {
+    let v = String(b.line_official_id).trim();
+    if (v && !v.startsWith('@')) v = '@' + v;
+    writes.push(['line_official_id', v]); // 空字串代表未設定（綁定頁退回複製模式）
   }
   if (b.gcal_calendar_id !== undefined) {
     const v = String(b.gcal_calendar_id).trim();
