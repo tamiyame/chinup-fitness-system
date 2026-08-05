@@ -3,7 +3,7 @@
 // when user texts the bot. State stored on users table.
 import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
 import { getUserByPhoneAndName } from './userService.js';
-import { getLineOfficialUrl } from './discountService.js';
+import { getLineOfficialUrl, getLineOfficialId } from './discountService.js';
 import { ApiError } from './registration.js';
 
 const BIND_TTL_MINUTES = 15;
@@ -124,5 +124,5 @@ export function requestPublicBindCode({ phone, name }) {
   if (!user || user.role !== 'user') throw new ApiError(403, 'not_found_or_mismatch');
   if (user.line_user_id) throw new ApiError(409, 'already_bound');
   const { code, expires_at } = generateBindCode(user.id);
-  return { code, expires_at, line_official_url: getLineOfficialUrl() };
+  return { code, expires_at, line_official_url: getLineOfficialUrl(), line_official_id: getLineOfficialId() };
 }

@@ -150,6 +150,7 @@ const settingsRes = await req('GET', '/api/admin/settings', { token: adminToken 
 expect('settings → 200', () => assert.equal(settingsRes.status, 200));
 expect('one_on_one_price is number', () => assert.ok(typeof settingsRes.data?.one_on_one_price === 'number'));
 expect('one_on_one_price default 1500', () => assert.equal(settingsRes.data?.one_on_one_price, 1500));
+expect('settings 含 line_official_id 欄位', () => assert.ok('line_official_id' in settingsRes.data));
 
 // ── [10] PATCH /api/admin/settings — change price ──
 console.log('[10] PATCH /api/admin/settings → price=1800');
@@ -163,6 +164,15 @@ expect('response one_on_one_price=1800', () => assert.equal(patchSettingsRes.dat
 // Verify via public endpoint
 const priceAfterRes = await req('GET', '/api/public/one-on-one-price');
 expect('public price now 1800', () => assert.equal(priceAfterRes.data?.price, 1800));
+
+// ── [10b] PATCH /api/admin/settings — line_official_id（@ 自動補全／原樣／清除） ──
+console.log('[10b] PATCH /api/admin/settings → line_official_id');
+const idNoAt = await req('PATCH', '/api/admin/settings', { token: adminToken, body: { line_official_id: 'chinup_test' } });
+expect('未帶 @ 自動補全', () => { assert.equal(idNoAt.status, 200); assert.equal(idNoAt.data?.line_official_id, '@chinup_test'); });
+const idAt = await req('PATCH', '/api/admin/settings', { token: adminToken, body: { line_official_id: '@chinup_test2' } });
+expect('帶 @ 原樣保存', () => assert.equal(idAt.data?.line_official_id, '@chinup_test2'));
+const idClear = await req('PATCH', '/api/admin/settings', { token: adminToken, body: { line_official_id: '' } });
+expect('空字串清除', () => assert.equal(idClear.data?.line_official_id, ''));
 
 // ── [11] PATCH settings invalid price → 400 ──
 console.log('[11] PATCH settings invalid price → 400');

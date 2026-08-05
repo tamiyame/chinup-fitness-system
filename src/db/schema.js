@@ -300,6 +300,7 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('one_on_one_price', '150
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('one_on_two_price', '2000');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('bank_info', '合作金庫 (006) 0640765-607824 戶名：許秉毅');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('line_official_url', '');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('line_official_id', '');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('gcal_calendar_id', '');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('booking_hourly_capacity', '3');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('group_order_expiry_hours', '72');
