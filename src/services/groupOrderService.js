@@ -440,14 +440,15 @@ export function expirePendingOrders() {
  *  paid=false → 併入該客人未逾期 pending 單（金額累加、期限取 max(now+72h)），無則開新 72h 單；
  *  滿額：未來場次 → 候補（不收款、不建單）；過去場次 → 409（候補對過去無意義）。
  *  不支援折扣碼；只通知教練（業主定案）。
- *  未開課(cancelled)：過去場次可補登，首筆成功即復活為「已成班」（薪資/統計/公開頁自然導出）；未來維持 409。 */
-export function adminBackfillRegistration({ sessionId, userId = null, name = null, phone = null, paid = false, actorId }) {
+ *  未開課(cancelled)：一律可補登，首筆成功即復活為「已成班」（薪資/統計/公開頁自然導出）；
+ *  截止後（未開始）復活會補發教練成班通知，過去復活維持靜默。
+ *  price 選填：整數 ≥0（否則 400 invalid_price），未帶沿用範本單價。 */
+export function adminBackfillRegistration({ sessionId, userId = null, name = null, phone = null, paid = false, actorId, price = null }) {
   return tx(() => {
     const s = getSession.get(sessionId);
     if (!s) throw new ApiError(404, 'session_not_found');
     const now = nowLocal();
-    // 未開課場次：過去可補登（補報即復活，見下）；未來維持不可補（業主定案：流課是未知數，要等時間過了才知道）
-    if (s.status === 'cancelled' && s.start_at > now) throw new ApiError(409, 'session_cancelled');
+    // 未開課場次一律可補（cancelled 必然截止判定已過、非未知數；補報即復活，見下）
     const tpl = getTemplate.get(s.template_id);
     if (!tpl) throw new ApiError(404, 'template_not_found');
 
@@ -468,7 +469,8 @@ export function adminBackfillRegistration({ sessionId, userId = null, name = nul
     }
 
     const isPast = s.start_at <= now;
-    const price = tpl.price_per_session;
+    if (price !== null && (!Number.isInteger(price) || price < 0)) throw new ApiError(400, 'invalid_price');
+    price = price !== null ? price : tpl.price_per_session;
 
     if (sessionIsFull(sessionId)) {
       if (isPast) throw new ApiError(409, 'session_full');
@@ -511,8 +513,16 @@ export function adminBackfillRegistration({ sessionId, userId = null, name = nul
     if (dup) { reactivateReg.run(regStatus, orderId, price, dup.id); regId = dup.id; }
     else regId = insertReg.run(sessionId, user.id, regStatus, orderId, price).lastInsertRowid;
 
-    // 補報即復活：原判未開課的過去場次，首筆補報成功即恢復「已成班」——薪資/客人統計/公開頁三口徑自然導出
-    if (s.status === 'cancelled') db.prepare("UPDATE course_sessions SET status='confirmed' WHERE id=?").run(sessionId);
+    // 補報即復活：原判未開課場次，首筆補報成功即恢復「已成班」——薪資/客人統計/公開頁三口徑自然導出。
+    // 尚未開始（截止～開課窗口）時補發教練成班通知（教練在截止時已收過「未開成」，須知道課回來了）；過去場次維持靜默。
+    if (s.status === 'cancelled') {
+      db.prepare("UPDATE course_sessions SET status='confirmed' WHERE id=?").run(sessionId);
+      if (!isPast) {
+        const count = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id=? AND status IN ('confirmed','pending')").get(sessionId).c;
+        notifyCourseCoach({ coachId: s.coach_id, sessionId, type: 'course_confirmed_coach',
+          vars: { course_name: tpl.name, start_at: s.start_at, count } });
+      }
+    }
 
     notifyCourseCoach({ coachId: s.coach_id, sessionId, type: 'course_registered_coach',
       vars: { member_name: user.name, course_name: tpl.name, start_at: fmtMD(s.start_at) } });

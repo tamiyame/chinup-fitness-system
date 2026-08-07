@@ -480,7 +480,7 @@ app.patch('/api/admin/sessions/:id', requireAdmin, asyncHandler((req, res) => {
 
 // admin 補報名：從範本 drawer 為客人補一場（paid=true 直接已核對；false 走待核對 72h）
 app.post('/api/admin/sessions/:id/registrations', requireAdmin, asyncHandler((req, res) => {
-  const { userId, name, phone, paid } = req.body || {};
+  const { userId, name, phone, paid, price } = req.body || {};
   res.status(201).json(svcAdminBackfillReg({
     sessionId: Number(req.params.id),
     userId: userId != null ? Number(userId) : null,
@@ -488,6 +488,7 @@ app.post('/api/admin/sessions/:id/registrations', requireAdmin, asyncHandler((re
     phone: phone != null ? String(phone) : null,
     paid: paid === true,
     actorId: req.user.id,
+    price: price != null ? Number(price) : null,
   }));
 }));
 

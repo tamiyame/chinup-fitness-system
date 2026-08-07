@@ -196,11 +196,15 @@ reset();
     assert.equal(o.customer_phone, '');
   });
 
-  // j) 未開課場次 → 409
+  // j) cancelled 且已滿的未來場次 → 候補（未取得正取名額，不觸發復活；同一原則見 §7 翻面）
+  //    （此列非任務書 Step 1 逐字列出的兩處翻面之一，是實作後才發現的既有測項連帶翻面：
+  //     舊斷言「cancelled 場次 → 409」對「未來」不再成立，見 task-1-report.md 自我審查。）
   db.prepare("UPDATE course_sessions SET status='cancelled' WHERE id=?").run(sB);
-  expect('cancelled 場次 → 409 session_cancelled', () => {
-    try { adminBackfillRegistration({ sessionId: sB, name: 'AGR-子', phone: '0996300009', paid: false, actorId }); assert.fail('no throw'); }
-    catch (e) { assert.equal(e.status, 409); assert.equal(e.message, 'session_cancelled'); }
+  expect('cancelled 且已滿場次補報（unpaid）→ 候補、場次維持未開課（無正取名額不觸發復活）', () => {
+    const r = adminBackfillRegistration({ sessionId: sB, name: 'AGR-子', phone: '0996300009', paid: false, actorId });
+    assert.equal(r.status, 'waitlisted');
+    assert.equal(r.orderId, null);
+    assert.equal(db.prepare('SELECT status FROM course_sessions WHERE id=?').get(sB).status, 'cancelled');
   });
 }
 
@@ -391,9 +395,10 @@ reset();
     return t ? t.sessions.find((x) => x.id === id) : null;
   };
 
-  expect('未來的未開課場次補報 → 409 session_cancelled（paid/unpaid 皆擋）', () => {
-    assert.throws(() => adminBackfillRegistration({ sessionId: s2, name: 'AGR-復活客', phone: '0996700001', paid: false, actorId }), /session_cancelled/);
-    assert.throws(() => adminBackfillRegistration({ sessionId: s2, name: 'AGR-復活客', phone: '0996700001', paid: true, actorId }), /session_cancelled/);
+  expect('未來（截止後）的未開課場次補報 → 可補＋復活成已成班（截止～開課窗口）', () => {
+    const rf = adminBackfillRegistration({ sessionId: s2, name: 'AGR-窗口客', phone: '0996700003', paid: false, actorId });
+    assert.equal(rf.status, 'pending');
+    assert.equal(sessionStatus(s2), 'confirmed');
   });
 
   expect('復活前：公開頁該場 state=not_held', () => {
@@ -424,6 +429,91 @@ reset();
     adminCancelRegistration({ registrationId: r1.registrationId, actorId });
     assert.equal(db.prepare('SELECT status FROM group_orders WHERE id=?').get(r1.orderId).status, 'cancelled');
     assert.equal(sessionStatus(s1), 'confirmed');
+  });
+}
+
+// ── §7c 復活通知：截止後（未開課、未開始）復活 → 教練成班通知；過去復活維持靜默 ──
+reset();
+{
+  const coachUserId = Number(db.prepare("INSERT INTO users (name, role) VALUES ('AGR-通知教練', 'coach')").run().lastInsertRowid);
+  const coachId = Number(db.prepare("INSERT INTO coaches (user_id, display_name, is_active) VALUES (?, 'AGR-通知教練', 1)").run(coachUserId).lastInsertRowid);
+  const actorId = Number(db.prepare("INSERT INTO users (name, email, role, is_admin) VALUES ('AGR-管理5', 'agr-admin5@x.com', 'coach', 1)").run().lastInsertRowid);
+  const tpl = createTemplate({
+    name: 'AGR-通知班', min_capacity: 1, max_capacity: 3,
+    day_of_week: ((new Date()).getDay() + 2) % 7, start_time: '19:00',
+    recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(15),
+    registration_deadline_hours: 1, price_per_session: 500, coach_id: coachId,
+  });
+  const ss = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC').all(tpl.templateId).map((r) => r.id);
+  const [sPast, sFuture] = ss;
+  agePast(sPast);
+  db.prepare("UPDATE course_sessions SET status='cancelled' WHERE id IN (?, ?)").run(sPast, sFuture);
+  const confirmNotifs = (sid) => db.prepare(
+    "SELECT COUNT(*) AS c FROM notifications WHERE session_id=? AND type='course_confirmed_coach' AND user_id=?"
+  ).get(sid, coachUserId).c;
+
+  expect('截止後未開課補報復活 → 教練收到一則成班通知（count=佔位人數）', () => {
+    adminBackfillRegistration({ sessionId: sFuture, name: 'AGR-窗口甲', phone: '0996700011', paid: false, actorId });
+    assert.equal(db.prepare('SELECT status FROM course_sessions WHERE id=?').get(sFuture).status, 'confirmed');
+    assert.equal(confirmNotifs(sFuture), 1);
+    const n = db.prepare("SELECT body FROM notifications WHERE session_id=? AND type='course_confirmed_coach' AND user_id=?").get(sFuture, coachUserId);
+    assert.match(n.body, /1 人/);
+  });
+
+  expect('復活後再補第二人 → 不再重發成班通知', () => {
+    adminBackfillRegistration({ sessionId: sFuture, name: 'AGR-窗口乙', phone: '0996700012', paid: false, actorId });
+    assert.equal(confirmNotifs(sFuture), 1);
+  });
+
+  expect('過去未開課補報復活 → 維持靜默（無成班通知）', () => {
+    adminBackfillRegistration({ sessionId: sPast, name: 'AGR-窗口丙', phone: '0996700013', paid: false, actorId });
+    assert.equal(db.prepare('SELECT status FROM course_sessions WHERE id=?').get(sPast).status, 'confirmed');
+    assert.equal(confirmNotifs(sPast), 0);
+  });
+}
+
+// ── §7d 逐人單價：price 覆寫／0 元／未帶沿用範本價／非法值 ──
+reset();
+{
+  const actorId = Number(db.prepare("INSERT INTO users (name, email, role, is_admin) VALUES ('AGR-管理6', 'agr-admin6@x.com', 'coach', 1)").run().lastInsertRowid);
+  const tpl = createTemplate({
+    name: 'AGR-單價班', min_capacity: 1, max_capacity: 6,
+    day_of_week: ((new Date()).getDay() + 2) % 7, start_time: '19:00',
+    recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(8),
+    registration_deadline_hours: 1, price_per_session: 500,
+  });
+  const sid = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC').get(tpl.templateId).id;
+  const regPrice = (registrationId) => db.prepare('SELECT amount_due FROM registrations WHERE id=?').get(registrationId).amount_due;
+  const orderTotal = (orderId) => db.prepare('SELECT total_amount, original_amount, status FROM group_orders WHERE id=?').get(orderId);
+
+  expect('paid＋price 350 → 已核對單金額 350、reg 價 350', () => {
+    const r = adminBackfillRegistration({ sessionId: sid, name: 'AGR-價甲', phone: '0996700021', paid: true, actorId, price: 350 });
+    assert.equal(r.status, 'confirmed');
+    const o = orderTotal(r.orderId);
+    assert.equal(o.status, 'paid');
+    assert.equal(o.total_amount, 350);
+    assert.equal(o.original_amount, 350);
+    assert.equal(regPrice(r.registrationId), 350);
+  });
+
+  expect('unpaid＋price 0 → 待付單金額 0、reg 價 0', () => {
+    const r = adminBackfillRegistration({ sessionId: sid, name: 'AGR-價乙', phone: '0996700022', paid: false, actorId, price: 0 });
+    assert.equal(r.status, 'pending');
+    assert.equal(orderTotal(r.orderId).total_amount, 0);
+    assert.equal(regPrice(r.registrationId), 0);
+  });
+
+  expect('未帶 price → 沿用範本價 500', () => {
+    const r = adminBackfillRegistration({ sessionId: sid, name: 'AGR-價丙', phone: '0996700023', paid: true, actorId });
+    assert.equal(orderTotal(r.orderId).total_amount, 500);
+    assert.equal(regPrice(r.registrationId), 500);
+  });
+
+  expect('price 非法（負數/小數/字串）→ 400 invalid_price 且不建立客人', () => {
+    for (const bad of [-1, 1.5, '300']) {
+      assert.throws(() => adminBackfillRegistration({ sessionId: sid, name: 'AGR-價丁', phone: '0996700024', paid: true, actorId, price: bad }), /invalid_price/);
+    }
+    assert.equal(db.prepare("SELECT COUNT(*) AS c FROM users WHERE name='AGR-價丁'").get().c, 0);
   });
 }
 
