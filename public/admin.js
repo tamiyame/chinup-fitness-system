@@ -382,6 +382,7 @@ async function deleteTemplate(id) {
 }
 
 let drawerTemplateId = null;
+let drawerPricePerSession = 0; // 補報名單價層的預設值（開 drawer 時記下範本單堂價）
 const drawerSessions = new Map(); // sid → { start_at, occupied, max, status }
 
 function localNowStr() {
@@ -398,6 +399,7 @@ async function openDrawer(templateId) {
   c.innerHTML = '<div class="subtle">載入中…</div>';
   try {
     const t = await api(`/api/admin/templates/${templateId}`);
+    drawerPricePerSession = Number(t.price_per_session ?? 0);
     document.getElementById('drawer-title').textContent = `${t.name}`;
     if (!t.sessions.length) { c.innerHTML = '<div class="subtle">尚無場次</div>'; return; }
 
@@ -411,7 +413,7 @@ async function openDrawer(templateId) {
             <div class="subtle mt-1 session-counts" data-session-id="${s.id}">正取 ${s.confirmed_count}/${t.max_capacity} · 候補 ${s.waitlist_count}</div>
           </div>
           <div class="flex items-center gap-2">
-            ${(s.status !== 'cancelled' || s.start_at <= localNowStr()) ? `<button type="button" class="badge badge-confirmed session-backfill" data-session-id="${s.id}" title="為客人補此場報名">補報名</button>` : ''}
+            <button type="button" class="badge badge-confirmed session-backfill" data-session-id="${s.id}" title="為客人補此場報名">補報名</button>
             ${s.status === 'open'
               ? `<button type="button" class="badge ${s.is_open === 0 ? 'badge-closed' : 'badge-open'} session-toggle" data-session-id="${s.id}" data-open="${s.is_open === 0 ? '0' : '1'}" title="點擊切換開放／關閉此場次">${s.is_open === 0 ? '關閉' : '開放'}</button>`
               : `<span class="badge badge-${s.status}">${SESSION_STATUS_LABEL[s.status]}</span>`}
@@ -508,15 +510,29 @@ function openBackfillPanel(sid) {
     <div class="bf-mode-new" style="display:none;">
       <input type="text" class="form-input bf-name" placeholder="姓名（必填）">
       <input type="tel" class="form-input bf-phone" placeholder="電話（選填，之後可於會員管理補）">
-      <button type="button" class="btn btn-ghost btn-sm bf-show-search">← 改搜尋既有客人</button>
+      <div class="flex gap-2">
+        <button type="button" class="btn btn-primary btn-sm bf-new-confirm">加入</button>
+        <button type="button" class="btn btn-ghost btn-sm bf-show-search">← 改搜尋既有客人</button>
+      </div>
     </div>
-    <div class="bf-chosen subtle text-sm" style="display:none;"></div>
-    <label class="bf-paid-row"><input type="checkbox" class="bf-paid"> 已收款（直接列入已核對匯款）</label>
+    <div class="bf-price-layer" style="display:none;">
+      <div class="bf-price-name font-semibold"></div>
+      <label class="subtle text-sm">單價（可改，0＝免費）
+        <input type="number" class="form-input bf-price-input" min="0" step="1" inputmode="numeric">
+      </label>
+      <div class="flex gap-2">
+        <button type="button" class="btn btn-primary btn-sm bf-price-ok">確認</button>
+        <button type="button" class="btn btn-ghost btn-sm bf-price-cancel">取消</button>
+      </div>
+    </div>
+    <div class="bf-chips"></div>
+    <label class="bf-paid-row"><input type="checkbox" class="bf-paid"> 已收款（直接列入已核對匯款，套用整批）</label>
     <div class="bf-hint subtle text-xs"></div>
     <div class="flex gap-2 mt-2">
-      <button type="button" class="btn btn-primary btn-sm bf-submit">送出補報名</button>
+      <button type="button" class="btn btn-primary btn-sm bf-submit" disabled>送出補報名</button>
       <button type="button" class="btn btn-ghost btn-sm bf-close">關閉</button>
-    </div>`;
+    </div>
+    <div class="bf-batch-result text-xs"></div>`;
   inner.parentNode.insertBefore(panel, inner);
 
   const hint = panel.querySelector('.bf-hint');
@@ -527,15 +543,68 @@ function openBackfillPanel(sid) {
   else if (isFull) { hint.textContent = '此場已滿：送出後將列為候補（不收款）。'; paidCb.checked = false; paidCb.disabled = true; }
   else if (isPast) { hint.textContent = '此場已結束：補登歷史報名。'; }
 
+  // 多選狀態：selected = [{ key, userId?, name, phone?, price }]
+  const selected = [];
+  let pendingCandidate = null; // 單價確認層的當前候選 { userId? , name, phone? }
+  const candidateKey = (c) => c.userId != null ? `u${c.userId}` : `n|${c.name}|${c.phone || ''}`;
+
+  const priceLayer = panel.querySelector('.bf-price-layer');
+  const priceInput = panel.querySelector('.bf-price-input');
+  const chipsEl = panel.querySelector('.bf-chips');
+  const resultEl = panel.querySelector('.bf-batch-result');
+
+  function renderChips() {
+    chipsEl.innerHTML = selected.map((c, i) =>
+      `<span class="bf-chip">${escapeHtml(c.name)} NT$${c.price}<button type="button" data-i="${i}" aria-label="移除">✕</button></span>`
+    ).join('');
+    chipsEl.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      selected.splice(Number(b.dataset.i), 1);
+      renderChips();
+    }));
+    submitBtn.textContent = selected.length ? `送出補報名（${selected.length} 位）` : '送出補報名';
+    if (!(isFull && isPast)) submitBtn.disabled = selected.length === 0;
+  }
+
+  function openPriceLayer(candidate) {
+    pendingCandidate = candidate;
+    panel.querySelector('.bf-price-name').textContent = candidate.name;
+    priceInput.value = String(drawerPricePerSession);
+    priceLayer.style.display = '';
+    priceInput.focus();
+    priceInput.select();
+  }
+
+  panel.querySelector('.bf-price-ok').addEventListener('click', () => {
+    const v = Number(priceInput.value);
+    if (!Number.isInteger(v) || v < 0) { toast('單價需為 0 或正整數', 'error'); return; }
+    const cand = { ...pendingCandidate, price: v, key: candidateKey(pendingCandidate) };
+    if (selected.some(c => c.key === cand.key)) { toast('此客人已在本批名單中', 'error'); priceLayer.style.display = 'none'; return; }
+    selected.push(cand);
+    pendingCandidate = null;
+    priceLayer.style.display = 'none';
+    panel.querySelector('.bf-search').value = '';
+    panel.querySelector('.bf-name').value = '';
+    panel.querySelector('.bf-phone').value = '';
+    renderChips();
+  });
+  panel.querySelector('.bf-price-cancel').addEventListener('click', () => {
+    pendingCandidate = null;
+    priceLayer.style.display = 'none';
+  });
+
   panel.querySelector('.bf-show-new').addEventListener('click', () => {
     panel.querySelector('.bf-mode-search').style.display = 'none';
     panel.querySelector('.bf-mode-new').style.display = '';
-    delete panel.dataset.userId;
-    panel.querySelector('.bf-chosen').style.display = 'none';
   });
   panel.querySelector('.bf-show-search').addEventListener('click', () => {
     panel.querySelector('.bf-mode-new').style.display = 'none';
     panel.querySelector('.bf-mode-search').style.display = '';
+  });
+  panel.querySelector('.bf-new-confirm').addEventListener('click', () => {
+    const name = panel.querySelector('.bf-name').value.trim();
+    const phone = panel.querySelector('.bf-phone').value.trim();
+    if (!name) { toast('請填寫姓名', 'error'); return; }
+    openPriceLayer({ name, phone: phone || null });
   });
   panel.querySelector('.bf-close').addEventListener('click', () => panel.remove());
 
@@ -552,31 +621,43 @@ function openBackfillPanel(sid) {
           ? list.map(u => `<button type="button" class="bf-result" data-user-id="${u.id}" data-name="${escapeHtml(u.name)}">${escapeHtml(u.name)}<span class="subtle text-xs">　${escapeHtml(u.phone || '無電話')}</span></button>`).join('')
           : '<div class="subtle text-xs" style="padding:6px 8px;">查無客人，可點「＋ 新增客人」</div>';
         resultsEl.querySelectorAll('.bf-result').forEach(btn => btn.addEventListener('click', () => {
-          panel.dataset.userId = btn.dataset.userId;
-          const chosen = panel.querySelector('.bf-chosen');
-          chosen.textContent = `已選：${btn.dataset.name}`;
-          chosen.style.display = '';
           resultsEl.innerHTML = '';
+          openPriceLayer({ userId: Number(btn.dataset.userId), name: btn.dataset.name });
         }));
       } catch { resultsEl.innerHTML = '<div class="text-red-500 text-xs">搜尋失敗</div>'; }
     }, 250);
   });
 
+  const ERR_MSGS = { already_registered: '已報名過本場次', session_full: '此場已滿（過去場次不可候補）', paid_requires_seat: '已滿場次只能候補，不能標已收款', phone_unavailable: '此電話屬員工帳號', invalid_phone: '電話格式不正確（8–15 碼數字）', missing_name: '缺姓名', user_not_found: '找不到此客人', invalid_price: '單價需為 0 或正整數' };
+
   submitBtn.addEventListener('click', async () => {
+    if (!selected.length) return;
     const paid = paidCb.checked;
-    let body;
-    if (panel.dataset.userId) body = { userId: Number(panel.dataset.userId), paid };
-    else {
-      const name = panel.querySelector('.bf-name').value.trim();
-      const phone = panel.querySelector('.bf-phone').value.trim();
-      if (!name) { toast('請先選擇客人，或切到「新增客人」填寫姓名', 'error'); return; }
-      body = { name, phone: phone || null, paid };
-    }
     submitBtn.disabled = true;
-    try {
-      const r = await api(`/api/admin/sessions/${sid}/registrations`, { method: 'POST', body });
-      toast(r.status === 'waitlisted' ? '此場已滿，已列為候補' : paid ? '補報名完成（已收款）' : '補報名完成（待核對匯款）', 'success');
-      panel.remove();
+    const lines = [];
+    let okCount = 0;
+    const remaining = [];
+    for (const c of selected) {
+      const body = c.userId != null
+        ? { userId: c.userId, paid, price: c.price }
+        : { name: c.name, phone: c.phone, paid, price: c.price };
+      try {
+        const r = await api(`/api/admin/sessions/${sid}/registrations`, { method: 'POST', body });
+        okCount += 1;
+        const label = r.status === 'waitlisted' ? '已滿→候補' : paid ? '已核對' : '待核對匯款';
+        lines.push(`<div class="ok">✓ ${escapeHtml(c.name)}：${label}</div>`);
+      } catch (e) {
+        remaining.push(c);
+        lines.push(`<div class="bad">✕ ${escapeHtml(c.name)}：${ERR_MSGS[e.data?.error] || escapeHtml(e.message)}</div>`);
+      }
+    }
+    resultEl.innerHTML = lines.join('');
+    selected.length = 0;
+    selected.push(...remaining);
+    renderChips();
+    submitBtn.disabled = selected.length === 0;
+    if (okCount > 0) {
+      toast(remaining.length ? `補報名完成 ${okCount} 位、失敗 ${remaining.length} 位（見面板逐人結果）` : `補報名完成（${okCount} 位）`, remaining.length ? 'error' : 'success');
       await reloadRoster(sid);
       refreshSessionSummary(sid);
       if (meta.status === 'cancelled') { // 補報即復活：就地把「未開課」徽章換成「已成班」
@@ -585,10 +666,8 @@ function openBackfillPanel(sid) {
         if (badge) { badge.classList.replace('badge-cancelled', 'badge-confirmed'); badge.textContent = SESSION_STATUS_LABEL.confirmed; }
       }
       loadPendingOrders(); loadConfirmedPayments();
-    } catch (e) {
-      const msgs = { already_registered: '此客人已報名過本場次', session_full: '此場已滿（過去場次不可候補）', paid_requires_seat: '已滿場次只能候補，不能標已收款', session_cancelled: '未開課場次需過了上課時間才能補登', phone_unavailable: '此電話屬員工帳號，不可用於報名', invalid_phone: '電話格式不正確（8–15 碼數字）', missing_name: '請填寫姓名', user_not_found: '找不到此客人' };
-      toast(msgs[e.data?.error] || `補報名失敗：${escapeHtml(e.message)}`, 'error');
-      submitBtn.disabled = false;
+    } else if (remaining.length) {
+      toast('補報名全部失敗，見面板逐人結果', 'error');
     }
   });
 }
