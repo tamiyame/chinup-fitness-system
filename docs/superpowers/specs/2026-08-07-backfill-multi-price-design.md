@@ -28,7 +28,7 @@
 3. **復活通知**：既有復活行（`if (s.status === 'cancelled') UPDATE … status='confirmed'`）擴充——復活成功且 `s.start_at > now` 時，查該場 confirmed 人數，`notifyCourseCoach({ coachId: s.coach_id, sessionId, type: 'course_confirmed_coach', vars: { course_name: tpl.name, start_at: s.start_at, count } })`。過去場次復活不發（維持 #105 靜默）。
 4. 其他不動：滿額候補（滿額＋paid → `400 paid_requires_seat`；滿額未付 → 候補）、已報名防重、find-or-create 客人、`course_registered_coach` 逐筆通知、`promoteWaitlist` 過去守門。
 
-Server 端點（`POST /api/admin/sessions/:id/backfill`）透傳 `price`（body 取值，不驗證——服務層驗）。
+Server 端點（`POST /api/admin/sessions/:id/registrations`）透傳 `price`（body 取值，不驗證——服務層驗）。
 
 ## §2 前端（`public/admin.js` 補報名面板）
 

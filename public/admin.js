@@ -658,14 +658,16 @@ function openBackfillPanel(sid) {
     submitBtn.disabled = selected.length === 0;
     if (okCount > 0) {
       toast(remaining.length ? `補報名完成 ${okCount} 位、失敗 ${remaining.length} 位（見面板逐人結果）` : `補報名完成（${okCount} 位）`, remaining.length ? 'error' : 'success');
-      await reloadRoster(sid);
-      refreshSessionSummary(sid);
-      if (meta.status === 'cancelled') { // 補報即復活：就地把「未開課」徽章換成「已成班」
-        meta.status = 'confirmed';
-        const badge = document.querySelector(`#drawer-content .session-backfill[data-session-id="${sid}"]`)?.parentElement?.querySelector('.badge-cancelled');
-        if (badge) { badge.classList.replace('badge-cancelled', 'badge-confirmed'); badge.textContent = SESSION_STATUS_LABEL.confirmed; }
-      }
-      loadPendingOrders(); loadConfirmedPayments();
+      try {
+        await reloadRoster(sid);
+        refreshSessionSummary(sid);
+        if (meta.status === 'cancelled') { // 補報即復活：就地把「未開課」徽章換成「已成班」
+          meta.status = 'confirmed';
+          const badge = document.querySelector(`#drawer-content .session-backfill[data-session-id="${sid}"]`)?.parentElement?.querySelector('.badge-cancelled');
+          if (badge) { badge.classList.replace('badge-cancelled', 'badge-confirmed'); badge.textContent = SESSION_STATUS_LABEL.confirmed; }
+        }
+        loadPendingOrders(); loadConfirmedPayments();
+      } catch { /* 報名已落庫；刷新失敗重開 drawer 即自癒 */ }
     } else if (remaining.length) {
       toast('補報名全部失敗，見面板逐人結果', 'error');
     }

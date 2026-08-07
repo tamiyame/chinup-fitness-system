@@ -518,7 +518,7 @@ export function adminBackfillRegistration({ sessionId, userId = null, name = nul
     if (s.status === 'cancelled') {
       db.prepare("UPDATE course_sessions SET status='confirmed' WHERE id=?").run(sessionId);
       if (!isPast) {
-        const count = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id=? AND status IN ('confirmed','pending')").get(sessionId).c;
+        const count = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id=? AND status IN ('confirmed','pending') AND on_leave = 0").get(sessionId).c;
         notifyCourseCoach({ coachId: s.coach_id, sessionId, type: 'course_confirmed_coach',
           vars: { course_name: tpl.name, start_at: s.start_at, count } });
       }
