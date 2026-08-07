@@ -38,7 +38,7 @@ Server 端點（`POST /api/admin/sessions/:id/registrations`）透傳 `price`（
 2. **第二層確認列**（面板內就地展開，非另開 modal）：顯示該客人姓名＋單價輸入欄（`type="number" min="0" step="1"`，預帶範本單堂價）＋「確認」「取消」。確認後加入已選清單；取消回搜尋。
 3. **已選清單**：膠囊列 `姓名 NT$價 ×`（× 移除）；可重複步驟 1-2 繼續加人；同一批內防重（同 userId 或同姓名電話組合不得重複加入）。
 4. 「已收款（直接列入已核對匯款）」勾選一個、套用整批。
-5. 「送出補報名（N 位）」→ **序列**逐人 `POST /api/admin/sessions/:id/backfill`（帶 `price`）→ 全部完成後彙整結果（成功 N／已報名跳過 M／候補 K／失敗原因逐人列出），成功者自已選清單移除、失敗者保留供重試；刷新 drawer 場次資料。
+5. 「送出補報名（N 位）」→ **序列**逐人 `POST /api/admin/sessions/:id/registrations`（帶 `price`）→ 全部完成後彙整結果（成功 N／已報名跳過 M／候補 K／失敗原因逐人列出），成功者自已選清單移除、失敗者保留供重試；刷新 drawer 場次資料。
 6. 範本單堂價來源：drawer 既有資料（渲染補報名面板時已知的範本 `price_per_session`）。
 
 補報名鈕顯示條件（`admin.js` drawer 場次列）：移除 cancelled 未來條件，**一律顯示**。
