@@ -182,13 +182,13 @@ function renderTemplate(tpl) {
   return `
   <details class="day-group">
     <summary>
-      <div class="day-chip">${sessionCount}<span class="day-chip-unit">場</span></div>
+      <div class="day-chip"><span class="day-chip-dow">${dow(tpl.day_of_week)}</span><span class="day-chip-time">${escapeHtml(tpl.start_time || '')}</span></div>
       <div class="day-title">
         <h3>${escapeHtml(tpl.name)}
           <span class="badge badge-open" style="font-size:11px;margin-left:6px;">${escapeHtml(priceLabel)}</span>
         </h3>
         <p>${escapeHtml(tpl.description || '')}</p>
-        <p class="course-meta">${dow(tpl.day_of_week)} ${escapeHtml(tpl.start_time || '')}・${tpl.duration_minutes} 分鐘・${tpl.min_capacity}–${tpl.max_capacity} 人${tpl.coach_name ? `・${escapeHtml(tpl.coach_name)} 教練` : ''}</p>
+        <p class="course-meta">${sessionCount} 場・${tpl.duration_minutes} 分鐘・${tpl.min_capacity}–${tpl.max_capacity} 人${tpl.coach_name ? `・${escapeHtml(tpl.coach_name)} 教練` : ''}</p>
       </div>
       ${chevron}
     </summary>
