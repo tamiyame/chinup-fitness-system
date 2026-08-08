@@ -600,6 +600,7 @@ export function getPublicGroupCourses() {
   const now = nowLocal();
   const templates = db.prepare(`
     SELECT t.id, t.name, t.description, t.min_capacity, t.max_capacity, t.duration_minutes,
+           t.day_of_week, t.start_time,
            t.price_per_session, t.recurrence, t.cycle_start_date, t.cycle_end_date,
            c.display_name AS coach_name
     FROM course_templates t

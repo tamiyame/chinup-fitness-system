@@ -188,7 +188,7 @@ function renderTemplate(tpl) {
           <span class="badge badge-open" style="font-size:11px;margin-left:6px;">${escapeHtml(priceLabel)}</span>
         </h3>
         <p>${escapeHtml(tpl.description || '')}</p>
-        <p class="course-meta">${tpl.duration_minutes} 分鐘・${tpl.min_capacity}–${tpl.max_capacity} 人${tpl.coach_name ? `・${escapeHtml(tpl.coach_name)} 教練` : ''}</p>
+        <p class="course-meta">${dow(tpl.day_of_week)} ${escapeHtml(tpl.start_time || '')}・${tpl.duration_minutes} 分鐘・${tpl.min_capacity}–${tpl.max_capacity} 人${tpl.coach_name ? `・${escapeHtml(tpl.coach_name)} 教練` : ''}</p>
       </div>
       ${chevron}
     </summary>
