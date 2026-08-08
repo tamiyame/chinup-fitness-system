@@ -15,6 +15,9 @@
 body { visibility: hidden; }
 /* 入口卡 sheet 化＋FAQ on sky */
 .entry-card { border-radius: 0; border: 0; box-shadow: none; }
+/* 兩欄等高：欄位撐滿格高、卡片吸收高度差（entry-cta 既有 margin-top:auto 會自動貼底同高） */
+.entry-col { display: flex; flex-direction: column; }
+.entry-col .entry-card { flex: 1; }
 .entry-card:hover { transform: none; box-shadow: 0 12px 32px -8px rgba(12,74,110,.45); }
 .faq-item { background: #fff; border: 0; border-radius: 0; border-top: 1px solid var(--line); }
 .faq-item:first-child { border-top: 0; }
@@ -71,7 +74,7 @@ body { visibility: hidden; }
   </section>
 
   <section class="entry pb-16">
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 items-stretch">
 
       <!-- 團體課程：入口卡 + 團體課 FAQ -->
       <div class="entry-col">
