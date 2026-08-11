@@ -1,4 +1,4 @@
-// gcal 反向同步：分類器矩陣（回聲/套用/退回四因/全天/過去堂/刪除取消/復原再刪/忽略）＋ token 泵。
+// gcal 反向同步：分類器矩陣（回聲/套用/退回四因/全天/過去堂連動/刪除取消/復原再刪/忽略）＋ token 泵。
 process.env.GCAL_MOCK = '1';
 import assert from 'node:assert/strict';
 const { db } = await import('../src/db/connection.js');
@@ -28,6 +28,7 @@ setSetting('gcal_calendar_id', CAL);
 const coachUid = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('GP教練','gp-c@x.com','coach')").run().lastInsertRowid);
 const coachId = Number(db.prepare("INSERT INTO coaches (user_id,display_name,is_active) VALUES (?,'GP教練',1)").run(coachUid).lastInsertRowid);
 const memberId = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('GP客人','gp-m@x.com','user')").run().lastInsertRowid);
+const gpAdminUid = Number(db.prepare("INSERT INTO users (name,email,role,is_admin) VALUES ('GP管理','gp-a@x.com','coach',1)").run().lastInsertRowid);
 const pkgId = Number(db.prepare("INSERT INTO customer_packages (member_id,session_type,total_sessions,remaining_sessions,amount) VALUES (?,'1on1',10,4,10000)").run(memberId).lastInsertRowid);
 
 const mkBooking = (startAt, { status = 'confirmed', pkg = null } = {}) => {
@@ -121,15 +122,55 @@ reset();
 await processEvent({ id: eventIdForBooking(bEcho), status: 'confirmed', start: { date: '2032-03-05' }, end: { date: '2032-03-06' } }, CAL);
 expect('全天事件 → 退回（格式不支援）', () => assert.equal(callsOf('updateEvent').length, 1));
 
-const bPast = mkBooking('2020-06-01T10:00:00');
+// ── 過去堂連動（2026-08-12 規格翻轉：刪除→取消、移動→改期，與系統內操作同語意）──
+const bPastMove = mkBooking('2020-06-01T10:00:00');
 reset();
-await processEvent(evOf(bPast, '2020-06-02T10:00:00+08:00', '2020-06-02T11:00:00+08:00'), CAL);
-await processEvent(evOf(bPast, '', '', 'cancelled'), CAL);
-expect('過去堂：移動與刪除一律忽略（預約不變、零通知、零 API）', () => {
-  const b = getB(bPast);
-  assert.equal(b.status, 'confirmed');
-  assert.equal(b.start_at, '2020-06-01T10:00:00');
-  assert.equal(__mockCalls.length, 0);
+await processEvent(evOf(bPastMove, '2020-06-02T10:00:00+08:00', '2020-06-02T11:00:00+08:00'), CAL);
+expect('過去堂移動→過去合法時段 → 套用改期（修正歷史）＋客人通知、不 updateEvent', () => {
+  const b = getB(bPastMove);
+  assert.equal(b.start_at, '2020-06-02T10:00:00');
+  assert.equal(b.end_at, '2020-06-02T11:00:00');
+  assert.equal(callsOf('updateEvent').length, 0);
+  assert.ok(notifCount('booking_rescheduled', memberId) >= 1);
+});
+
+reset();
+await processEvent(evOf(bPastMove, '2032-06-01T10:00:00+08:00', '2032-06-01T11:00:00+08:00'), CAL);
+expect('過去堂移動→未來合法時段 → 套用改期（延期補課）', () => {
+  assert.equal(getB(bPastMove).start_at, '2032-06-01T10:00:00');
+  assert.equal(callsOf('updateEvent').length, 0);
+});
+
+const bPastBad = mkBooking('2020-07-01T10:00:00');
+reset();
+await processEvent(evOf(bPastBad, '2020-07-01T10:30:00+08:00', '2020-07-01T11:30:00+08:00'), CAL);
+expect('過去堂移動→非整點 → 退回＋教練通知（DB 贏對過去堂也成立）', () => {
+  assert.equal(getB(bPastBad).start_at, '2020-07-01T10:00:00');
+  const u = callsOf('updateEvent');
+  assert.equal(u.length, 1);
+  assert.equal(u[0].args.event.start.dateTime, '2020-07-01T10:00:00+08:00');
+  const row = db.prepare("SELECT body FROM notifications WHERE type='gcal_move_rejected' AND user_id=? ORDER BY id DESC").get(coachUid);
+  assert.ok(row.body.includes('整點'));
+});
+
+reset();
+await processEvent({ id: eventIdForBooking(bPastBad), status: 'confirmed', start: { date: '2020-07-02' }, end: { date: '2020-07-03' } }, CAL);
+expect('過去堂事件被改全天 → 退回', () => assert.equal(callsOf('updateEvent').length, 1));
+
+const pkgPast = Number(db.prepare("INSERT INTO customer_packages (member_id,session_type,total_sessions,remaining_sessions,amount) VALUES (?,'1on1',10,4,10000)").run(memberId).lastInsertRowid);
+const bPastDel = mkBooking('2020-08-01T10:00:00', { pkg: pkgPast });
+const memberNotifsBeforePastDel = db.prepare('SELECT COUNT(*) c FROM notifications WHERE user_id=?').get(memberId).c;
+reset();
+await processEvent({ id: eventIdForBooking(bPastDel), status: 'cancelled' }, CAL);
+expect('過去堂刪除 → 取消＋回補＋清 event_id＋管理者通知、客人教練靜默', () => {
+  const b = getB(bPastDel);
+  assert.equal(b.status, 'cancelled');
+  assert.equal(b.cancel_reason, 'gcal_event_deleted');
+  assert.equal(b.gcal_event_id, null);
+  assert.equal(db.prepare('SELECT remaining_sessions r FROM customer_packages WHERE id=?').get(pkgPast).r, 5); // 4+1
+  assert.equal(notifCount('gcal_delete_cancelled', gpAdminUid), 1); // 本案例是本檔第一次刪除事件，精確=1
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM notifications WHERE user_id=?').get(memberId).c, memberNotifsBeforePastDel); // 客人零新通知
+  assert.equal(notifCount('gcal_delete_cancelled', coachUid), 0);   // 教練非管理者，不收
 });
 
 // 刪除未來堂（掛方案＋折扣 redemption）
