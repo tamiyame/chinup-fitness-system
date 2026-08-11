@@ -124,6 +124,7 @@ expect('全天事件 → 退回（格式不支援）', () => assert.equal(callsO
 
 // ── 過去堂連動（2026-08-12 規格翻轉：刪除→取消、移動→改期，與系統內操作同語意）──
 const bPastMove = mkBooking('2020-06-01T10:00:00');
+const rescheduledBeforePastMove = notifCount('booking_rescheduled', memberId);
 reset();
 await processEvent(evOf(bPastMove, '2020-06-02T10:00:00+08:00', '2020-06-02T11:00:00+08:00'), CAL);
 expect('過去堂移動→過去合法時段 → 套用改期（修正歷史）＋客人通知、不 updateEvent', () => {
@@ -131,7 +132,7 @@ expect('過去堂移動→過去合法時段 → 套用改期（修正歷史）�
   assert.equal(b.start_at, '2020-06-02T10:00:00');
   assert.equal(b.end_at, '2020-06-02T11:00:00');
   assert.equal(callsOf('updateEvent').length, 0);
-  assert.ok(notifCount('booking_rescheduled', memberId) >= 1);
+  assert.equal(notifCount('booking_rescheduled', memberId), rescheduledBeforePastMove + 1);
 });
 
 reset();
