@@ -41,7 +41,7 @@ export function buildEventBody(bookingId) {
     `方案：${label}`,
     amount != null ? `金額：$${amount}${b.discount_code ? `（折扣碼 ${b.discount_code}）` : ''}` : null,
     `預約編號：#${b.id}`,
-    '（chinup 系統自動建立。可直接拖動改時段：需整點起、60 分鐘、未來時段；刪除事件＝取消預約並回補堂數）',
+    '（chinup 系統自動建立。可直接拖動改時段：需整點起、60 分鐘；刪除事件＝取消預約並回補堂數）',
   ].filter(Boolean);
   return {
     id: eventIdForBooking(b.id),

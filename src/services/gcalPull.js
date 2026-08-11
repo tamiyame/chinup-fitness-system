@@ -1,6 +1,8 @@
 // Google 日曆反向同步（拉回）：syncToken 增量輪詢，把日曆上對系統事件的人為異動套回系統。
-// 政策：衝突 DB 贏（退回＋通知教練）；刪除＝自動取消未來堂（回補、通知管理者、不通知客人）；
-// 過去堂一律不理。規格：docs/superpowers/specs/2026-07-04-gcal-pull-sync-design.md
+// 政策：衝突 DB 贏（退回＋通知教練）；刪除＝自動取消（不分過去未來堂；回補、通知管理者、不通知客人）；
+// 移動＝驗證後套用改期（過去堂亦連動；僅未來堂禁止移入過去）。
+// 規格：docs/superpowers/specs/2026-07-04-gcal-pull-sync-design.md
+//       docs/superpowers/specs/2026-08-12-gcal-past-session-sync-design.md（過去堂連動翻轉）
 import { db, nowLocal } from '../db/connection.js';
 import { getSetting, setSetting, getGcalCalendarId } from './discountService.js';
 import { listEvents, updateEvent, deleteEvent } from './gcalClient.js';
@@ -66,7 +68,6 @@ export async function processEvent(ev, calId) {
 
   if (ev.status === 'cancelled') {                                 // 日曆上被刪
     if (b.status === 'cancelled') return;                          // 系統自刪的回聲
-    if (b.start_at <= now) return;                                 // 過去堂不理（保護薪資/歷史）
     const r = cancelBookingFromGcal(b.id);
     if (!r.ok) return;
     notifyAdmins({ type: 'gcal_delete_cancelled', vars: {
@@ -83,14 +84,12 @@ export async function processEvent(ev, calId) {
   const evStart = ev.start?.dateTime ? isoToTaipei(ev.start.dateTime) : null;
   const evEnd = ev.end?.dateTime ? isoToTaipei(ev.end.dateTime) : null;
   if (!evStart || !evEnd) {                                        // 被改成全天/格式壞 → 退回
-    if (b.start_at > now) await revertEvent(calId, b, '格式不支援（全天事件）');
+    await revertEvent(calId, b, '格式不支援（全天事件）');
     return;
   }
   if (evStart === b.start_at && evEnd === b.end_at) return;        // 與 DB 一致（回聲）
 
-  if (b.start_at <= now) return;                                   // 過去堂的移動：完全忽略
-
-  if (evStart <= now) return revertEvent(calId, b, '不可移到過去');
+  if (b.start_at > now && evStart <= now) return revertEvent(calId, b, '不可移到過去'); // 僅未來堂禁止移入過去
   const startMs = Date.parse(ev.start.dateTime);
   const endMs = Date.parse(ev.end.dateTime);
   if (startMs % 3600_000 !== 0 || endMs - startMs !== 3600_000) {
