@@ -626,9 +626,9 @@ export function rescheduleBooking({ bookingId, newStartAt, actorUserId, isAdmin 
     if (coach) notify({ userId: b.member_id, sessionId: null, type: 'booking_rescheduled',
       vars: { coach_display_name: coach.display_name, start_at: fmtDateForLine(newStartAt) } });
     if (coach && coach.user_id !== actorUserId) {  // 教練版：排除操作者本人（gcal 拖拉 actorUserId=null → 恆發）
-      const memberRow = db.prepare('SELECT name FROM users WHERE id = ?').get(b.member_id);
+      const memberName = getUserNameStmt.get(b.member_id)?.name || '';
       notify({ userId: coach.user_id, sessionId: null, type: 'booking_rescheduled_coach',
-        vars: { member_name: memberRow.name, old_start_at: fmtDateForLine(oldStartAt), start_at: fmtDateForLine(newStartAt) } });
+        vars: { member_name: memberName, old_start_at: fmtDateForLine(oldStartAt), start_at: fmtDateForLine(newStartAt) } });
     }
     return { ok: true, bookingId, startAt: newStartAt, endAt: newEndAt };
   });
