@@ -123,5 +123,29 @@ expect('cancelCoachGroup：群組已全取消 → 409 already_cancelled', () => 
   const bid=Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,status,cancelled_at,recurring_group_id) VALUES (?,?,?,?, '1on1','cancelled','2026-01-01T00:00:00', ?)").run(coach,m1,`${D}T06:00:00`,`${D}T07:00:00`,G3).lastInsertRowid);
   assert.throws(()=>cancelCoachGroup({ bookingId:bid, actorUserId:cu, isAdmin:false }),/already_cancelled/);
 });
+expect('reschedule 教練本人改期 → 客人通知+1、教練 booking_rescheduled_coach 零新增', () => {
+  const bid=mkBk(m1,'10');
+  const mB=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled'").get(m1).c;
+  const cB=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled_coach'").get(cu).c;
+  rescheduleBooking({ bookingId:bid, newStartAt:`${D}T19:00:00`, actorUserId:cu, isAdmin:false });
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled'").get(m1).c, mB+1);
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled_coach'").get(cu).c, cB);
+});
+expect('reschedule 管理者代改 → 教練+1、body 含會員名與新舊時段', () => {
+  const bid=mkBk(m1,'14');
+  const cB=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled_coach'").get(cu).c;
+  rescheduleBooking({ bookingId:bid, newStartAt:`${D}T21:00:00`, actorUserId:admin, isAdmin:true });
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled_coach'").get(cu).c, cB+1);
+  const row=db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='booking_rescheduled_coach' ORDER BY id DESC").get(cu);
+  assert.ok(row.body.includes('be客1'));
+  assert.ok(row.body.includes('14:00')); // 舊時段
+  assert.ok(row.body.includes('21:00')); // 新時段
+});
+expect('reschedule actorUserId=null（gcal 拖拉路徑同參數）→ 教練+1', () => {
+  const bid=mkBk(m2,'22');
+  const cB=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled_coach'").get(cu).c;
+  rescheduleBooking({ bookingId:bid, newStartAt:`${D}T05:00:00`, actorUserId:null, isAdmin:true });
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled_coach'").get(cu).c, cB+1);
+});
 clean();
 console.log('[booking-edit test] done');
