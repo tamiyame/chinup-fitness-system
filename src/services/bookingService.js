@@ -612,6 +612,7 @@ export function rescheduleBooking({ bookingId, newStartAt, actorUserId, isAdmin 
     const b = getBookingStmt.get(bookingId);
     if (!b) throw new ApiError(404, 'booking_not_found');
     if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
+    const oldStartAt = b.start_at; // 原時段（教練版通知用；勿在 UPDATE 後重讀）
     const coach = getCoachStmt.get(b.coach_id);
     if (!isAdmin && (!coach || coach.user_id !== actorUserId)) throw new ApiError(403, 'forbidden');
     const newEndAt = addMinutes(newStartAt, 60);
@@ -624,6 +625,11 @@ export function rescheduleBooking({ bookingId, newStartAt, actorUserId, isAdmin 
     }
     if (coach) notify({ userId: b.member_id, sessionId: null, type: 'booking_rescheduled',
       vars: { coach_display_name: coach.display_name, start_at: fmtDateForLine(newStartAt) } });
+    if (coach && coach.user_id !== actorUserId) {  // 教練版：排除操作者本人（gcal 拖拉 actorUserId=null → 恆發）
+      const memberName = getUserNameStmt.get(b.member_id)?.name || '';
+      notify({ userId: coach.user_id, sessionId: null, type: 'booking_rescheduled_coach',
+        vars: { member_name: memberName, old_start_at: fmtDateForLine(oldStartAt), start_at: fmtDateForLine(newStartAt) } });
+    }
     return { ok: true, bookingId, startAt: newStartAt, endAt: newEndAt };
   });
 }

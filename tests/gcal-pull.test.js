@@ -61,6 +61,7 @@ expect('回聲（事件==DB）→ no-op', () => {
   assert.equal(getB(bEcho).start_at, '2032-03-01T10:00:00');
 });
 
+const coachReschedBefore = notifCount('booking_rescheduled_coach', coachUid);
 reset();
 await processEvent(evOf(bEcho, '2032-03-02T14:00:00+08:00', '2032-03-02T15:00:00+08:00'), CAL);
 expect('合法移動 → 套用改時段＋客人收 booking_rescheduled、不 updateEvent', () => {
@@ -69,6 +70,7 @@ expect('合法移動 → 套用改時段＋客人收 booking_rescheduled、不 u
   assert.equal(b.end_at, '2032-03-02T15:00:00');
   assert.equal(callsOf('updateEvent').length, 0);
   assert.ok(notifCount('booking_rescheduled', memberId) >= 1);
+  assert.equal(notifCount('booking_rescheduled_coach', coachUid), coachReschedBefore + 1);
 });
 
 // reschedule 後回聲守門：同一顆事件（新時間）再餵一次 processEvent，確保下一次輪詢不會
@@ -125,6 +127,7 @@ expect('全天事件 → 退回（格式不支援）', () => assert.equal(callsO
 // ── 過去堂連動（2026-08-12 規格翻轉：刪除→取消、移動→改期，與系統內操作同語意）──
 const bPastMove = mkBooking('2020-06-01T10:00:00');
 const rescheduledBeforePastMove = notifCount('booking_rescheduled', memberId);
+const coachReschedBeforePastMove = notifCount('booking_rescheduled_coach', coachUid);
 reset();
 await processEvent(evOf(bPastMove, '2020-06-02T10:00:00+08:00', '2020-06-02T11:00:00+08:00'), CAL);
 expect('過去堂移動→過去合法時段 → 套用改期（修正歷史）＋客人通知、不 updateEvent', () => {
@@ -133,6 +136,7 @@ expect('過去堂移動→過去合法時段 → 套用改期（修正歷史）�
   assert.equal(b.end_at, '2020-06-02T11:00:00');
   assert.equal(callsOf('updateEvent').length, 0);
   assert.equal(notifCount('booking_rescheduled', memberId), rescheduledBeforePastMove + 1);
+  assert.equal(notifCount('booking_rescheduled_coach', coachUid), coachReschedBeforePastMove + 1);
 });
 
 reset();
