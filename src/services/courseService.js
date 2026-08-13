@@ -1,4 +1,4 @@
-import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
+import { db, tx, nowLocal } from '../db/connection.js';
 import { expandTemplate, RECURRENCES } from './schedule.js';
 import { notify, notifyCourseCoach } from './notifications.js';
 import { ApiError } from './registration.js';
