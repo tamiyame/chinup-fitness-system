@@ -745,15 +745,6 @@ document.getElementById('run-deadlines').addEventListener('click', async () => {
   } catch (e) { toast(`失敗：${e.message}`, 'error'); }
 });
 
-document.getElementById('run-reminders').addEventListener('click', async () => {
-  try {
-    const r = await api('/api/admin/jobs/send-reminders', { method: 'POST' });
-    document.getElementById('job-result').textContent = `寄出 ${r.sent.length} 組提醒`;
-    toast(`完成：${r.sent.length} 組`, 'success');
-    loadNotifs();
-  } catch (e) { toast(`失敗：${e.message}`, 'error'); }
-});
-
 let allUsers = [];
 let usersWired = false;
 
@@ -2659,7 +2650,7 @@ document.querySelectorAll('#admin-tabs .tab').forEach((t) => {
   });
 });
 
-// 系統操作「?」說明彈窗。兩顆按鈕平常也會自動跑(截止=每小時整點、提醒=每天 9 點)，按鈕只是立刻跑一次。
+// 系統操作「?」說明彈窗。按鈕平常也會自動跑(截止=每小時整點)，按鈕只是立刻跑一次。
 const HELP_CONTENT = {
   deadlines: {
     title: '立即處理截止',
@@ -2667,20 +2658,10 @@ const HELP_CONTENT = {
       <p class="subtle mb-3">給「報名截止」的<strong>團體課程場次</strong>做成班判定。系統<strong>每小時整點</strong>也會自動跑；此按鈕只是立刻跑一次。</p>
       <ol style="padding-left:18px;list-style:decimal;line-height:1.8;">
         <li>找出「報名中」且<strong>報名截止時間已到</strong>的場次。</li>
-        <li>已確認人數 <strong>≥ 最低成班人數</strong> → <strong>成班</strong>，通知學員與該堂教練「成班」。</li>
+        <li>已確認人數 <strong>≥ 最低成班人數</strong> → <strong>成班</strong>，通知該堂教練「成班」（學員報名成功時已通知，不再重複）。</li>
         <li>人數不足 → <strong>未開課（取消）</strong>，所有報名改未錄取、退回折扣碼使用次數，通知學員與教練「未開課」。</li>
       </ol>
       <p class="subtle" style="font-size:12px;margin-top:10px;">註：當天請假者不計入成班人數；僅適用團體課程，與 1對1 預約無關。</p>`,
-  },
-  reminders: {
-    title: '寄送上課提醒',
-    html: `
-      <p class="subtle mb-3">給即將上課的學員寄提醒。系統<strong>每天早上 9 點</strong>也會自動跑；此按鈕只是立刻跑一次。</p>
-      <ol style="padding-left:18px;list-style:decimal;line-height:1.8;">
-        <li>找出「<strong>已成班</strong>」且 <strong>24 小時內</strong>開課的場次。</li>
-        <li>對每位<strong>報名成功</strong>的學員寄「上課提醒」。</li>
-      </ol>
-      <p class="subtle" style="font-size:12px;margin-top:10px;">註：同一場次寄過就不再寄（不會重複/洗版）；有綁 LINE 走 LINE，否則記在系統。</p>`,
   },
 };
 function openHelp(key) {

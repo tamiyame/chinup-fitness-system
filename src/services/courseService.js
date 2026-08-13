@@ -1,4 +1,4 @@
-import { db, tx, nowLocal, offsetLocal } from '../db/connection.js';
+import { db, tx, nowLocal } from '../db/connection.js';
 import { expandTemplate, RECURRENCES } from './schedule.js';
 import { notify, notifyCourseCoach } from './notifications.js';
 import { ApiError } from './registration.js';
@@ -215,9 +215,6 @@ export function processDeadlines() {
       if (confirmed >= s.min_capacity) {
         db.prepare("UPDATE course_sessions SET status = 'confirmed' WHERE id = ?").run(s.id);
         const regs = db.prepare("SELECT user_id FROM registrations WHERE session_id = ? AND status = 'confirmed' AND on_leave = 0").all(s.id);
-        for (const r of regs) {
-          notify({ userId: r.user_id, sessionId: s.id, type: 'course_confirmed', vars: { course_name: s.course_name, start_at: s.start_at } });
-        }
         notifyCourseCoach({ coachId: s.coach_id, sessionId: s.id, type: 'course_confirmed_coach', vars: { course_name: s.course_name, start_at: s.start_at, count: regs.length } });
         results.push({ sessionId: s.id, action: 'confirmed', count: regs.length });
       } else {
@@ -237,33 +234,4 @@ export function processDeadlines() {
     });
   }
   return results;
-}
-
-// 上課前 24h 提醒
-export function processReminders() {
-  const now = nowLocal();
-  const in24h = offsetLocal(24 * 60 * 60 * 1000);
-
-  const sessions = db.prepare(`
-    SELECT s.*, t.name AS course_name
-    FROM course_sessions s
-    JOIN course_templates t ON t.id = s.template_id
-    WHERE s.status = 'confirmed'
-      AND s.start_at BETWEEN ? AND ?
-  `).all(now, in24h);
-
-  const sent = [];
-  for (const s of sessions) {
-    const already = db.prepare(
-      "SELECT COUNT(*) AS c FROM notifications WHERE session_id = ? AND type = 'reminder'"
-    ).get(s.id).c;
-    if (already > 0) continue;
-
-    const regs = db.prepare("SELECT user_id FROM registrations WHERE session_id = ? AND status = 'confirmed'").all(s.id);
-    for (const r of regs) {
-      notify({ userId: r.user_id, sessionId: s.id, type: 'reminder', vars: { course_name: s.course_name, start_at: s.start_at } });
-    }
-    sent.push({ sessionId: s.id, count: regs.length });
-  }
-  return sent;
 }
