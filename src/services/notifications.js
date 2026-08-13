@@ -36,10 +36,6 @@ const TEMPLATES = {
     subject: '課程取消 - {{course_name}}',
     body: '很抱歉，{{course_name}}（{{start_at}}）因未達開課人數，本次取消。',
   },
-  reminder: {
-    subject: '上課提醒 - {{course_name}}',
-    body: '提醒您，{{course_name}} 將於 {{start_at}} 開始，請準時抵達。',
-  },
   registration_cancelled: {
     subject: '報名已取消 - {{course_name}}',
     body: '您已成功取消 {{course_name}}（{{start_at}}）的報名。',

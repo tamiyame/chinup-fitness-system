@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { processDeadlines, processReminders } from './services/courseService.js';
+import { processDeadlines } from './services/courseService.js';
 import { processFailedNotifications } from './services/notifications.js';
 import { runBackup } from './services/backupService.js';
 import { expirePendingOrders } from './services/groupOrderService.js';
@@ -15,16 +15,6 @@ export function startScheduler() {
       if (r.length) console.log('[scheduler] deadlines processed:', r);
     } catch (e) {
       console.error('[scheduler] deadline error:', e);
-    }
-  });
-
-  // 每天早上 9 點寄送上課提醒
-  cron.schedule('0 9 * * *', () => {
-    try {
-      const r = processReminders();
-      if (r.length) console.log('[scheduler] reminders sent:', r);
-    } catch (e) {
-      console.error('[scheduler] reminder error:', e);
     }
   });
 

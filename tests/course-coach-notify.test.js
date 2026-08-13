@@ -113,6 +113,10 @@ processDeadlines();
 expect('成班→教練收到 course_confirmed_coach', () => assert.equal(coachNotif('course_confirmed_coach'), 1));
 expect('未開課→教練收到 course_cancelled_coach', () => assert.equal(coachNotif('course_cancelled_coach'), 1));
 
+const memberSessNotif = (uid, type, sid) => db.prepare('SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type=? AND session_id=?').get(uid, type, sid).c;
+expect('成班→會員不再收 course_confirmed（報名成功那次就好）', () => assert.equal(memberSessNotif(m1, 'course_confirmed', sC.id), 0));
+expect('未開課→會員仍收 course_cancelled（回歸守門）', () => assert.equal(memberSessNotif(m2, 'course_cancelled', sX.id), 1));
+
 // 守門：場次未指定教練時，事件不產生任何教練通知
 const rtNo = createTemplate({ name: 'CCN 無教練課', min_capacity: 1, max_capacity: 3, day_of_week: 6, start_time: '19:00', recurrence: 'weekly', cycle_start_date: dstr(2), cycle_end_date: dstr(40) });
 const sNo = db.prepare('SELECT * FROM course_sessions WHERE template_id=? ORDER BY start_at DESC LIMIT 1').get(rtNo.templateId);

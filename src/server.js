@@ -5,7 +5,7 @@ import { db, nowLocal, tx } from './db/connection.js';
 import {
   createTemplate, editTemplate, listTemplates, getTemplate,
   listOpenSessions, listRegistrationsBySession, setSessionOpen,
-  processDeadlines, processReminders,
+  processDeadlines,
 } from './services/courseService.js';
 import { ApiError } from './services/registration.js';
 import {
@@ -1279,10 +1279,6 @@ app.post('/api/admin/bookings/group/:groupId/refund', requireAdmin, asyncHandler
 // 手動觸發排程（用於測試 / 管理者按鈕）
 app.post('/api/admin/jobs/process-deadlines', requireAdmin, asyncHandler((req, res) => {
   res.json({ processed: processDeadlines() });
-}));
-
-app.post('/api/admin/jobs/send-reminders', requireAdmin, asyncHandler((req, res) => {
-  res.json({ sent: processReminders() });
 }));
 
 app.post('/api/admin/jobs/expire-orders', requireAdmin, asyncHandler((req, res) => {
