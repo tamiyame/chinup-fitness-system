@@ -2831,31 +2831,34 @@ function openQuoteDrawer(mode, quote) {
   document.getElementById('qd-add-item').addEventListener('click', () => addRow(null));
 
   document.getElementById('qd-save').addEventListener('click', async () => {
-    const body = {
-      customer_title: document.getElementById('qd-title').value.trim(),
-      customer_tax_id: document.getElementById('qd-taxid').value.trim(),
-      contact_name: document.getElementById('qd-contact').value.trim(),
-      contact_phone: document.getElementById('qd-phone').value.trim(),
-      quote_date: document.getElementById('qd-date').value,
-      valid_until: document.getElementById('qd-valid').value,
-      payment_terms: document.getElementById('qd-payment').value.trim(),
-      delivery_terms: document.getElementById('qd-delivery').value.trim(),
-      notes: document.getElementById('qd-notes').value.trim(),
-      items: [...itemsBox.querySelectorAll('.qd-item-row')].map((row) => ({
-        name: row.querySelector('.qd-i-name').value.trim(),
-        spec: row.querySelector('.qd-i-spec').value.trim(),
-        qty: Number(row.querySelector('.qd-i-qty').value),
-        unit: row.querySelector('.qd-i-unit').value.trim(),
-        unit_price: Number(row.querySelector('.qd-i-price').value),
-      })),
-    };
+    const btn = document.getElementById('qd-save');
+    btn.disabled = true;
     try {
+      const body = {
+        customer_title: document.getElementById('qd-title').value.trim(),
+        customer_tax_id: document.getElementById('qd-taxid').value.trim(),
+        contact_name: document.getElementById('qd-contact').value.trim(),
+        contact_phone: document.getElementById('qd-phone').value.trim(),
+        quote_date: document.getElementById('qd-date').value,
+        valid_until: document.getElementById('qd-valid').value,
+        payment_terms: document.getElementById('qd-payment').value.trim(),
+        delivery_terms: document.getElementById('qd-delivery').value.trim(),
+        notes: document.getElementById('qd-notes').value.trim(),
+        items: [...itemsBox.querySelectorAll('.qd-item-row')].map((row) => ({
+          name: row.querySelector('.qd-i-name').value.trim(),
+          spec: row.querySelector('.qd-i-spec').value.trim(),
+          qty: Number(row.querySelector('.qd-i-qty').value),
+          unit: row.querySelector('.qd-i-unit').value.trim(),
+          unit_price: Number(row.querySelector('.qd-i-price').value),
+        })),
+      };
       if (isEdit) await api(`/api/admin/quotes/${q.id}`, { method: 'PUT', body });
       else await api('/api/admin/quotes', { method: 'POST', body });
       toast(isEdit ? '報價單已更新' : '報價單已建立', 'success');
       document.getElementById('drawer').style.display = 'none';
       loadQuotes();
     } catch (e) { toast(`儲存失敗：${e.message}`, 'error'); }
+    finally { btn.disabled = false; }
   });
 
   document.getElementById('drawer-sub').style.display = 'none';

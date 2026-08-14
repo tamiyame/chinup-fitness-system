@@ -10,15 +10,23 @@ console.log('[quote-service test] start');
 
 // ── 清理本測試資料（customer_title 前綴鎖範圍；quote_items 由 FK CASCADE 帶走）──
 db.exec("DELETE FROM quotes WHERE customer_title LIKE 'QT測試%'");
+db.exec("DELETE FROM quotes WHERE customer_title LIKE 'QT-API測試%'");   // quote-api 測試殘留單（每跑留 1 張作廢單），同顆 DB 順手清
 db.exec("DELETE FROM quotes WHERE quote_no LIKE 'CU2031-%'");   // 跨年重計測試用年份
+
+// 動態日期：base() 用「今天／今天+30 天」，避免固定日期隨時間推移使全鏈斷言變假。
+const _pad = (n) => String(n).padStart(2, '0');
+const _now = new Date();
+const TODAY = `${_now.getFullYear()}-${_pad(_now.getMonth() + 1)}-${_pad(_now.getDate())}`;
+const _p30 = new Date(_now.getTime() + 30 * 86400000);
+const PLUS30 = `${_p30.getFullYear()}-${_pad(_p30.getMonth() + 1)}-${_pad(_p30.getDate())}`;
 
 const base = () => ({
   customer_title: 'QT測試股份有限公司',
   customer_tax_id: '12345678',
   contact_name: '王小明',
   contact_phone: '0912345678',
-  quote_date: '2026-08-14',
-  valid_until: '2026-09-13',
+  quote_date: TODAY,
+  valid_until: PLUS30,
   payment_terms: '簽約後 7 日內電匯 50%，課程結束付清尾款',
   delivery_terms: '雙方確認後 14 日內開課',
   notes: '含教材與場地',
@@ -55,7 +63,7 @@ expect('日期格式錯 → invalid_quote_date', () => {
   assert.throws(() => validateQuoteInput({ ...base(), quote_date: '2026/08/14' }), /invalid_quote_date/);
 });
 expect('有效期限早於報價日 → valid_until_before_quote_date', () => {
-  assert.throws(() => validateQuoteInput({ ...base(), valid_until: '2026-08-13' }), /valid_until_before_quote_date/);
+  assert.throws(() => validateQuoteInput({ ...base(), valid_until: '2000-01-01' }), /valid_until_before_quote_date/);
 });
 expect('金額計算：10×2000＋1.5×3000 → subtotal 24500 / tax 1225 / total 25725', () => {
   const v = validateQuoteInput(base());
@@ -168,7 +176,7 @@ expect('getQuoteByToken：查得、含 items 與 company、不洩漏內部欄位
   assert.ok(!('deal_status' in pub));
   assert.ok(!('id' in pub.items[0]));
   assert.equal(pub.voided, false);
-  assert.equal(pub.expired, false);   // valid_until 2026-09-13 於本測試撰寫時未過；若真實日期已超過請改 base() 的日期為未來年份
+  assert.equal(pub.expired, false);   // valid_until 為 TODAY+30（動態），恆未過期
 });
 expect('假 token → not_found', () => {
   assert.throws(() => getQuoteByToken('deadbeef'.repeat(4)), /not_found/);
