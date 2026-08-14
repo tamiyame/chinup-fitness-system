@@ -485,6 +485,7 @@ details.session-row summary .font-semibold{
     <button data-atab="notifs" class="tab" style="white-space:nowrap;">通知</button>
     <button data-atab="line" class="tab" style="white-space:nowrap;">LINE 管理</button>
     <button data-atab="payroll" class="tab" style="white-space:nowrap;">薪資計算</button>
+    <button data-atab="quotes" class="tab" style="white-space:nowrap;">報價單</button>
   </div>
 
   <div id="apanel-courses" class="tab-panel">
@@ -968,6 +969,18 @@ details.session-row summary .font-semibold{
     </div>
   </section>
 
+  </div>
+
+  <div id="apanel-quotes" class="tab-panel hidden">
+    <section class="mb-8">
+      <div class="a-sec-head">
+        <h2 class="section-title">報價單</h2>
+        <input id="quote-search" type="search" class="form-input" style="max-width:220px;" placeholder="搜尋單號／客戶">
+        <div style="flex:1;"></div>
+        <button id="quote-new" class="btn btn-primary btn-sm">＋ 新增報價單</button>
+      </div>
+      <div id="quotes-list"></div>
+    </section>
   </div>
 
 </main>
