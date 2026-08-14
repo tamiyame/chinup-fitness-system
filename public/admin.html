@@ -674,6 +674,22 @@ details.session-row summary .font-semibold{
       <button id="save-bank-line" class="btn btn-primary btn-sm">儲存</button>
     </div>
 
+    <!-- 報價單公司資訊（公開報價頁 /q/:token 抬頭顯示；未填的欄位不顯示）-->
+    <div class="card mb-4">
+      <h3 class="card-title mb-3">報價單公司資訊</h3>
+      <label class="form-label" for="company-name">公司名稱（報價單抬頭）</label>
+      <input id="company-name" type="text" class="form-input mb-3" style="width:100%;" placeholder="CHINUP Performance">
+      <label class="form-label" for="company-tax-id">統一編號</label>
+      <input id="company-tax-id" type="text" class="form-input mb-3" style="width:100%;" placeholder="12345678">
+      <label class="form-label" for="company-phone">電話</label>
+      <input id="company-phone" type="text" class="form-input mb-3" style="width:100%;" placeholder="05-1234567">
+      <label class="form-label" for="company-email">Email</label>
+      <input id="company-email" type="text" class="form-input mb-3" style="width:100%;" placeholder="hello@chinup.tw">
+      <label class="form-label" for="company-address">地址</label>
+      <input id="company-address" type="text" class="form-input mb-3" style="width:100%;" placeholder="嘉義市○○路○○號">
+      <button id="save-company-info" class="btn btn-primary btn-sm">儲存</button>
+    </div>
+
     <!-- Google 日曆整合 + 時段容量 -->
     <div class="card mb-4">
       <h3 class="card-title mb-3">Google 日曆與時段容量</h3>

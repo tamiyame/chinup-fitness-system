@@ -1795,6 +1795,10 @@ async function loadOneOnOnePrice() {
     if (capInput) capInput.value = r.booking_hourly_capacity ?? 3;
     const expiryInput = document.getElementById('group-order-expiry-hours');
     if (expiryInput) expiryInput.value = r.group_order_expiry_hours ?? 72;
+    for (const k of ['company_name', 'company_tax_id', 'company_phone', 'company_email', 'company_address']) {
+      const el = document.getElementById(k.replaceAll('_', '-'));
+      if (el) el.value = r[k] ?? '';
+    }
   } catch (e) {
     toast(`載入營運設定失敗：${escapeHtml(e.message)}`, 'error');
   }
@@ -1853,6 +1857,15 @@ document.getElementById('save-bank-line')?.addEventListener('click', async () =>
   } catch (e) {
     toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');
   }
+});
+
+document.getElementById('save-company-info')?.addEventListener('click', async () => {
+  const body = {};
+  for (const k of ['company_name', 'company_tax_id', 'company_phone', 'company_email', 'company_address']) {
+    body[k] = (document.getElementById(k.replaceAll('_', '-'))?.value || '').trim();
+  }
+  try { await api('/api/admin/settings', { method: 'PATCH', body }); toast('公司資訊已儲存', 'success'); }
+  catch (e) { toast(`儲存失敗：${e.message}`, 'error'); }
 });
 
 // --- Settings: Google 日曆 ID + 每小時容量 + Gmail 寄信授權 ---
