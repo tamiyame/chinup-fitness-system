@@ -395,6 +395,7 @@ async function openDrawer(templateId) {
   drawerTemplateId = templateId; drawerSessions.clear();
   const d = document.getElementById('drawer');
   const c = document.getElementById('drawer-content');
+  document.getElementById('drawer-sub').style.display = '';
   d.style.display = 'block';
   c.innerHTML = '<div class="subtle">載入中…</div>';
   try {
@@ -2690,8 +2691,8 @@ function renderQuotes() {
           <div class="meta">
             <span class="meta-item">${escapeHtml(q.customer_title)}</span>
             <span class="meta-item">${ICO.cash} NT$ ${Number(q.total).toLocaleString()}</span>
-            <span class="meta-item">${ICO.calendar} ${q.quote_date}</span>
-            <span class="meta-item">效期至 ${q.valid_until}</span>
+            <span class="meta-item">${ICO.calendar} ${escapeHtml(q.quote_date)}</span>
+            <span class="meta-item">效期至 ${escapeHtml(q.valid_until)}</span>
           </div>
         </div>
       </div>
@@ -2768,8 +2769,8 @@ function openQuoteDrawer(mode, quote) {
       <div id="qd-items"></div>
       <button type="button" id="qd-add-item" class="btn btn-ghost btn-sm">＋ 加一列</button></div>
     <div class="flex gap-3 flex-wrap mb-3">
-      <div><label class="form-label">報價日期</label><input id="qd-date" type="date" class="form-input" value="${qd}"></div>
-      <div><label class="form-label">有效期限</label><input id="qd-valid" type="date" class="form-input" value="${vu}"></div>
+      <div><label class="form-label">報價日期</label><input id="qd-date" type="date" class="form-input" value="${escapeHtml(qd)}"></div>
+      <div><label class="form-label">有效期限</label><input id="qd-valid" type="date" class="form-input" value="${escapeHtml(vu)}"></div>
     </div>
     <div class="mb-3"><label class="form-label">付款條件</label>
       <input id="qd-payment" class="form-input" style="width:100%;" placeholder="例：簽約後 7 日內電匯 50%，課程結束付清尾款" value="${q ? escapeHtml(q.payment_terms || '') : ''}"></div>
@@ -2803,9 +2804,9 @@ function openQuoteDrawer(mode, quote) {
     row.innerHTML = `
       <input class="form-input qd-i-name" placeholder="品名 *" style="flex:2;min-width:130px;" value="${it ? escapeHtml(it.name) : ''}">
       <input class="form-input qd-i-spec" placeholder="規格" style="flex:2;min-width:110px;" value="${it ? escapeHtml(it.spec || '') : ''}">
-      <input class="form-input qd-i-qty" type="number" min="0" step="0.5" placeholder="數量" style="width:80px;" value="${it ? it.qty : 1}">
+      <input class="form-input qd-i-qty" type="number" min="0" step="0.5" placeholder="數量" style="width:80px;" value="${it ? escapeHtml(String(it.qty)) : 1}">
       <input class="form-input qd-i-unit" placeholder="單位" style="width:70px;" value="${it ? escapeHtml(it.unit || '') : ''}">
-      <input class="form-input qd-i-price" type="number" min="0" step="1" placeholder="單價(未稅)" style="width:110px;" value="${it != null && it.unit_price != null ? it.unit_price : ''}">
+      <input class="form-input qd-i-price" type="number" min="0" step="1" placeholder="單價(未稅)" style="width:110px;" value="${it != null && it.unit_price != null ? escapeHtml(String(it.unit_price)) : ''}">
       <span class="qd-i-amount subtle" style="align-self:center;min-width:90px;text-align:right;"></span>
       <button type="button" class="btn btn-ghost btn-sm qd-i-del">✕</button>`;
     row.querySelector('.qd-i-del').addEventListener('click', () => { row.remove(); recalc(); });
@@ -2844,6 +2845,7 @@ function openQuoteDrawer(mode, quote) {
     } catch (e) { toast(`儲存失敗：${e.message}`, 'error'); }
   });
 
+  document.getElementById('drawer-sub').style.display = 'none';
   document.getElementById('drawer').style.display = 'block';
 }
 
