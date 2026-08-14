@@ -106,4 +106,14 @@ const sp = await req('PATCH', '/api/admin/settings', { body: { company_tax_id: '
 expect('PATCH company_tax_id 寫入', () => { assert.equal(sp.status, 200); assert.equal(sp.data.company_tax_id, '12345678'); });
 await req('PATCH', '/api/admin/settings', { body: { company_tax_id: origTax }, token });  // 還原
 
+// ── /q/:token 頁面路由（sendFile quote.html；token 對錯都出同一頁，由前端 fetch 判 404）──
+{
+  const res = await fetch(`${BASE}/q/${qtoken}`, { headers: { 'X-Forwarded-For': '10.99.7.1' } });
+  const html = await res.text();
+  expect('GET /q/:token → 200 且為報價單頁', () => {
+    assert.equal(res.status, 200);
+    assert.ok(html.includes('QUOTATION'));
+  });
+}
+
 console.log('[quote-api test] done');

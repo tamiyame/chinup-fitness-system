@@ -138,6 +138,9 @@ app.get('/checkin', (req, res) =>
 app.get('/line-bind', (req, res) =>
   res.sendFile(resolve(__dirname, '../public/line-bind.html'))
 );
+app.get('/q/:token', (req, res) =>
+  res.sendFile(resolve(__dirname, '../public/quote.html'))
+);
 
 app.use(express.static(resolve(__dirname, '../public')));
 app.use('/avatars', express.static(resolve(__dirname, '../data/avatars'), { maxAge: '7d' }));
