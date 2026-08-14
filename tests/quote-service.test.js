@@ -1,8 +1,9 @@
 // 報價單 service：驗證/金額/單號/建立/查詢（後半：編輯/作廢/成交/公開過濾在同檔尾端）。
 import assert from 'node:assert/strict';
 const { db } = await import('../src/db/connection.js');
-const { validateQuoteInput, nextQuoteNoFor, createQuote, listQuotes, getQuoteAdmin } =
-  await import('../src/services/quoteService.js');
+const { validateQuoteInput, nextQuoteNoFor, createQuote, listQuotes, getQuoteAdmin,
+  updateQuote, voidQuote, setDealStatus, getQuoteByToken } = await import('../src/services/quoteService.js');
+const { getSetting, setSetting } = await import('../src/services/discountService.js');
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 console.log('[quote-service test] start');
@@ -117,6 +118,74 @@ expect('getQuoteAdmin：回 items；查無 → not_found', () => {
   assert.equal(g.items.length, 2);
   assert.equal(g.items[0].name, '企業體能課程');
   assert.throws(() => getQuoteAdmin(99999999), /not_found/);
+});
+
+// ── updateQuote ──
+const beforeEdit = getQuoteAdmin(q1.id);
+const edited = (() => {
+  const b = base();
+  b.items = [{ name: '改版課程', spec: '20 堂', qty: 20, unit: '堂', unit_price: 1800 }];
+  return updateQuote(q1.id, b);
+})();
+expect('updateQuote：金額重算、items 整組替換、單號/token 不變', () => {
+  assert.equal(edited.subtotal, 36000);
+  assert.equal(edited.tax, 1800);
+  assert.equal(edited.total, 37800);
+  assert.equal(edited.items.length, 1);
+  assert.equal(edited.items[0].name, '改版課程');
+  assert.equal(edited.quote_no, beforeEdit.quote_no);
+  assert.equal(edited.token, beforeEdit.token);
+});
+expect('updateQuote 查無 → not_found', () => {
+  assert.throws(() => updateQuote(99999999, base()), /not_found/);
+});
+
+// ── voidQuote ──
+const voided = voidQuote(q2.id);
+expect('voidQuote：寫 voided_at', () => { assert.ok(voided.voided_at); });
+expect('已作廢再作廢 → already_void', () => { assert.throws(() => voidQuote(q2.id), /already_void/); });
+expect('已作廢不可編輯 → quote_voided', () => { assert.throws(() => updateQuote(q2.id, base()), /quote_voided/); });
+expect('已作廢不可標成交 → quote_voided', () => { assert.throws(() => setDealStatus(q2.id, 'won'), /quote_voided/); });
+
+// ── setDealStatus ──
+expect('setDealStatus：won / lost / null 三態', () => {
+  assert.equal(setDealStatus(q1.id, 'won').deal_status, 'won');
+  assert.equal(setDealStatus(q1.id, 'lost').deal_status, 'lost');
+  assert.equal(setDealStatus(q1.id, null).deal_status, null);
+});
+expect('setDealStatus 非法值 → invalid_deal_status', () => {
+  assert.throws(() => setDealStatus(q1.id, 'maybe'), /invalid_deal_status/);
+});
+
+// ── getQuoteByToken（公開過濾）──
+expect('getQuoteByToken：查得、含 items 與 company、不洩漏內部欄位', () => {
+  const pub = getQuoteByToken(edited.token);
+  assert.equal(pub.quote_no, edited.quote_no);
+  assert.equal(pub.items.length, 1);
+  assert.ok(pub.company && typeof pub.company.name === 'string');
+  assert.ok(!('id' in pub));
+  assert.ok(!('token' in pub));
+  assert.ok(!('deal_status' in pub));
+  assert.ok(!('id' in pub.items[0]));
+  assert.equal(pub.voided, false);
+  assert.equal(pub.expired, false);   // valid_until 2026-09-13 於本測試撰寫時未過；若真實日期已超過請改 base() 的日期為未來年份
+});
+expect('假 token → not_found', () => {
+  assert.throws(() => getQuoteByToken('deadbeef'.repeat(4)), /not_found/);
+});
+expect('過期單：expired=true；作廢單：voided=true 且 expired=false', () => {
+  const past = createQuote({ ...base(), quote_date: '2020-01-01', valid_until: '2020-01-02' });
+  assert.equal(getQuoteByToken(past.token).expired, true);
+  voidQuote(past.id);
+  const pub = getQuoteByToken(past.token);
+  assert.equal(pub.voided, true);
+  assert.equal(pub.expired, false);
+});
+expect('company 取 app_settings 即時值', () => {
+  const orig = getSetting('company_name');
+  setSetting('company_name', 'QT測試公司抬頭');
+  assert.equal(getQuoteByToken(edited.token).company.name, 'QT測試公司抬頭');
+  setSetting('company_name', orig ?? '');
 });
 
 console.log('[quote-service test] done');

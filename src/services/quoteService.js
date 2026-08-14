@@ -81,3 +81,65 @@ export function getQuoteAdmin(id) {
   if (!q) throw new ApiError(404, 'not_found');
   return q;
 }
+
+export function updateQuote(id, body) {
+  const q = getQuoteStmt.get(id);
+  if (!q) throw new ApiError(404, 'not_found');
+  if (q.voided_at) throw new ApiError(409, 'quote_voided');
+  const v = validateQuoteInput(body);
+  return tx(() => {
+    db.prepare(`UPDATE quotes SET customer_title=?, customer_tax_id=?, contact_name=?, contact_phone=?,
+      quote_date=?, valid_until=?, payment_terms=?, delivery_terms=?, notes=?,
+      subtotal=?, tax=?, total=?, updated_at=? WHERE id=?`)
+      .run(v.customer_title, v.customer_tax_id, v.contact_name, v.contact_phone,
+        v.quote_date, v.valid_until, v.payment_terms, v.delivery_terms, v.notes,
+        v.subtotal, v.tax, v.total, nowLocal(), id);
+    db.prepare('DELETE FROM quote_items WHERE quote_id = ?').run(id);
+    v.items.forEach((it, i) => insertItemStmt.run(id, i, it.name, it.spec, it.qty, it.unit, it.unit_price, it.amount));
+    return withItems(getQuoteStmt.get(id));
+  });
+}
+
+export function voidQuote(id) {
+  const q = getQuoteStmt.get(id);
+  if (!q) throw new ApiError(404, 'not_found');
+  if (q.voided_at) throw new ApiError(409, 'already_void');
+  db.prepare('UPDATE quotes SET voided_at = ?, updated_at = ? WHERE id = ?').run(nowLocal(), nowLocal(), id);
+  return withItems(getQuoteStmt.get(id));
+}
+
+export function setDealStatus(id, status) {
+  if (status !== null && status !== 'won' && status !== 'lost') throw new ApiError(400, 'invalid_deal_status');
+  const q = getQuoteStmt.get(id);
+  if (!q) throw new ApiError(404, 'not_found');
+  if (q.voided_at) throw new ApiError(409, 'quote_voided');
+  db.prepare('UPDATE quotes SET deal_status = ?, updated_at = ? WHERE id = ?').run(status, nowLocal(), id);
+  return withItems(getQuoteStmt.get(id));
+}
+
+/** 公開端：白名單欄位（不洩漏 id/token/deal_status），附 app_settings 即時公司資訊與
+ *  伺服器時間判定的過期旗標。作廢單 expired 恆 false（作廢優先）。 */
+export function getQuoteByToken(token) {
+  const q = db.prepare('SELECT * FROM quotes WHERE token = ?').get(String(token || ''));
+  if (!q) throw new ApiError(404, 'not_found');
+  const items = getItemsStmt.all(q.id).map(({ name, spec, qty, unit, unit_price, amount }) =>
+    ({ name, spec, qty, unit, unit_price, amount }));
+  const today = nowLocal().slice(0, 10);
+  return {
+    quote_no: q.quote_no,
+    customer_title: q.customer_title, customer_tax_id: q.customer_tax_id,
+    contact_name: q.contact_name, contact_phone: q.contact_phone,
+    quote_date: q.quote_date, valid_until: q.valid_until,
+    payment_terms: q.payment_terms, delivery_terms: q.delivery_terms, notes: q.notes,
+    subtotal: q.subtotal, tax: q.tax, total: q.total,
+    voided: !!q.voided_at, expired: !q.voided_at && q.valid_until < today,
+    items,
+    company: {
+      name: getSetting('company_name') || '',
+      tax_id: getSetting('company_tax_id') || '',
+      phone: getSetting('company_phone') || '',
+      email: getSetting('company_email') || '',
+      address: getSetting('company_address') || '',
+    },
+  };
+}
