@@ -100,6 +100,8 @@ import { computePayroll, periodRange, defaultPeriod } from './services/payrollSe
 import { checkIn as shiftCheckIn, todayStatus as shiftTodayStatus, coachPeriodHours,
   listShifts, createShift, updateShift, deleteShift, manualAttendance, voidAttendance,
   listSlots, createSlot, updateSlot, deleteSlot, assignCoach, unassignCoach } from './services/shiftService.js';
+import { createQuote, listQuotes, getQuoteAdmin, updateQuote, voidQuote,
+  setDealStatus, getQuoteByToken } from './services/quoteService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -135,6 +137,9 @@ app.get('/checkin', (req, res) =>
 );
 app.get('/line-bind', (req, res) =>
   res.sendFile(resolve(__dirname, '../public/line-bind.html'))
+);
+app.get('/q/:token', (req, res) =>
+  res.sendFile(resolve(__dirname, '../public/quote.html'))
 );
 
 app.use(express.static(resolve(__dirname, '../public')));
@@ -1403,6 +1408,31 @@ app.delete('/api/admin/slots/:id/coaches/:coachId', requireAdmin, asyncHandler((
   res.json({ ok: true });
 }));
 
+// --- Admin: Quotes（報價單）---
+app.get('/api/admin/quotes', requireAdmin, asyncHandler((req, res) => {
+  res.json(listQuotes());
+}));
+app.post('/api/admin/quotes', requireAdmin, asyncHandler((req, res) => {
+  res.status(201).json(createQuote(req.body || {}));
+}));
+app.get('/api/admin/quotes/:id', requireAdmin, asyncHandler((req, res) => {
+  res.json(getQuoteAdmin(Number(req.params.id)));
+}));
+app.put('/api/admin/quotes/:id', requireAdmin, asyncHandler((req, res) => {
+  res.json(updateQuote(Number(req.params.id), req.body || {}));
+}));
+app.post('/api/admin/quotes/:id/void', requireAdmin, asyncHandler((req, res) => {
+  res.json(voidQuote(Number(req.params.id)));
+}));
+app.post('/api/admin/quotes/:id/deal', requireAdmin, asyncHandler((req, res) => {
+  res.json(setDealStatus(Number(req.params.id), req.body?.deal_status ?? null));
+}));
+
+// --- Public: 報價單（只認 32-hex 亂數 token，不可列舉）---
+app.get('/api/public/quotes/:token', asyncHandler((req, res) => {
+  res.json(getQuoteByToken(req.params.token));
+}));
+
 // --- Admin: Settings ---
 function settingsPayload() {
   return {
@@ -1422,6 +1452,11 @@ function settingsPayload() {
     checkin_lng: getSetting('checkin_lng') || '',
     checkin_radius_m: Number(getSetting('checkin_radius_m') || '150'),
     checkin_window_before_min: Number(getSetting('checkin_window_before_min') || '30'),
+    company_name: getSetting('company_name') || '',
+    company_tax_id: getSetting('company_tax_id') || '',
+    company_phone: getSetting('company_phone') || '',
+    company_email: getSetting('company_email') || '',
+    company_address: getSetting('company_address') || '',
   };
 }
 app.get('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
@@ -1499,6 +1534,10 @@ app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
       if (!Number.isInteger(n) || n < min || n > max) return res.status(400).json({ error: `invalid_${key}` });
       writes.push([key, String(n)]);
     }
+  }
+  // 報價單公司資訊：自由文字、允許空字串（未設定時公開頁該欄不顯示）
+  for (const key of ['company_name', 'company_tax_id', 'company_phone', 'company_email', 'company_address']) {
+    if (b[key] !== undefined) writes.push([key, String(b[key]).trim()]);
   }
   tx(() => { for (const [k, v] of writes) setSetting(k, v); });
   res.json(settingsPayload());

@@ -395,6 +395,7 @@ async function openDrawer(templateId) {
   drawerTemplateId = templateId; drawerSessions.clear();
   const d = document.getElementById('drawer');
   const c = document.getElementById('drawer-content');
+  document.getElementById('drawer-sub').style.display = '';
   d.style.display = 'block';
   c.innerHTML = '<div class="subtle">載入中…</div>';
   try {
@@ -1794,6 +1795,10 @@ async function loadOneOnOnePrice() {
     if (capInput) capInput.value = r.booking_hourly_capacity ?? 3;
     const expiryInput = document.getElementById('group-order-expiry-hours');
     if (expiryInput) expiryInput.value = r.group_order_expiry_hours ?? 72;
+    for (const k of ['company_name', 'company_tax_id', 'company_phone', 'company_email', 'company_address']) {
+      const el = document.getElementById(k.replaceAll('_', '-'));
+      if (el) el.value = r[k] ?? '';
+    }
   } catch (e) {
     toast(`載入營運設定失敗：${escapeHtml(e.message)}`, 'error');
   }
@@ -1852,6 +1857,15 @@ document.getElementById('save-bank-line')?.addEventListener('click', async () =>
   } catch (e) {
     toast(`儲存失敗：${escapeHtml(e.message)}`, 'error');
   }
+});
+
+document.getElementById('save-company-info')?.addEventListener('click', async () => {
+  const body = {};
+  for (const k of ['company_name', 'company_tax_id', 'company_phone', 'company_email', 'company_address']) {
+    body[k] = (document.getElementById(k.replaceAll('_', '-'))?.value || '').trim();
+  }
+  try { await api('/api/admin/settings', { method: 'PATCH', body }); toast('公司資訊已儲存', 'success'); }
+  catch (e) { toast(`儲存失敗：${e.message}`, 'error'); }
 });
 
 // --- Settings: Google 日曆 ID + 每小時容量 + Gmail 寄信授權 ---
@@ -2639,6 +2653,220 @@ loadConfirmedPayments();
 loadDiscountCodes();
 loadOneOnOnePrice();
 loadPayroll();
+loadQuotes();
+
+// ===== 報價單 =====
+let quotesCache = [];
+const QUOTE_DEAL_LABEL = { won: '已成交', lost: '未成交' };
+
+function localTodayStr() {
+  const d = new Date(); const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function quoteStatus(q) {
+  if (q.voided_at) return { label: '已作廢', badge: 'cancelled' };
+  if (q.valid_until < localTodayStr()) return { label: '已過期', badge: 'completed' };
+  return { label: '有效', badge: 'confirmed' };
+}
+
+async function loadQuotes() {
+  try { quotesCache = await api('/api/admin/quotes'); renderQuotes(); }
+  catch (e) { toast(`載入報價單失敗：${e.message}`, 'error'); }
+}
+
+function renderQuotes() {
+  const container = document.getElementById('quotes-list');
+  const kw = (document.getElementById('quote-search')?.value || '').trim().toLowerCase();
+  const rows = kw
+    ? quotesCache.filter((q) => q.quote_no.toLowerCase().includes(kw) || q.customer_title.toLowerCase().includes(kw))
+    : quotesCache;
+  if (!rows.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        ${ICO.cash.replace('nk-ico', 'nk-empty-ico')}
+        <p>${kw ? '沒有符合的報價單' : '尚無報價單'}</p>
+        <p class="subtle text-sm">${kw ? '換個關鍵字試試' : '點「＋ 新增報價單」開第一張'}</p>
+      </div>`;
+    return;
+  }
+  const { visible, rest } = limitSlice('quotes', rows);
+  container.innerHTML = visible.map((q) => {
+    const st = quoteStatus(q);
+    return `
+    <article class="a-row">
+      <div class="a-row-main">
+        <div class="a-row-title">
+          <h3 class="card-title" style="font-family:'Archivo','Noto Sans TC',sans-serif;">${escapeHtml(q.quote_no)}</h3>
+          <span class="badge badge-${st.badge}">${st.label}</span>
+          ${q.deal_status ? `<span class="badge badge-${q.deal_status === 'won' ? 'confirmed' : 'cancelled'}">${QUOTE_DEAL_LABEL[q.deal_status]}</span>` : ''}
+        </div>
+        <div class="a-row-sub">
+          <div class="meta">
+            <span class="meta-item">${escapeHtml(q.customer_title)}</span>
+            <span class="meta-item">${ICO.cash} NT$ ${Number(q.total).toLocaleString()}</span>
+            <span class="meta-item">${ICO.calendar} ${escapeHtml(q.quote_date)}</span>
+            <span class="meta-item">效期至 ${escapeHtml(q.valid_until)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="a-row-actions">
+        <button class="btn btn-dark btn-sm" data-qact="preview" data-qid="${q.id}">預覽</button>
+        <button class="btn btn-ghost btn-sm" data-qact="copylink" data-qid="${q.id}">複製連結</button>
+        ${q.voided_at ? '' : `
+        <button class="btn btn-ghost btn-sm" data-qact="edit" data-qid="${q.id}">編輯</button>
+        <button class="btn btn-ghost btn-sm" data-qact="deal-won" data-qid="${q.id}">${q.deal_status === 'won' ? '取消成交標記' : '標記成交'}</button>
+        <button class="btn btn-ghost btn-sm" data-qact="deal-lost" data-qid="${q.id}">${q.deal_status === 'lost' ? '取消未成交標記' : '標記未成交'}</button>`}
+        <button class="btn btn-ghost btn-sm" data-qact="duplicate" data-qid="${q.id}">複製新單</button>
+        ${q.voided_at ? '' : `<button class="btn btn-danger btn-sm" data-qact="void" data-qid="${q.id}">作廢</button>`}
+      </div>
+    </article>`;
+  }).join('') + moreButtonHtml('quotes', rest);
+  bindLoadMore(container, () => renderQuotes());
+  container.querySelectorAll('[data-qact]').forEach((b) =>
+    b.addEventListener('click', () => onQuoteAction(b.dataset.qact, Number(b.dataset.qid))));
+}
+
+async function onQuoteAction(act, id) {
+  const q = quotesCache.find((x) => x.id === id);
+  if (!q) return;
+  if (act === 'preview') { window.open(`/q/${q.token}`, '_blank'); return; }
+  if (act === 'copylink') {
+    const url = `${location.origin}/q/${q.token}`;
+    try { await navigator.clipboard.writeText(url); toast('連結已複製', 'success'); }
+    catch { prompt('複製連結', url); }
+    return;
+  }
+  if (act === 'edit' || act === 'duplicate') {
+    try {
+      const full = await api(`/api/admin/quotes/${id}`);
+      openQuoteDrawer(act === 'edit' ? 'edit' : 'create', full);
+    } catch (e) { toast(`載入失敗：${e.message}`, 'error'); }
+    return;
+  }
+  if (act === 'void') {
+    if (!confirm(`作廢 ${q.quote_no}？作廢後不可編輯，公開頁會顯示「已作廢」。`)) return;
+    try { await api(`/api/admin/quotes/${id}/void`, { method: 'POST' }); toast('已作廢', 'success'); loadQuotes(); }
+    catch (e) { toast(`作廢失敗：${e.message}`, 'error'); }
+    return;
+  }
+  if (act === 'deal-won' || act === 'deal-lost') {
+    const target = act === 'deal-won' ? 'won' : 'lost';
+    const next = q.deal_status === target ? null : target;   // 再點一次＝清除標記
+    try { await api(`/api/admin/quotes/${id}/deal`, { method: 'POST', body: { deal_status: next } }); loadQuotes(); }
+    catch (e) { toast(`標記失敗：${e.message}`, 'error'); }
+  }
+}
+
+// 建單/編輯 drawer：mode 'create'（可帶入來源單＝複製新單，日期重設）| 'edit'（帶原單含日期）
+function openQuoteDrawer(mode, quote) {
+  const isEdit = mode === 'edit';
+  const q = quote || null;
+  const p = (n) => String(n).padStart(2, '0');
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+  const d30 = new Date(now.getTime() + 30 * 86400000);
+  const plus30Str = `${d30.getFullYear()}-${p(d30.getMonth() + 1)}-${p(d30.getDate())}`;
+  const qd = isEdit ? q.quote_date : todayStr;
+  const vu = isEdit ? q.valid_until : plus30Str;
+
+  document.getElementById('drawer-title').textContent = isEdit ? `編輯 ${q.quote_no}` : '新增報價單';
+  document.getElementById('drawer-content').innerHTML = `
+    <div class="mb-3"><label class="form-label">客戶抬頭 *</label>
+      <input id="qd-title" class="form-input" style="width:100%;" value="${q ? escapeHtml(q.customer_title) : ''}"></div>
+    <div class="flex gap-3 flex-wrap mb-3">
+      <div><label class="form-label">客戶統編</label><input id="qd-taxid" class="form-input" value="${q ? escapeHtml(q.customer_tax_id || '') : ''}"></div>
+      <div><label class="form-label">聯絡人</label><input id="qd-contact" class="form-input" value="${q ? escapeHtml(q.contact_name || '') : ''}"></div>
+      <div><label class="form-label">電話</label><input id="qd-phone" class="form-input" value="${q ? escapeHtml(q.contact_phone || '') : ''}"></div>
+    </div>
+    <div class="mb-2"><label class="form-label">品項 *（品名／規格／數量／單位／未稅單價）</label>
+      <div id="qd-items"></div>
+      <button type="button" id="qd-add-item" class="btn btn-ghost btn-sm">＋ 加一列</button></div>
+    <div class="flex gap-3 flex-wrap mb-3">
+      <div><label class="form-label">報價日期</label><input id="qd-date" type="date" class="form-input" value="${escapeHtml(qd)}"></div>
+      <div><label class="form-label">有效期限</label><input id="qd-valid" type="date" class="form-input" value="${escapeHtml(vu)}"></div>
+    </div>
+    <div class="mb-3"><label class="form-label">付款條件</label>
+      <input id="qd-payment" class="form-input" style="width:100%;" placeholder="例：簽約後 7 日內電匯 50%，課程結束付清尾款" value="${q ? escapeHtml(q.payment_terms || '') : ''}"></div>
+    <div class="mb-3"><label class="form-label">交貨期</label>
+      <input id="qd-delivery" class="form-input" style="width:100%;" placeholder="例：雙方確認後 14 日內開課" value="${q ? escapeHtml(q.delivery_terms || '') : ''}"></div>
+    <div class="mb-3"><label class="form-label">備註</label>
+      <textarea id="qd-notes" class="form-input" style="width:100%;" rows="2">${q ? escapeHtml(q.notes || '') : ''}</textarea></div>
+    <div class="flex items-center gap-4 flex-wrap mb-3" id="qd-totals" style="font-variant-numeric:tabular-nums;"></div>
+    <button id="qd-save" class="btn btn-primary">${isEdit ? '儲存變更' : '建立報價單'}</button>`;
+
+  const itemsBox = document.getElementById('qd-items');
+  function recalc() {
+    let subtotal = 0;
+    itemsBox.querySelectorAll('.qd-item-row').forEach((row) => {
+      const qty = Number(row.querySelector('.qd-i-qty').value);
+      const price = Number(row.querySelector('.qd-i-price').value);
+      const ok = Number.isFinite(qty) && qty > 0 && Number.isInteger(price) && price >= 0;
+      const amount = ok ? Math.round(qty * price) : 0;
+      row.querySelector('.qd-i-amount').textContent = ok ? `NT$ ${amount.toLocaleString()}` : '—';
+      subtotal += amount;
+    });
+    const tax = Math.round(subtotal * 0.05);
+    document.getElementById('qd-totals').innerHTML =
+      `<span class="subtle">合計（未稅）NT$ ${subtotal.toLocaleString()}</span>
+       <span class="subtle">營業稅 5% NT$ ${tax.toLocaleString()}</span>
+       <span style="font-family:'Archivo','Noto Sans TC',sans-serif;font-weight:800;">含稅總計 NT$ ${(subtotal + tax).toLocaleString()}</span>`;
+  }
+  function addRow(it) {
+    const row = document.createElement('div');
+    row.className = 'qd-item-row flex gap-2 flex-wrap mb-2';
+    row.innerHTML = `
+      <input class="form-input qd-i-name" placeholder="品名 *" style="flex:2;min-width:130px;" value="${it ? escapeHtml(it.name) : ''}">
+      <input class="form-input qd-i-spec" placeholder="規格" style="flex:2;min-width:110px;" value="${it ? escapeHtml(it.spec || '') : ''}">
+      <input class="form-input qd-i-qty" type="number" min="0" step="0.5" placeholder="數量" style="width:80px;" value="${it ? escapeHtml(String(it.qty)) : 1}">
+      <input class="form-input qd-i-unit" placeholder="單位" style="width:70px;" value="${it ? escapeHtml(it.unit || '') : ''}">
+      <input class="form-input qd-i-price" type="number" min="0" step="1" placeholder="單價(未稅)" style="width:110px;" value="${it != null && it.unit_price != null ? escapeHtml(String(it.unit_price)) : ''}">
+      <span class="qd-i-amount subtle" style="align-self:center;min-width:90px;text-align:right;"></span>
+      <button type="button" class="btn btn-ghost btn-sm qd-i-del">✕</button>`;
+    row.querySelector('.qd-i-del').addEventListener('click', () => { row.remove(); recalc(); });
+    row.querySelectorAll('input').forEach((el) => el.addEventListener('input', recalc));
+    itemsBox.appendChild(row);
+  }
+  (q?.items?.length ? q.items : [null]).forEach(addRow);
+  recalc();
+  document.getElementById('qd-add-item').addEventListener('click', () => addRow(null));
+
+  document.getElementById('qd-save').addEventListener('click', async () => {
+    const btn = document.getElementById('qd-save');
+    btn.disabled = true;
+    try {
+      const body = {
+        customer_title: document.getElementById('qd-title').value.trim(),
+        customer_tax_id: document.getElementById('qd-taxid').value.trim(),
+        contact_name: document.getElementById('qd-contact').value.trim(),
+        contact_phone: document.getElementById('qd-phone').value.trim(),
+        quote_date: document.getElementById('qd-date').value,
+        valid_until: document.getElementById('qd-valid').value,
+        payment_terms: document.getElementById('qd-payment').value.trim(),
+        delivery_terms: document.getElementById('qd-delivery').value.trim(),
+        notes: document.getElementById('qd-notes').value.trim(),
+        items: [...itemsBox.querySelectorAll('.qd-item-row')].map((row) => ({
+          name: row.querySelector('.qd-i-name').value.trim(),
+          spec: row.querySelector('.qd-i-spec').value.trim(),
+          qty: Number(row.querySelector('.qd-i-qty').value),
+          unit: row.querySelector('.qd-i-unit').value.trim(),
+          unit_price: Number(row.querySelector('.qd-i-price').value),
+        })),
+      };
+      if (isEdit) await api(`/api/admin/quotes/${q.id}`, { method: 'PUT', body });
+      else await api('/api/admin/quotes', { method: 'POST', body });
+      toast(isEdit ? '報價單已更新' : '報價單已建立', 'success');
+      document.getElementById('drawer').style.display = 'none';
+      loadQuotes();
+    } catch (e) { toast(`儲存失敗：${e.message}`, 'error'); }
+    finally { btn.disabled = false; }
+  });
+
+  document.getElementById('drawer-sub').style.display = 'none';
+  document.getElementById('drawer').style.display = 'block';
+}
+
+document.getElementById('quote-new').addEventListener('click', () => openQuoteDrawer('create'));
+document.getElementById('quote-search').addEventListener('input', () => { _shownMap.delete('quotes'); renderQuotes(); });
 
 // 後台分頁切換：點頁籤只顯示對應 panel（各區塊資料已於上方一次載入）。
 document.querySelectorAll('#admin-tabs .tab').forEach((t) => {

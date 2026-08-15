@@ -485,6 +485,7 @@ details.session-row summary .font-semibold{
     <button data-atab="notifs" class="tab" style="white-space:nowrap;">通知</button>
     <button data-atab="line" class="tab" style="white-space:nowrap;">LINE 管理</button>
     <button data-atab="payroll" class="tab" style="white-space:nowrap;">薪資計算</button>
+    <button data-atab="quotes" class="tab" style="white-space:nowrap;">報價單</button>
   </div>
 
   <div id="apanel-courses" class="tab-panel">
@@ -671,6 +672,22 @@ details.session-row summary .font-semibold{
         <input id="group-order-expiry-hours" type="number" min="1" max="720" step="1" class="form-input" style="width:90px;" placeholder="72">
       </div>
       <button id="save-bank-line" class="btn btn-primary btn-sm">儲存</button>
+    </div>
+
+    <!-- 報價單公司資訊（公開報價頁 /q/:token 抬頭顯示；未填的欄位不顯示）-->
+    <div class="card mb-4">
+      <h3 class="card-title mb-3">報價單公司資訊</h3>
+      <label class="form-label" for="company-name">公司名稱（報價單抬頭）</label>
+      <input id="company-name" type="text" class="form-input mb-3" style="width:100%;" placeholder="CHINUP Performance">
+      <label class="form-label" for="company-tax-id">統一編號</label>
+      <input id="company-tax-id" type="text" class="form-input mb-3" style="width:100%;" placeholder="12345678">
+      <label class="form-label" for="company-phone">電話</label>
+      <input id="company-phone" type="text" class="form-input mb-3" style="width:100%;" placeholder="05-1234567">
+      <label class="form-label" for="company-email">Email</label>
+      <input id="company-email" type="text" class="form-input mb-3" style="width:100%;" placeholder="hello@chinup.tw">
+      <label class="form-label" for="company-address">地址</label>
+      <input id="company-address" type="text" class="form-input mb-3" style="width:100%;" placeholder="嘉義市○○路○○號">
+      <button id="save-company-info" class="btn btn-primary btn-sm">儲存</button>
     </div>
 
     <!-- Google 日曆整合 + 時段容量 -->
@@ -970,6 +987,18 @@ details.session-row summary .font-semibold{
 
   </div>
 
+  <div id="apanel-quotes" class="tab-panel hidden">
+    <section class="mb-8">
+      <div class="a-sec-head">
+        <h2 class="section-title">報價單</h2>
+        <input id="quote-search" type="search" class="form-input" style="max-width:220px;" placeholder="搜尋單號／客戶">
+        <div style="flex:1;"></div>
+        <button id="quote-new" class="btn btn-primary btn-sm">＋ 新增報價單</button>
+      </div>
+      <div id="quotes-list"></div>
+    </section>
+  </div>
+
 </main>
 
 <!-- Modal -->
@@ -1050,7 +1079,7 @@ details.session-row summary .font-semibold{
     <div class="flex items-center justify-between mb-6">
       <div>
         <h3 id="drawer-title" class="section-title">場次名單</h3>
-        <p class="subtle mt-1">點擊場次可展開完整報名名單</p>
+        <p id="drawer-sub" class="subtle mt-1">點擊場次可展開完整報名名單</p>
       </div>
       <button id="close-drawer" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
     </div>

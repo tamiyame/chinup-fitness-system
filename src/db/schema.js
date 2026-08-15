@@ -308,6 +308,11 @@ INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payroll_tier_threshold'
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payroll_pct_low', '50');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payroll_pct_high', '60');
 INSERT OR IGNORE INTO app_settings (key, value) VALUES ('payroll_group_pct', '50');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('company_name', 'CHINUP Performance');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('company_tax_id', '');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('company_phone', '');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('company_email', '');
+INSERT OR IGNORE INTO app_settings (key, value) VALUES ('company_address', '');
 
 CREATE TABLE IF NOT EXISTS point_transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -355,6 +360,44 @@ CREATE TABLE IF NOT EXISTS group_order_refunds (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_group_order_refunds_order ON group_order_refunds(order_id);
+
+-- 報價單（對企業客戶）：金額為存檔快照（編輯時重算）；單號 CU<年>-<4位流水>年度重計；
+-- token 為公開分享連結 /q/:token 的亂數識別。deal_status 為內部成交標記，公開端點不回傳。
+CREATE TABLE IF NOT EXISTS quotes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  quote_no TEXT NOT NULL UNIQUE,
+  token TEXT NOT NULL UNIQUE,
+  customer_title TEXT NOT NULL,
+  customer_tax_id TEXT,
+  contact_name TEXT,
+  contact_phone TEXT,
+  quote_date TEXT NOT NULL,
+  valid_until TEXT NOT NULL,
+  payment_terms TEXT,
+  delivery_terms TEXT,
+  notes TEXT,
+  subtotal INTEGER NOT NULL,
+  tax INTEGER NOT NULL,
+  total INTEGER NOT NULL,
+  deal_status TEXT CHECK (deal_status IN ('won','lost')),
+  voided_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_quotes_created ON quotes(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS quote_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  name TEXT NOT NULL,
+  spec TEXT,
+  qty REAL NOT NULL CHECK (qty > 0),
+  unit TEXT,
+  unit_price INTEGER NOT NULL CHECK (unit_price >= 0),
+  amount INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quote_items_quote ON quote_items(quote_id);
 `;
 
 // Indexes for Phase 3C columns are kept OUT of the SCHEMA string so that
