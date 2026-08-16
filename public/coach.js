@@ -1047,7 +1047,7 @@ function renderRegmPicked() {
       <div id="regm-weekdays" class="regm-weekdays hidden"></div>
       <div class="regm-rec-row">
         <label class="regm-radio"><input type="radio" name="regm-end" value="count" checked /> 共</label>
-        <input id="regm-count" class="form-input regm-num" type="number" min="1" max="52" value="4" /> 次
+        <input id="regm-count" class="form-input regm-num" type="number" min="1" max="52" value="10" /> 次
         <label class="regm-radio"><input type="radio" name="regm-end" value="date" /> 到</label>
         <input id="regm-enddate" class="form-input" type="date" disabled />
       </div>
