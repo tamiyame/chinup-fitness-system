@@ -29,9 +29,9 @@
 - `course_templates` 加欄位 `auto_renew INTEGER NOT NULL DEFAULT 1`（schema.js CREATE TABLE 加欄；connection.js `addColumnIfMissing('course_templates', 'auto_renew', 'INTEGER NOT NULL DEFAULT 1')` 供既有 DB 升級）。
 - 一次性回填（緊接在 addColumnIfMissing 之後）：以 `app_settings` 的 `auto_renew_backfill_done` 當旗標——值不是 `'1'` 才執行 `UPDATE course_templates SET auto_renew = CASE WHEN cycle_end_date >= ? THEN 1 ELSE 0 END`（參數為 JS 端 `nowLocal().slice(0, 10)`，不用 SQLite `date('now')` 以免時區歧義），然後寫旗標 `'1'`。守門是為了不在每次開機覆蓋業主之後的手動設定。效果：現行五門課（結束 8/31）＝開，早已結束的舊範本＝關，不會在下次換期被翻出來。全新 DB（測試）沒有範本，回填無事、旗標照寫。
 
-### 2. 期別純函式（新檔 `src/services/periodService.js`）
+### 2. 期別純函式（新檔 `src/services/period.js`）
 
-全部以 `YYYY-MM-DD` 字串進出、UTC 日期運算（與 `schedule.js` 同法），不碰 DB：
+純函式獨立成檔（不 import DB，測試不開 DB）；DB 工作在下一節的 `periodService.js`。全部以 `YYYY-MM-DD` 字串進出、UTC 日期運算（與 `schedule.js` 同法），不碰 DB：
 
 - `periodOf(ymd)` → `{ start, end }`。
 - `nextPeriod(period)` → 下一個雙月 `{ start, end }`。
@@ -40,7 +40,7 @@
 - `periodLabel(period)` → `'9–10 月'`（跨年時 `'2027 年 1–2 月'` 不需要，期別永不跨年）。
 - `weekStartMonday(ymd)` → 該週週一的 `YYYY-MM-DD`。
 
-### 3. 自動續期工作（`periodService.js` 內 `rolloverTemplates(today = nowLocal().slice(0, 10))`）
+### 3. 自動續期工作（新檔 `src/services/periodService.js`，`rolloverTemplates(today = nowLocal().slice(0, 10))`）
 
 - 選取：`SELECT * FROM course_templates WHERE status = 'published' AND auto_renew = 1 AND cycle_end_date < ?`（`targetEnd`）。
 - 對每筆，同一交易內：`UPDATE course_templates SET cycle_end_date = targetEnd WHERE id = ?`；`expandTemplate({ ...t, cycle_end_date: targetEnd })` 後逐筆 `INSERT OR IGNORE INTO course_sessions (...)`（與 `courseService.insertSession` 同欄位、帶 `t.coach_id`；`UNIQUE(template_id, session_date)` 保證冪等），計數 `info.changes`。`cycle_start_date` 不動。
@@ -77,7 +77,7 @@ period_rollover_admin: {  // 寄給管理者（自動續期完成）
 ## 邊角（明訂）
 
 - 業主手動把結束日改到超過 targetEnd（如 12/31）→ `cycle_end_date < targetEnd` 不成立，排程跳過、不回退。
-- 業主把結束日改到本期中途（想提早收）而 `auto_renew` 仍開 → 進最後一週會被延到下期末；想收課須關開關。後台勾選框文字已說明，不另加提示。
+- 業主把結束日改到本期中途（想提早收）而 `auto_renew` 仍開 → 隔日排程就會補回本期末（`auto_renew=1` 的語意＝結束日恆 ≥ targetEnd），最後一週再延到下期末；想收課須關開關。後台勾選框文字已說明，不另加提示。
 - 非 weekly 的 recurrence（monthly 等）同樣延長＋重展；月節拍展開只取每月第一個 day_of_week，延長只會新增未來月份。
 - 範本 `status='draft'`／`'archived'` 不續。
 - 伺服器某天沒跑：隔日 cron 或下次開機補上，結果相同（冪等）。
