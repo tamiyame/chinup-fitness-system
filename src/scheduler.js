@@ -6,8 +6,17 @@ import { expirePendingOrders } from './services/groupOrderService.js';
 import { reconcile } from './services/gcalSync.js';
 import { pullChanges } from './services/gcalPull.js';
 import { processRenewalReminders } from './services/renewalReminderService.js';
+import { rolloverTemplates } from './services/periodService.js';
 
 export function startScheduler() {
+  // 開機先跑一次期課自動續期（伺服器停機錯過 cron 也能補上；冪等）
+  try {
+    const r = rolloverTemplates();
+    if (r.extended.length) console.log('[scheduler] period rollover at boot:', r);
+  } catch (e) {
+    console.error('[scheduler] period rollover error (boot):', e);
+  }
+
   // 每小時整點跑截止判定
   cron.schedule('0 * * * *', () => {
     try {
@@ -17,6 +26,16 @@ export function startScheduler() {
       console.error('[scheduler] deadline error:', e);
     }
   });
+
+  // 每天 00:05 (Asia/Taipei)：期課自動續期（進雙月最後一週把 auto_renew 範本延到下期末並補場次）
+  cron.schedule('5 0 * * *', () => {
+    try {
+      const r = rolloverTemplates();
+      if (r.extended.length) console.log('[scheduler] period rollover:', r);
+    } catch (e) {
+      console.error('[scheduler] period rollover error:', e);
+    }
+  }, { timezone: 'Asia/Taipei' });
 
   // 每天早上 9 點：堂數即將用完提醒（方案尚餘≤1／團課剩最後1堂；每狀態只提醒一次）
   cron.schedule('0 9 * * *', () => {

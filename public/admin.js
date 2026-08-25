@@ -280,6 +280,7 @@ function typeLabel(t) {
     registered_confirmed: '報名成功', registered_waitlisted: '候補',
     promoted: '遞補', course_confirmed: '成班', course_cancelled: '取消',
     reminder: '提醒', registration_cancelled: '取消報名',
+    period_rollover_admin: '期課續期',
   }[t] || t;
 }
 
