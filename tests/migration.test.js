@@ -25,7 +25,8 @@ old.exec(`
   CREATE TABLE course_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, template_id INTEGER NOT NULL REFERENCES course_templates(id) ON DELETE CASCADE, session_date TEXT NOT NULL, start_at TEXT NOT NULL, end_at TEXT NOT NULL, registration_deadline TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', confirmed_count INTEGER NOT NULL DEFAULT 0, waitlist_count INTEGER NOT NULL DEFAULT 0, UNIQUE(template_id, session_date));
   CREATE TABLE registrations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL REFERENCES course_sessions(id) ON DELETE CASCADE, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, status TEXT NOT NULL CHECK(status IN ('confirmed','waitlisted','cancelled','rejected')), position INTEGER, registered_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(session_id, user_id));
   INSERT INTO users (name, email, phone, role) VALUES ('Old User', 'old@x.com', '0912345678', 'user');
-  INSERT INTO course_templates (name, min_capacity, max_capacity, day_of_week, start_time, recurrence, cycle_start_date, cycle_end_date) VALUES ('Old Class', 1, 5, 1, '19:00', 'weekly', '2026-01-01', '2026-12-31');
+  INSERT INTO course_templates (name, min_capacity, max_capacity, day_of_week, start_time, recurrence, cycle_start_date, cycle_end_date) VALUES ('Old Class', 1, 5, 1, '19:00', 'weekly', '2026-01-01', '2099-12-31');
+  INSERT INTO course_templates (name, min_capacity, max_capacity, day_of_week, start_time, recurrence, cycle_start_date, cycle_end_date) VALUES ('Ended Class', 1, 5, 1, '19:00', 'weekly', '2020-01-01', '2020-12-31');
   INSERT INTO course_sessions (template_id, session_date, start_at, end_at, registration_deadline) VALUES (1, '2026-06-01', '2026-06-01T19:00:00', '2026-06-01T20:00:00', '2026-05-31T19:00:00');
   INSERT INTO course_sessions (template_id, session_date, start_at, end_at, registration_deadline) VALUES (1, '2026-06-08', '2026-06-08T19:00:00', '2026-06-08T20:00:00', '2026-06-07T19:00:00');
   INSERT INTO registrations (session_id, user_id, status) VALUES (1, 1, 'confirmed');
@@ -63,6 +64,9 @@ expect('course_templates has auto_renew', () => assert(tplCols.includes('auto_re
 expect('auto_renew 回填：結束日 ≥ 今天的舊範本 = 1、旗標已寫', () => {
   assert.equal(db.prepare("SELECT auto_renew FROM course_templates WHERE name='Old Class'").get().auto_renew, 1);
   assert.equal(db.prepare("SELECT value FROM app_settings WHERE key='auto_renew_backfill_done'").get()?.value, '1');
+});
+expect('auto_renew 回填：早已結束的舊範本 = 0', () => {
+  assert.equal(db.prepare("SELECT auto_renew FROM course_templates WHERE name='Ended Class'").get().auto_renew, 0);
 });
 
 expect('member_point_balance view dropped', () =>

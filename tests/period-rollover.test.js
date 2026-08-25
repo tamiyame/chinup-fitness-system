@@ -85,4 +85,40 @@ db.prepare("UPDATE course_templates SET cycle_end_date='2026-11-15' WHERE id=?")
 const r4 = rolloverTemplates('2026-11-05');
 expect('11/5 期中、A 結束日 11/15 → 補回 12/31', () => { assert.equal(r4.targetEnd, '2026-12-31'); assert.equal(endOf(A.templateId), '2026-12-31'); });
 
+// F4：非週規律（monthly）續期覆蓋。monthly=每月第一個週三 → 7/1,8/5 = 2 場（起始）
+const M = createTemplate({ ...base, name: 'PR月課M(週三)', recurrence: 'monthly' });
+expect('前置：M 原有 2 場（monthly 首週三）', () => assert.equal(count(M.templateId), 2));
+const r5 = rolloverTemplates('2026-08-24');
+expect('M 隨續期延到 10/31', () => assert.equal(endOf(M.templateId), '2026-10-31'));
+expect('M 新增恰 2 場（9/2, 10/7 首週三），累計 4 場', () => {
+  const mEntry = r5.extended.find((e) => e.id === M.templateId);
+  assert.ok(mEntry);
+  assert.equal(mEntry.added, 2);
+  assert.equal(count(M.templateId), 4);
+});
+expect('M 場次日期依序為 7/1,8/5,9/2,10/7', () => {
+  const dates = db.prepare('SELECT session_date FROM course_sessions WHERE template_id=? ORDER BY session_date ASC').all(M.templateId).map((r) => r.session_date);
+  assert.deepEqual(dates, ['2026-07-01', '2026-08-05', '2026-09-02', '2026-10-07']);
+});
+
+// F1：重展開跳過過去日期。範本曾停用/草稿許久後重新發布 auto_renew，
+// 若場次全被清空（空洞），re-expand 不應把「今天以前」的空洞補成 open 場次
+// （否則會被 processDeadlines 逐一判過期取消並逐場通知教練）。
+const E = createTemplate({ ...base, name: 'PR空洞E(週三)' });
+db.prepare('DELETE FROM course_sessions WHERE template_id=?').run(E.templateId);
+expect('前置：E 場次已清空模擬空洞', () => assert.equal(count(E.templateId), 0));
+const r6 = rolloverTemplates('2026-10-05');
+expect('10/5（期中週一）→ targetEnd=10/31、E 結束日延到 10/31', () => {
+  assert.equal(r6.targetEnd, '2026-10-31');
+  assert.equal(endOf(E.templateId), '2026-10-31');
+});
+expect('E 只補今天(10/5)起的場次：10/7,10/14,10/21,10/28 共 4 場，過去空洞不回填', () => {
+  const eEntry = r6.extended.find((e) => e.id === E.templateId);
+  assert.ok(eEntry);
+  assert.equal(eEntry.added, 4);
+  assert.equal(count(E.templateId), 4);
+  const earliest = db.prepare('SELECT MIN(session_date) d FROM course_sessions WHERE template_id=?').get(E.templateId).d;
+  assert.equal(earliest, '2026-10-07');
+});
+
 console.log('[period-rollover test] done');

@@ -30,6 +30,7 @@ export function rolloverTemplates(today = nowLocal().slice(0, 10)) {
       extendTemplate.run(targetEnd, t.id);
       let added = 0;
       for (const s of expandTemplate({ ...t, cycle_end_date: targetEnd })) {
+        if (s.session_date < today) continue;   // 只補今天起的場次：過去空洞不回填（否則會被截止判定逐場判流課）
         const info = insertSession.run(t.id, s.session_date, s.start_at, s.end_at, s.registration_deadline, t.coach_id);
         if (info.changes > 0) added++;
       }

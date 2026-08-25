@@ -261,9 +261,11 @@ addColumnIfMissing('course_templates', 'auto_renew', 'INTEGER NOT NULL DEFAULT 1
 {
   const flag = db.prepare("SELECT value FROM app_settings WHERE key = 'auto_renew_backfill_done'").get();
   if (flag?.value !== '1') {
+    const backfillToday = nowLocal().slice(0, 10);
     const { changes } = db.prepare(
-      'UPDATE course_templates SET auto_renew = CASE WHEN cycle_end_date >= ? THEN 1 ELSE 0 END'
-    ).run(nowLocal().slice(0, 10));
+      'UPDATE course_templates SET auto_renew = CASE WHEN cycle_end_date >= ? THEN 1 ELSE 0 END' +
+      ' WHERE auto_renew <> (CASE WHEN cycle_end_date >= ? THEN 1 ELSE 0 END)'
+    ).run(backfillToday, backfillToday);
     db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('auto_renew_backfill_done', '1')").run();
     if (changes) console.log(`[migrate] course_templates.auto_renew backfilled for ${changes} templates`);
   }
