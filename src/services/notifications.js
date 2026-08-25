@@ -36,6 +36,10 @@ const TEMPLATES = {
     subject: '課程取消 - {{course_name}}',
     body: '很抱歉，{{course_name}}（{{start_at}}）因未達開課人數，本次取消。',
   },
+  period_rollover_admin: {  // 寄給管理者（期課自動續期完成；每次續期一則）
+    subject: '{{period_label}} 期課已開放報名',
+    body: '📅 {{period_label}} 期課已自動開放報名：{{summary}}。',
+  },
   registration_cancelled: {
     subject: '報名已取消 - {{course_name}}',
     body: '您已成功取消 {{course_name}}（{{start_at}}）的報名。',

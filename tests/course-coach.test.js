@@ -74,4 +74,18 @@ expect('getPublicGroupCourses null coach → coach_name null', () => {
   assert.equal(c.coach_name, null);
 });
 
+// ── auto_renew 讀寫 ────────────────────────────────────────────
+const arDefault = createTemplate({
+  name: 'CoachTest 續期預設', min_capacity: 1, max_capacity: 6, day_of_week: 2, start_time: '19:00',
+  recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(30), price_per_session: 0,
+});
+expect('createTemplate 缺 auto_renew → 1', () => assert.equal(getTemplate(arDefault.templateId).auto_renew, 1));
+const arOff = createTemplate({
+  name: 'CoachTest 續期關', min_capacity: 1, max_capacity: 6, day_of_week: 2, start_time: '19:00',
+  recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(30), price_per_session: 0, auto_renew: 0,
+});
+expect('createTemplate auto_renew=0 → 0', () => assert.equal(getTemplate(arOff.templateId).auto_renew, 0));
+editTemplate(arOff.templateId, { ...getTemplate(arOff.templateId), auto_renew: 1 });
+expect('editTemplate 可翻回 1', () => assert.equal(getTemplate(arOff.templateId).auto_renew, 1));
+
 console.log('[course-coach test] done');

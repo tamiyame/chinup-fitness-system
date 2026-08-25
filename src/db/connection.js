@@ -253,6 +253,24 @@ addColumnIfMissing('coaches', 'hourly_rate', 'INTEGER');
 // （node:sqlite 實測：非法插入被拒、CASCADE 有效）；service 層仍顯式連動，作為語意自我文件化與雙保險。
 addColumnIfMissing('coach_shifts', 'slot_id', 'INTEGER REFERENCES gym_slots(id) ON DELETE CASCADE');
 
+// ── 2026-08-25 期課雙月期別自動續開 ──
+// course_templates.auto_renew：1=每期最後一週自動延長到下期末並補場次（預設）；0=不續（本期剩餘場次照常）。
+// 一次性回填（app_settings 旗標守門，只做一次、不覆蓋業主之後的手動設定）：
+// 升級當下仍在效期內（結束日 ≥ 今天）的範本視為續開中 → 1；早已結束的舊範本 → 0，避免下次換期被翻出來。
+addColumnIfMissing('course_templates', 'auto_renew', 'INTEGER NOT NULL DEFAULT 1');
+{
+  const flag = db.prepare("SELECT value FROM app_settings WHERE key = 'auto_renew_backfill_done'").get();
+  if (flag?.value !== '1') {
+    const backfillToday = nowLocal().slice(0, 10);
+    const { changes } = db.prepare(
+      'UPDATE course_templates SET auto_renew = CASE WHEN cycle_end_date >= ? THEN 1 ELSE 0 END' +
+      ' WHERE auto_renew <> (CASE WHEN cycle_end_date >= ? THEN 1 ELSE 0 END)'
+    ).run(backfillToday, backfillToday);
+    db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('auto_renew_backfill_done', '1')").run();
+    if (changes) console.log(`[migrate] course_templates.auto_renew backfilled for ${changes} templates`);
+  }
+}
+
 /** 歸組 backfill：slot_id IS NULL 的既有班表按（星期＋起訖＋生效起迄）分組建 gym_slots 並回填。
  *  冪等（無 NULL 列＝no-op）。回傳本次建立的時段數。
  *  一次性 legacy 歸組；不與既有時段合併（重跑只處理新的 NULL 列）。 */

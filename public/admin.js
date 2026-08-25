@@ -105,6 +105,7 @@ function renderTemplates() {
             <span class="meta-item">${ICO.coach} ${escapeHtml(t.coach_name || '未指定')}</span>
             <span class="meta-item">${ICO.repeat} ${RECURRENCE_LABEL[t.recurrence]}</span>
             <span class="meta-item">${ICO.range} ${t.cycle_start_date} ~ ${t.cycle_end_date}</span>
+            ${t.auto_renew !== 0 ? `<span class="meta-item">${ICO.repeat} 自動續期</span>` : ''}
           </div>
         </div>
       </div>
@@ -280,6 +281,7 @@ function typeLabel(t) {
     registered_confirmed: '報名成功', registered_waitlisted: '候補',
     promoted: '遞補', course_confirmed: '成班', course_cancelled: '取消',
     reminder: '提醒', registration_cancelled: '取消報名',
+    period_rollover_admin: '期課續期',
   }[t] || t;
 }
 
@@ -288,6 +290,7 @@ function openNew() {
   document.getElementById('modal-title').textContent = '新增範本';
   const f = document.getElementById('tpl-form');
   f.reset(); f.id.value = '';
+  f.auto_renew.checked = true;
   document.getElementById('modal').style.display = 'grid';
 }
 
@@ -311,6 +314,7 @@ async function openEdit(id) {
   for (const k of ['name','description','min_capacity','max_capacity','day_of_week','start_time','duration_minutes','registration_deadline_hours','recurrence','cycle_start_date','cycle_end_date','price_per_session','coach_id']) {
     if (f[k]) f[k].value = t[k] ?? '';
   }
+  f.auto_renew.checked = t.auto_renew !== 0;   // 舊資料缺值視為開
   f.id.value = t.id;
   document.getElementById('modal').style.display = 'grid';
 }
@@ -325,6 +329,7 @@ document.getElementById('tpl-form').addEventListener('submit', async (e) => {
   const f = e.currentTarget;
   const payload = Object.fromEntries(new FormData(f).entries());
   const id = payload.id; delete payload.id;
+  payload.auto_renew = f.auto_renew.checked ? 1 : 0;   // FormData 對未勾 checkbox 不帶 key，明確補 0/1
   if (payload.price_per_session !== undefined) {
     payload.price_per_session = Number(payload.price_per_session);
   }

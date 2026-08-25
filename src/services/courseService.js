@@ -8,10 +8,10 @@ const insertTemplate = db.prepare(`
   INSERT INTO course_templates
     (name, description, min_capacity, max_capacity, day_of_week, start_time,
      duration_minutes, recurrence, cycle_start_date, cycle_end_date,
-     registration_deadline_hours, status, price_per_session, coach_id)
+     registration_deadline_hours, status, price_per_session, coach_id, auto_renew)
   VALUES (@name, @description, @min_capacity, @max_capacity, @day_of_week, @start_time,
           @duration_minutes, @recurrence, @cycle_start_date, @cycle_end_date,
-          @registration_deadline_hours, @status, @price_per_session, @coach_id)
+          @registration_deadline_hours, @status, @price_per_session, @coach_id, @auto_renew)
 `);
 
 const insertSession = db.prepare(`
@@ -28,7 +28,7 @@ const updateTemplate = db.prepare(`
     duration_minutes=@duration_minutes, recurrence=@recurrence,
     cycle_start_date=@cycle_start_date, cycle_end_date=@cycle_end_date,
     registration_deadline_hours=@registration_deadline_hours, status=@status,
-    price_per_session=@price_per_session, coach_id=@coach_id
+    price_per_session=@price_per_session, coach_id=@coach_id, auto_renew=@auto_renew
   WHERE id=@id
 `);
 
@@ -61,6 +61,8 @@ function normalize(t) {
     price_per_session: Number(t.price_per_session ?? 0),
     // 寬鬆：缺值存 NULL；非法非空值（如 Number('x')→NaN）亦落為 NULL。前台下拉保證只送有效 id，真整數壞值由 DB 外鍵擋下。
     coach_id: (t.coach_id === undefined || t.coach_id === null || t.coach_id === '') ? null : Number(t.coach_id),
+    // 自動續期：缺值視為開（與欄位預設一致）；後台勾選框送 1/0。
+    auto_renew: (t.auto_renew === undefined || t.auto_renew === null) ? 1 : (Number(t.auto_renew) ? 1 : 0),
   };
 }
 

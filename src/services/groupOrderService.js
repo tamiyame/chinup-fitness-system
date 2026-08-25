@@ -5,6 +5,7 @@ import { notify, notifyCourseCoach, notifyAdmins } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl, getGroupOrderExpiryHours, quoteDiscount } from './discountService.js';
 import { listScheduleViewPackages } from './packageService.js';
+import { weekStartMonday } from './period.js';
 
 // 一般 pending 訂單的付款期限改由 app_settings 的 group_order_expiry_hours 控制（預設 72h，後台可調）。
 const PROMOTED_TTL_MS = 24 * 60 * 60 * 1000;     // 候補遞補後 24h（固定：遞補名額要快速流轉）
@@ -595,9 +596,10 @@ export function adminCancelRegistration({ registrationId, actorId, refundAmount 
   });
 }
 
-/** 公開：所有「尚有可報名場次」的 published template，回完整週期（不可報名場次帶 state 供灰色顯示）。 */
+/** 公開：所有「尚有可報名場次」的 published template，回本週週一起的場次（不可報名場次帶 state 供灰色顯示）。 */
 export function getPublicGroupCourses() {
   const now = nowLocal();
+  const weekStart = weekStartMonday(now.slice(0, 10));
   const templates = db.prepare(`
     SELECT t.id, t.name, t.description, t.min_capacity, t.max_capacity, t.duration_minutes,
            t.day_of_week, t.start_time,
@@ -609,14 +611,16 @@ export function getPublicGroupCourses() {
     ORDER BY t.created_at DESC
   `).all();
   return templates.map((t) => {
-    // 完整週期：過去/已截止/流課場次一併回傳（前端灰色顯示、不可點）。
+    // 窗口：只回本週週一起的場次（上週以前的歷史不再列；本週已上完的仍灰色顯示）。
+    // 窗口內過去/已截止/流課場次一併回傳（前端灰色顯示、不可點）。
     // 唯一仍隱藏的是「未來、open、被管理者暫停(is_open=0)」的場次（暫停＝對客人完全隱藏）。
     const sessions = db.prepare(`
       SELECT id, session_date, start_at, end_at, status, registration_deadline, is_open
       FROM course_sessions
-      WHERE template_id = ? AND NOT (start_at > ? AND status = 'open' AND is_open = 0)
+      WHERE template_id = ? AND session_date >= ?
+        AND NOT (start_at > ? AND status = 'open' AND is_open = 0)
       ORDER BY start_at ASC
-    `).all(t.id, now).map((s) => {
+    `).all(t.id, weekStart, now).map((s) => {
       const occupied = sessionOccupied(s.id);
       // 額滿徽章顯示目前候補人數用
       const waitlistCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id=? AND status='waitlisted'").get(s.id).c;

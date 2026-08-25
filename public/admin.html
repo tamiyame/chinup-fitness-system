@@ -1062,6 +1062,12 @@ details.session-row summary .font-semibold{
         <div><label class="form-label">週期結束</label><input name="cycle_end_date" type="date" required class="form-input"></div>
       </div>
       <div>
+        <label class="form-label flex items-center gap-2" style="cursor:pointer">
+          <input name="auto_renew" type="checkbox" checked>
+          自動續期（每期最後一週自動開放下期場次）
+        </label>
+      </div>
+      <div>
         <label class="form-label">單堂價格</label>
         <input name="price_per_session" id="tpl-price" type="number" min="0" step="1" value="0" class="form-input" placeholder="0">
       </div>
