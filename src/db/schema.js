@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS course_templates (
   status TEXT NOT NULL DEFAULT 'published' CHECK(status IN ('draft','published','archived')),
   price_per_session INTEGER NOT NULL DEFAULT 0,
   coach_id INTEGER REFERENCES coaches(id) ON DELETE SET NULL,
+  auto_renew INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

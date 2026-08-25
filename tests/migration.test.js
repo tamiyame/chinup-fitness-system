@@ -59,6 +59,12 @@ expect('idx_users_phone exists', () =>
 const tplCols = db.prepare('PRAGMA table_info(course_templates)').all().map((c) => c.name);
 expect('course_templates has price_per_session', () => assert(tplCols.includes('price_per_session')));
 
+expect('course_templates has auto_renew', () => assert(tplCols.includes('auto_renew')));
+expect('auto_renew 回填：結束日 ≥ 今天的舊範本 = 1、旗標已寫', () => {
+  assert.equal(db.prepare("SELECT auto_renew FROM course_templates WHERE name='Old Class'").get().auto_renew, 1);
+  assert.equal(db.prepare("SELECT value FROM app_settings WHERE key='auto_renew_backfill_done'").get()?.value, '1');
+});
+
 expect('member_point_balance view dropped', () =>
   assert(!db.prepare("SELECT name FROM sqlite_master WHERE type='view' AND name='member_point_balance'").get()));
 
