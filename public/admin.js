@@ -409,7 +409,7 @@ async function openDrawer(templateId) {
     document.getElementById('drawer-title').textContent = `${t.name}`;
     if (!t.sessions.length) { c.innerHTML = '<div class="subtle">尚無場次</div>'; return; }
 
-    c.innerHTML = t.sessions.map(s => {
+    const renderSessionRow = (s) => {
       drawerSessions.set(s.id, { start_at: s.start_at, occupied: s.occupied, max: t.max_capacity, status: s.status });
       return `
       <details class="session-row">
@@ -428,6 +428,58 @@ async function openDrawer(templateId) {
         <div class="px-5 pb-4 session-roster" data-session-id="${s.id}">
           <div class="subtle">載入中…</div>
         </div>
+      </details>`;
+    };
+
+    // 年→期（固定雙月 1–2…11–12）兩層收合：年降冪、期降冪、期內場次升冪（API 已依 start_at 升冪）。
+    // 只展開「今天所在的年與期」；若範本沒有今天所在的期（全是歷史或全是未來），展開最新的一組。
+    // 只分組既有場次，不預先產生任何前台沒有的場次。
+    const periodIdx = (ymd) => Math.floor((Number(ymd.slice(5, 7)) - 1) / 2);
+    const periodLabel = (p) => `${p * 2 + 1}–${p * 2 + 2} 月`;
+    const today = localNowStr().slice(0, 10);
+    const curYear = today.slice(0, 4), curPeriod = periodIdx(today);
+    const years = new Map(); // year -> Map(periodIdx -> sessions[])
+    for (const s of t.sessions) {
+      const ymd = s.session_date || s.start_at.slice(0, 10);
+      const y = ymd.slice(0, 4), p = periodIdx(ymd);
+      if (!years.has(y)) years.set(y, new Map());
+      const ps = years.get(y);
+      if (!ps.has(p)) ps.set(p, []);
+      ps.get(p).push(s);
+    }
+    const yearKeys = [...years.keys()].sort().reverse();
+    const hasCurrent = years.get(curYear)?.has(curPeriod);
+    const statusSummary = (list) => {
+      const n = {};
+      for (const s of list) n[s.status] = (n[s.status] || 0) + 1;
+      return Object.keys(SESSION_STATUS_LABEL).filter(k => n[k]).map(k => `${SESSION_STATUS_LABEL[k]} ${n[k]}`).join(' · ');
+    };
+    c.innerHTML = yearKeys.map((y, yi) => {
+      const ps = years.get(y);
+      const periodKeys = [...ps.keys()].sort((a, b) => b - a);
+      const yCount = periodKeys.reduce((sum, p) => sum + ps.get(p).length, 0);
+      const yearOpen = hasCurrent ? y === curYear : yi === 0;
+      const periodsHtml = periodKeys.map((p, pi) => {
+        const list = ps.get(p);
+        const open = hasCurrent ? (y === curYear && p === curPeriod) : (yi === 0 && pi === 0);
+        return `
+        <details class="period-group"${open ? ' open' : ''}>
+          <summary>
+            <span class="pg-chevron"></span>
+            <span class="pg-title">${periodLabel(p)}</span>
+            <span class="subtle text-sm">${list.length} 場 · ${statusSummary(list)}</span>
+          </summary>
+          <div class="pg-body">${list.map(renderSessionRow).join('')}</div>
+        </details>`;
+      }).join('');
+      return `
+      <details class="year-group"${yearOpen ? ' open' : ''}>
+        <summary>
+          <span class="pg-chevron"></span>
+          <span class="yg-title">${y} 年</span>
+          <span class="subtle text-sm">${yCount} 場</span>
+        </summary>
+        <div class="yg-body">${periodsHtml}</div>
       </details>`;
     }).join('');
 
@@ -497,6 +549,8 @@ function openBackfillPanel(sid) {
   if (!inner) return;
   const det = inner.closest('details');
   det.open = true;
+  // 年／期外殼也一併展開（面板不能開在收合的卡裡）
+  for (let anc = det.parentElement?.closest('details'); anc; anc = anc.parentElement?.closest('details')) anc.open = true;
   document.querySelectorAll('.backfill-panel').forEach(p => p.remove()); // 同時只開一個
   const meta = drawerSessions.get(sid) || {};
   const isPast = meta.start_at ? meta.start_at <= localNowStr() : false;
