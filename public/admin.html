@@ -361,6 +361,30 @@ details.session-row summary .font-semibold{
 }
 .reg-row .font-medium{ font-weight:700; }
 
+/* drawer 年→期 兩層收合外殼（沿用 session-row 髮絲線語彙） */
+details.year-group, details.period-group{
+  background:var(--surface); border:1px solid var(--line); border-radius:8px;
+  margin-bottom:10px; overflow:hidden;
+}
+details.period-group{ margin-bottom:8px; }
+details.period-group[open]{ border-color:var(--ink-mute); }
+details.year-group > summary, details.period-group > summary{
+  list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px; padding:12px 16px;
+}
+details.year-group > summary::-webkit-details-marker,
+details.period-group > summary::-webkit-details-marker{ display:none; }
+details.year-group > summary:hover, details.period-group > summary:hover{ background:#f8faf9; }
+.pg-chevron{
+  width:8px; height:8px; flex:none; margin-right:2px;
+  border-right:2px solid var(--ink-mute); border-bottom:2px solid var(--ink-mute);
+  transform:rotate(-45deg); transition:transform 150ms ease;
+}
+details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
+.yg-title{ font-family:"Archivo","Noto Sans TC",sans-serif; font-weight:900; font-size:1.05rem; letter-spacing:.01em; }
+.pg-title{ font-weight:900; }
+.yg-body{ padding:0 12px 4px; }
+.pg-body{ padding:0 12px 2px; }
+
 /* ---------- 一致性骨架：區塊標題列 + 單卡包列 + 載入更多 ---------- */
 .a-sec-head{ display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
 .a-sec-head .section-title{ white-space:nowrap; }
