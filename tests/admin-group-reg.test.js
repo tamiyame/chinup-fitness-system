@@ -386,7 +386,9 @@ reset();
   });
   const ss = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC').all(tpl.templateId).map((r) => r.id);
   const [s1, s2] = ss;
-  agePast(s1);
+  // s1 需「過去」但仍落在本週窗口內（公開頁只列本週週一起的場次）：移到今天凌晨，必早於任何測試執行時刻。
+  db.prepare("UPDATE course_sessions SET session_date=?, start_at=?, end_at=?, registration_deadline=? WHERE id=?")
+    .run(dstr(0), dt(0, '00:01:00'), dt(0, '00:02:00'), dt(-1, '18:00:00'), s1);
   db.prepare("UPDATE course_sessions SET status='cancelled' WHERE id IN (?, ?)").run(s1, s2);
   const actorId = Number(db.prepare("INSERT INTO users (name, role) VALUES ('AGR-操作者', 'user')").run().lastInsertRowid);
   const sessionStatus = (id) => db.prepare('SELECT status FROM course_sessions WHERE id=?').get(id).status;
