@@ -305,7 +305,8 @@ body { visibility: hidden; }
 .ln-switch:hover{ border-color:var(--ink-mute); }
 .ln-switch.on{ background:var(--brand-500); border-color:var(--brand-500); color:var(--brand-900); }
 .ln-switch:disabled{ opacity:.5; cursor:default; }
-.ln-group-head{ font-size:12px; font-weight:800; letter-spacing:.06em; color:var(--ink-mute); padding:12px 16px 6px; border-top:1px solid var(--line); }
+/* 組標題：天藍色帶＋左側 3px 軌（Rail／One-Sky），讓三組一眼分得開 */
+.ln-group-head{ font-size:13px; font-weight:800; letter-spacing:.08em; color:var(--brand-900); background:var(--brand-50); border-left:3px solid var(--brand-500); padding:9px 16px 9px 13px; border-top:1px solid var(--line); }
 .ln-group-head:first-child{ border-top:0; }
 .ln-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px; border-top:1px solid var(--line); }
 .ln-row .ln-label{ font-weight:600; }
