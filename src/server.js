@@ -72,6 +72,8 @@ import {
 import { randomBytes } from 'node:crypto';
 import { startScheduler } from './scheduler.js';
 import { verifySignature, replyOrLog } from './services/lineClient.js';
+import { getLineNotifyState, setLineNotifyState } from './services/lineNotifyPolicy.js';
+import { getLineQuotaStatus } from './services/lineQuota.js';
 import {
   consumeCode,
   unbindByLineUserId,
@@ -1541,6 +1543,16 @@ app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
   }
   tx(() => { for (const [k, v] of writes) setSetting(k, v); });
   res.json(settingsPayload());
+}));
+// --- Admin: LINE 通知開關（總開關＋16 項目）與本月推播額度 ---
+app.get('/api/admin/line-notify', requireAdmin, asyncHandler((req, res) => {
+  res.json(getLineNotifyState());
+}));
+app.patch('/api/admin/line-notify', requireAdmin, asyncHandler((req, res) => {
+  res.json(setLineNotifyState(req.body || {}));
+}));
+app.get('/api/admin/line-quota', requireAdmin, asyncHandler(async (req, res) => {
+  res.json(await getLineQuotaStatus());
 }));
 
 const PORT = Number(process.env.PORT || 3000);

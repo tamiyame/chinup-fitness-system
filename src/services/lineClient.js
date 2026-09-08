@@ -5,6 +5,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const PUSH_URL = 'https://api.line.me/v2/bot/message/push';
 const REPLY_URL = 'https://api.line.me/v2/bot/message/reply';
+const QUOTA_URL = 'https://api.line.me/v2/bot/message/quota';
+const QUOTA_CONSUMPTION_URL = 'https://api.line.me/v2/bot/message/quota/consumption';
 
 // Internal helper: shared POST logic for both push + reply endpoints.
 // Returns { ok: true } on 2xx, { ok: false, error } otherwise. Never throws.
@@ -31,6 +33,29 @@ async function _post(url, body) {
   }
 }
 
+// Internal helper: GET with bearer token. Same mock / not-configured / error
+// conventions as _post. Returns { ok: true, data } on 2xx JSON, { ok: false, error } otherwise.
+async function _get(url) {
+  if (process.env.LINE_MOCK === 'fail') return { ok: false, error: 'mock_fail' };
+  if (!process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+    return { ok: false, error: 'line_not_configured' };
+  }
+  try {
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` },
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      return { ok: false, error: `HTTP ${res.status}: ${errText.slice(0, 200)}` };
+    }
+    let data;
+    try { data = await res.json(); } catch { return { ok: false, error: 'invalid_json' }; }
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: `network: ${e.message}` };
+  }
+}
+
 /**
  * Send a push message to a single LINE user.
  * Returns { ok: true } on 2xx, { ok: false, error } otherwise.
@@ -38,6 +63,24 @@ async function _post(url, body) {
  */
 export async function sendMessage(lineUserId, text) {
   return _post(PUSH_URL, { to: lineUserId, messages: [{ type: 'text', text }] });
+}
+
+/**
+ * 本月推播上限（免費＋加購合計）。LINE 回 { type: 'limited', value } 或 { type: 'none' }。
+ * 查詢端點不消耗推播額度。LINE_MOCK=1 回固定 limited 200。
+ */
+export async function getQuota() {
+  if (process.env.LINE_MOCK === '1') return { ok: true, data: { type: 'limited', value: 200 } };
+  return _get(QUOTA_URL);
+}
+
+/**
+ * 本月已發推播數（近似值，含 LINE Official Account Manager 手動群發）。
+ * LINE 回 { totalUsage }。LINE_MOCK=1 回 0。
+ */
+export async function getQuotaConsumption() {
+  if (process.env.LINE_MOCK === '1') return { ok: true, data: { totalUsage: 0 } };
+  return _get(QUOTA_CONSUMPTION_URL);
 }
 
 /**

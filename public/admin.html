@@ -296,6 +296,33 @@ body { visibility: hidden; }
 .session-toggle.badge-closed{ color:var(--ink-mute); }
 .session-toggle:hover{ filter:none; background:var(--brand-50) !important; box-shadow:none; }
 
+/* ---------- LINE 管理：通知開關 + 本月額度血條（方角、One-Sky） ---------- */
+.ln-switch{
+  font-family:"Archivo","Noto Sans TC",sans-serif; font-weight:800; font-size:12px; letter-spacing:.08em;
+  border:1px solid var(--line); border-radius:0; background:var(--surface); color:var(--ink-mute);
+  padding:3px 10px; min-width:52px; line-height:1.4; cursor:pointer;
+}
+.ln-switch:hover{ border-color:var(--ink-mute); }
+.ln-switch.on{ background:var(--brand-500); border-color:var(--brand-500); color:var(--brand-900); }
+.ln-switch:disabled{ opacity:.5; cursor:default; }
+/* 組標題：天藍色帶＋左側 3px 軌（Rail／One-Sky），讓三組一眼分得開 */
+.ln-group-head{ font-size:13px; font-weight:800; letter-spacing:.08em; color:var(--brand-900); background:var(--brand-100); border-left:3px solid var(--brand-600); padding:9px 16px 9px 13px; border-top:1px solid var(--line); }
+.ln-group-head:first-child{ border-top:0; }
+.ln-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px; border-top:1px solid var(--line); }
+.ln-row .ln-label{ font-weight:600; }
+.ln-items.off{ opacity:.55; }
+.lq-wrap{ display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+.lq-kicker{ font-size:11px; font-weight:800; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-mute); }
+.lq-num{ font-family:"Archivo",sans-serif; font-weight:800; font-size:36px; line-height:1; font-variant-numeric:tabular-nums; color:var(--ink); }
+.lq-num.danger{ color:var(--err-fg); }
+.lq-den{ font-family:"Archivo",sans-serif; font-weight:700; font-size:14px; color:var(--ink-mute); margin-left:4px; }
+.lq-bar{ display:flex; gap:2px; flex:1; min-width:220px; }
+.lq-seg{ flex:1; height:14px; border:1px solid var(--line); background:transparent; }
+.lq-seg.on{ background:var(--brand-500); border-color:var(--brand-500); }
+.lq-seg.on.warn{ background:var(--warn-fg); border-color:var(--warn-fg); }
+.lq-seg.on.danger{ background:var(--err-fg); border-color:var(--err-fg); }
+.lq-reset{ margin-top:10px; }
+
 /* ---------- 按鈕 → 實心俐落、觸控高度 ≥40px、小圓角 ---------- */
 .btn{
   border-radius:0;
@@ -851,6 +878,32 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
   </div>
 
   <div id="apanel-line" class="tab-panel hidden">
+  <section class="pb-10">
+    <div class="a-sec-head">
+      <h2 class="section-title">本月推播額度</h2>
+      <span class="a-sec-line"></span>
+      <div class="a-sec-tools">
+        <span id="lq-fetched" class="subtle text-sm"></span>
+        <button id="lq-refresh" class="btn btn-ghost btn-sm" type="button">重新整理</button>
+      </div>
+    </div>
+    <div class="card"><div id="lq-body"><p class="subtle">載入中…</p></div></div>
+  </section>
+
+  <section class="pb-10">
+    <div class="a-sec-head">
+      <h2 class="section-title">LINE 通知開關</h2>
+      <span class="a-sec-line"></span>
+      <div class="a-sec-tools">
+        <button id="ln-all-on" class="btn btn-ghost btn-sm" type="button">全部開啟</button>
+        <button id="ln-all-off" class="btn btn-ghost btn-sm" type="button">全部關閉</button>
+        <button id="ln-master" class="ln-switch" type="button" aria-pressed="false" aria-label="LINE 通知總開關">OFF</button>
+      </div>
+    </div>
+    <p id="ln-note" class="subtle text-sm mb-3"></p>
+    <div class="card p-0 overflow-hidden"><div id="ln-items" class="ln-items"></div></div>
+  </section>
+
   <section class="pb-16">
     <div class="a-sec-head">
       <h2 class="section-title">LINE 綁定管理</h2>
