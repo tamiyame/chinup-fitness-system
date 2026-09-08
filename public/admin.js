@@ -1028,7 +1028,7 @@ function renderLineNotify() {
           <div class="ln-label">${escapeHtml(it.label)}</div>
           <div class="subtle text-sm">${escapeHtml(it.recipients)}</div>
         </div>
-        ${lnSwitchHtml(it.enabled, `data-ln-item="${it.key}"`)}
+        ${lnSwitchHtml(it.enabled, `data-ln-item="${escapeHtml(it.key)}"`)}
       </div>`).join('')}`).join('');
   el.querySelectorAll('[data-ln-item]').forEach((btn) => btn.addEventListener('click', () => {
     const key = btn.dataset.lnItem;
