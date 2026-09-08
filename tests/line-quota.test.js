@@ -50,6 +50,31 @@ expect('mock fail：configured 但 error=mock_fail、數字全 null', () => {
   assert.match(s2.resetAt, /T23:00:00$/);
 });
 
+// ── totalUsage 非數值（壞資料）：used 應退回 0，不讓 NaN 穿透 remaining/pct ──
+{
+  const prevMock = process.env.LINE_MOCK;
+  const prevToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const prevFetch = globalThis.fetch;
+  try {
+    delete process.env.LINE_MOCK;
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'x';
+    globalThis.fetch = async (url) => ({
+      ok: true,
+      json: async () => (String(url).includes('consumption') ? { totalUsage: 'abc' } : { type: 'limited', value: 200 }),
+    });
+    const s4 = await getLineQuotaStatus();
+    expect('totalUsage 為非數值字串：used 退回 0、remaining/pct 正常算', () => {
+      assert.equal(s4.used, 0);
+      assert.equal(s4.remaining, 200);
+      assert.equal(s4.pct, 100);
+    });
+  } finally {
+    if (prevMock === undefined) delete process.env.LINE_MOCK; else process.env.LINE_MOCK = prevMock;
+    if (prevToken === undefined) delete process.env.LINE_CHANNEL_ACCESS_TOKEN; else process.env.LINE_CHANNEL_ACCESS_TOKEN = prevToken;
+    globalThis.fetch = prevFetch;
+  }
+}
+
 delete process.env.LINE_MOCK;
 delete process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const s3 = await getLineQuotaStatus();

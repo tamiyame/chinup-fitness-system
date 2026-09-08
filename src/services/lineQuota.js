@@ -38,7 +38,8 @@ export async function getLineQuotaStatus() {
     if (failed.error === 'line_not_configured') return { ...base, configured: false };
     return { ...base, error: failed.error };
   }
-  const used = Number(c.data?.totalUsage ?? 0);
+  const usedRaw = Number(c.data?.totalUsage ?? 0);
+  const used = Number.isFinite(usedRaw) ? usedRaw : 0;  // LINE 回傳非數值時（如壞資料）不讓 NaN 穿透 remaining/pct
   if (q.data?.type !== 'limited' || typeof q.data.value !== 'number') {
     return { ...base, limitType: 'none', used };
   }

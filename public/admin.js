@@ -1028,7 +1028,7 @@ function renderLineNotify() {
           <div class="ln-label">${escapeHtml(it.label)}</div>
           <div class="subtle text-sm">${escapeHtml(it.recipients)}</div>
         </div>
-        ${lnSwitchHtml(it.enabled, `data-ln-item="${escapeHtml(it.key)}"`)}
+        ${lnSwitchHtml(it.enabled, `data-ln-item="${escapeHtml(it.key)}" aria-label="${escapeHtml(it.label)}"`)}
       </div>`).join('')}`).join('');
   el.querySelectorAll('[data-ln-item]').forEach((btn) => btn.addEventListener('click', () => {
     const key = btn.dataset.lnItem;
@@ -1100,11 +1100,13 @@ function lqResetText(resetAt) {
   const d = lqParseLocal(resetAt);
   if (!d) return '';
   const diffMs = d.getTime() - Date.now();
-  const hours = Math.floor(diffMs / 3600000);
-  const countdown = diffMs < 3600000 ? '不到 1 小時' : `還有 ${Math.floor(hours / 24)} 天 ${hours % 24} 小時`;
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
-  return `重置：${d.getMonth() + 1}/${d.getDate()}（週${LQ_DOW[d.getDay()]}）${hh}:${mm} · ${countdown}`;
+  const prefix = `重置：${d.getMonth() + 1}/${d.getDate()}（週${LQ_DOW[d.getDay()]}）${hh}:${mm}`;
+  if (diffMs <= 0) return `${prefix} · 已重置，請按「重新整理」`;
+  const hours = Math.floor(diffMs / 3600000);
+  const countdown = diffMs < 3600000 ? '不到 1 小時' : `還有 ${Math.floor(hours / 24)} 天 ${hours % 24} 小時`;
+  return `${prefix} · ${countdown}`;
 }
 
 function renderLineQuota() {
@@ -1143,7 +1145,12 @@ async function loadLineQuota() {
   const btn = document.getElementById('lq-refresh');
   if (!lqWired) {
     btn?.addEventListener('click', () => loadLineQuota());
-    setInterval(() => { if (lqState) renderLineQuota(); }, 60 * 1000);  // 倒數每分鐘重算，不重打 API
+    setInterval(() => {
+      if (!lqState) return;
+      const resetD = lqParseLocal(lqState.resetAt);
+      if (resetD && resetD.getTime() <= Date.now()) { loadLineQuota(); return; }  // 已跨過重置時刻：重打 API 取新額度，resetAt 會前進到下個月，不會再進這支
+      renderLineQuota();
+    }, 60 * 1000);  // 倒數每分鐘重算，不重打 API（跨過重置時刻例外重打一次）
     lqWired = true;
   }
   if (btn) { btn.disabled = true; btn.textContent = '更新中…'; }
