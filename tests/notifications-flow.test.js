@@ -12,6 +12,7 @@ import {
   processFailedNotifications,
   fmtDateForLine,
 } from '../src/services/notifications.js';
+import { setLineNotifyState } from '../src/services/lineNotifyPolicy.js';
 
 function reset() {
   db.exec(`
@@ -40,6 +41,7 @@ function makeMember(name, email, lineUserId = null) {
 
 console.log('[notifications-flow test] start');
 reset();
+setLineNotifyState({ master: true });  // 總開關預設 OFF；本測試驗的是 LINE 推播路徑
 
 // --- [1] fmtDateForLine ---
 expect('fmtDateForLine renders human-friendly text', () => {

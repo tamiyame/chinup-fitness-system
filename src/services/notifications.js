@@ -1,14 +1,16 @@
 // Phase 3C notifications dispatcher.
-// Single entry point notify({ userId, type, vars }) — internally picks
-// a delivery channel based on the user's binding state:
-//   user.line_user_id present → LINE Push (via lineClient.sendMessage)
-//   otherwise                  → console.log fallback (dev / unbound user)
+// Single entry point notify({ userId, type, vars }) —
+// internally picks a delivery channel based on the user's binding state
+// and the admin LINE notify switches (lineNotifyPolicy.js):
+//   user.line_user_id present AND switches allow → LINE Push (via lineClient.sendMessage)
+//   otherwise                                     → console.log fallback (dev / unbound / switched off)
 //
 // Failed LINE pushes are stored with status='failed' + a backoff schedule
 // and retried by processFailedNotifications() (called from scheduler cron).
 import { db, nowLocal, offsetLocal } from '../db/connection.js';
 import { sendMessage } from './lineClient.js';
 import { sendMail as sendGmail } from './gmailClient.js';
+import { isLineNotifyEnabled } from './lineNotifyPolicy.js';
 
 // ─────────────────────────────────────────────────────────────────────
 // Templates
@@ -283,7 +285,8 @@ export function notify({ userId, sessionId, type, vars = {} }) {
   const user = getUserById.get(userId);
   if (!user) return;  // deleted user → silent skip
 
-  if (user.line_user_id) {
+  // 總開關／項目關閉時與未綁定者相同：只記錄不推播。
+  if (user.line_user_id && isLineNotifyEnabled(type)) {
     // async — don't block caller. Caller (e.g. registration.js) is already
     // in a tx; we don't await so the tx isn't held open during the HTTP call.
     deliverLine({ userId, sessionId, type, subject, body, lineUserId: user.line_user_id })
@@ -354,6 +357,11 @@ export async function processFailedNotifications() {
         if (!row.recipient) { updateFailedPermanent.run('no_recipient', row.id); continue; }
         result = await sendGmail({ to: row.recipient, subject: row.subject || '通知', html: row.body || '' });
       } else {
+        if (!isLineNotifyEnabled(row.type)) {
+          // 開關關閉期間不補送（之後開回來也不補），與 notify() 關閉時只記錄一致
+          updateFailedPermanent.run('line_notify_off', row.id);
+          continue;
+        }
         const user = getUserById.get(row.user_id);
         if (!user?.line_user_id) {
           // user removed binding (or was deleted) → no point retrying

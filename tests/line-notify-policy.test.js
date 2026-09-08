@@ -108,5 +108,69 @@ expect('空物件 → 不動、回傳目前狀態', () => {
   assert.equal(s.master, false);
 });
 
-// （Task 2 在此之後追加 notify() 走向與重試器段）
+// ── notify() 走向（會員有綁 LINE；LINE_MOCK=1 推播必成功）──
+db.exec(`
+  DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'lnp-%');
+  DELETE FROM users WHERE email LIKE 'lnp-%';
+`);
+const member = Number(db.prepare(
+  "INSERT INTO users (name, email, password_hash, role, line_user_id) VALUES ('LNP Member', 'lnp-member@x.com', ?, 'user', ?)"
+).run(hashPassword('x'), 'Ulnp' + Date.now()).lastInsertRowid);
+const tick = () => new Promise((r) => setImmediate(r));
+const lastRow = (type) => db.prepare(
+  'SELECT channel, status, last_error FROM notifications WHERE user_id = ? AND type = ? ORDER BY id DESC LIMIT 1'
+).get(member, type);
+const ROLL_VARS = { period_label: '9–10 月', summary: 'LNP 課 9 場' };
+
+setLineNotifyState({ master: false });
+notify({ userId: member, sessionId: null, type: 'period_rollover_admin', vars: ROLL_VARS });
+await tick();
+expect('總開關 OFF：有綁 LINE 仍寫 console 列（只記錄）', () => {
+  const r = lastRow('period_rollover_admin');
+  assert.equal(r.channel, 'console');
+  assert.equal(r.status, 'sent');
+});
+
+setLineNotifyState({ master: true, items: { period_rollover: false } });
+notify({ userId: member, sessionId: null, type: 'period_rollover_admin', vars: ROLL_VARS });
+await tick();
+expect('總開關 ON、項目 OFF：console 列', () => assert.equal(lastRow('period_rollover_admin').channel, 'console'));
+
+setLineNotifyState({ items: { period_rollover: true } });
+notify({ userId: member, sessionId: null, type: 'period_rollover_admin', vars: ROLL_VARS });
+await tick();
+expect('ON／ON：line 列 sent（mock）', () => {
+  const r = lastRow('period_rollover_admin');
+  assert.equal(r.channel, 'line');
+  assert.equal(r.status, 'sent');
+});
+
+// ── 重試器：關閉期間到期的 LINE 失敗列 → failed_permanent／line_notify_off，不補送 ──
+const insertFailed = () => Number(db.prepare(`
+  INSERT INTO notifications (user_id, session_id, type, channel, subject, body, status, retry_count, next_retry_at, last_error)
+  VALUES (?, NULL, 'booking_created', 'line', 'LNP', 'LNP body', 'failed', 0, ?, 'HTTP 429')
+`).run(member, offsetLocal(-60 * 1000)).lastInsertRowid);
+const rowOf = (id) => db.prepare('SELECT status, last_error FROM notifications WHERE id = ?').get(id);
+
+setLineNotifyState({ master: false });
+const f1 = insertFailed();
+await processFailedNotifications();
+expect('總開關 OFF：到期失敗列 → failed_permanent / line_notify_off', () => {
+  assert.equal(rowOf(f1).status, 'failed_permanent');
+  assert.equal(rowOf(f1).last_error, 'line_notify_off');
+});
+
+setLineNotifyState({ master: true, items: { booking_new: false } });
+const f2 = insertFailed();
+await processFailedNotifications();
+expect('項目 OFF：同樣 failed_permanent / line_notify_off', () => {
+  assert.equal(rowOf(f2).status, 'failed_permanent');
+  assert.equal(rowOf(f2).last_error, 'line_notify_off');
+});
+
+setLineNotifyState({ items: { booking_new: true } });
+const f3 = insertFailed();
+await processFailedNotifications();
+expect('ON／ON：重試成功 sent', () => assert.equal(rowOf(f3).status, 'sent'));
+
 console.log('[line-notify-policy test] done');
