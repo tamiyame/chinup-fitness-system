@@ -999,6 +999,165 @@ async function doLineUnbind(id) {
   }
 }
 
+// ── LINE 通知開關（總開關 + 16 項目）──
+let lnState = null;
+let lnWired = false;
+const lnAllItemKeys = () => (lnState?.groups || []).flatMap((g) => g.items.map((i) => i.key));
+
+function lnSwitchHtml(on, attrs = '') {
+  return `<button type="button" class="ln-switch${on ? ' on' : ''}" aria-pressed="${on}" ${attrs}>${on ? 'ON' : 'OFF'}</button>`;
+}
+
+function renderLineNotify() {
+  const el = document.getElementById('ln-items');
+  const master = document.getElementById('ln-master');
+  const note = document.getElementById('ln-note');
+  if (!el || !master || !note || !lnState) return;
+  master.classList.toggle('on', lnState.master);
+  master.setAttribute('aria-pressed', String(lnState.master));
+  master.textContent = lnState.master ? 'ON' : 'OFF';
+  note.textContent = lnState.master
+    ? '關閉的項目不推 LINE，但仍會留在通知紀錄。'
+    : '總開關關閉中：所有 LINE 推播暫停，以下項目設定會在開啟後生效。';
+  el.classList.toggle('off', !lnState.master);
+  el.innerHTML = lnState.groups.map((g) => `
+    <div class="ln-group-head">${escapeHtml(g.label)}</div>
+    ${g.items.map((it) => `
+      <div class="ln-row">
+        <div>
+          <div class="ln-label">${escapeHtml(it.label)}</div>
+          <div class="subtle text-sm">${escapeHtml(it.recipients)}</div>
+        </div>
+        ${lnSwitchHtml(it.enabled, `data-ln-item="${it.key}"`)}
+      </div>`).join('')}`).join('');
+  el.querySelectorAll('[data-ln-item]').forEach((btn) => btn.addEventListener('click', () => {
+    const key = btn.dataset.lnItem;
+    const cur = lnState.groups.flatMap((g) => g.items).find((i) => i.key === key);
+    if (cur) patchLineNotify({ items: { [key]: !cur.enabled } });
+  }));
+}
+
+// 樂觀更新：先照 body 改本地狀態重繪，PATCH 失敗再還原
+function lnApplyLocal(state, body) {
+  return {
+    master: body.master ?? state.master,
+    groups: state.groups.map((g) => ({
+      ...g,
+      items: g.items.map((it) => ({ ...it, enabled: body.items && it.key in body.items ? body.items[it.key] : it.enabled })),
+    })),
+  };
+}
+
+async function patchLineNotify(body) {
+  if (!lnState) return;
+  const prev = lnState;
+  lnState = lnApplyLocal(prev, body);
+  renderLineNotify();
+  try {
+    lnState = await api('/api/admin/line-notify', { method: 'PATCH', body });
+    renderLineNotify();
+  } catch (e) {
+    lnState = prev;
+    renderLineNotify();
+    toast(`儲存失敗：${e.message}`, 'error');
+  }
+}
+
+async function loadLineNotify() {
+  if (!lnWired) {
+    document.getElementById('ln-master')?.addEventListener('click', () => { if (lnState) patchLineNotify({ master: !lnState.master }); });
+    document.getElementById('ln-all-on')?.addEventListener('click', () => {
+      patchLineNotify({ items: Object.fromEntries(lnAllItemKeys().map((k) => [k, true])) });
+    });
+    document.getElementById('ln-all-off')?.addEventListener('click', () => {
+      if (!lnState) return;
+      if (!confirm(`確定關閉全部 ${lnAllItemKeys().length} 個項目？`)) return;
+      patchLineNotify({ items: Object.fromEntries(lnAllItemKeys().map((k) => [k, false])) });
+    });
+    lnWired = true;
+  }
+  try {
+    lnState = await api('/api/admin/line-notify');
+    renderLineNotify();
+  } catch (e) {
+    const el = document.getElementById('ln-items');
+    if (el) el.innerHTML = `<div class="p-6 text-red-500 text-center">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+// ── 本月推播額度（遊戲血條：20 格、每格 5%）──
+let lqState = null;
+let lqWired = false;
+const LQ_DOW = ['日', '一', '二', '三', '四', '五', '六'];
+
+// 'YYYY-MM-DDTHH:MM:SS'（伺服器台灣本地字串）→ 瀏覽器本地 Date
+function lqParseLocal(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/.exec(s || '');
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null;
+}
+
+function lqResetText(resetAt) {
+  const d = lqParseLocal(resetAt);
+  if (!d) return '';
+  const diffMs = d.getTime() - Date.now();
+  const hours = Math.floor(diffMs / 3600000);
+  const countdown = diffMs < 3600000 ? '不到 1 小時' : `還有 ${Math.floor(hours / 24)} 天 ${hours % 24} 小時`;
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `重置：${d.getMonth() + 1}/${d.getDate()}（週${LQ_DOW[d.getDay()]}）${hh}:${mm} · ${countdown}`;
+}
+
+function renderLineQuota() {
+  const el = document.getElementById('lq-body');
+  const fetched = document.getElementById('lq-fetched');
+  if (!el || !lqState) return;
+  const q = lqState;
+  if (fetched) fetched.textContent = q.fetchedAt ? `更新於 ${q.fetchedAt.slice(11, 16)}` : '';
+  if (!q.configured) { el.innerHTML = '<p class="subtle">LINE 尚未設定（缺 channel access token）</p>'; return; }
+  if (q.error) { el.innerHTML = `<p class="text-red-500">無法取得額度：${escapeHtml(q.error)}</p>`; return; }
+  const resetLine = `<div class="lq-reset subtle text-sm">${escapeHtml(lqResetText(q.resetAt))} <span style="font-size:12px;">· LINE 以日本時間每月 1 日 00:00 重置</span></div>`;
+  if (q.limitType === 'none') {
+    el.innerHTML = `<p>本月無上限（未設定目標則數）</p><p class="subtle text-sm">已發 約 ${q.used} 則</p>${resetLine}`;
+    return;
+  }
+  const tone = q.pct >= 50 ? '' : (q.pct >= 20 ? ' warn' : ' danger');
+  let lit = Math.round(q.pct / 5);
+  if (q.remaining > 0 && lit === 0) lit = 1;   // 還有剩就至少亮一格
+  if (q.remaining === 0) lit = 0;
+  const segs = Array.from({ length: 20 }, (_, i) => `<div class="lq-seg${i < lit ? ' on' + tone : ''}"></div>`).join('');
+  const empty = q.remaining === 0;
+  el.innerHTML = `
+    <div class="lq-wrap">
+      <div>
+        <div class="lq-kicker">剩餘</div>
+        <span class="lq-num${empty ? ' danger' : ''}">${q.remaining}</span><span class="lq-den">/ ${q.limit}</span>
+        ${empty ? ' <span class="badge badge-cancelled">額度用完</span>' : ''}
+      </div>
+      <div class="lq-bar" role="progressbar" aria-valuenow="${q.remaining}" aria-valuemin="0" aria-valuemax="${q.limit}" aria-label="本月剩餘推播額度">${segs}</div>
+    </div>
+    <div class="subtle text-sm" style="margin-top:8px;">已發 約 ${q.used} 則 · LINE 統計為近似值</div>
+    ${resetLine}`;
+}
+
+async function loadLineQuota() {
+  const btn = document.getElementById('lq-refresh');
+  if (!lqWired) {
+    btn?.addEventListener('click', () => loadLineQuota());
+    setInterval(() => { if (lqState) renderLineQuota(); }, 60 * 1000);  // 倒數每分鐘重算，不重打 API
+    lqWired = true;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '更新中…'; }
+  try {
+    lqState = await api('/api/admin/line-quota');
+    renderLineQuota();
+  } catch (e) {
+    const el = document.getElementById('lq-body');
+    if (el) el.innerHTML = `<p class="text-red-500">無法取得額度：${escapeHtml(e.message)}</p>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '重新整理'; }
+  }
+}
+
 function ensureUserEditOverlay() {
   let ov = document.getElementById('user-edit-overlay');
   if (ov) return ov;
@@ -2703,6 +2862,8 @@ loadCategories();
 loadCoachesForForm();
 loadTemplates();
 loadUsers();
+loadLineNotify();
+loadLineQuota();
 loadNotifs();
 loadCoachMgmt();
 loadBackupSummary();
