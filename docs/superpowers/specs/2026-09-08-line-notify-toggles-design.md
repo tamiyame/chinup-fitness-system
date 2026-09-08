@@ -41,7 +41,7 @@
 - `LINE_NOTIFY_GROUPS`：目錄常數（下表），形狀 `[{ key, label, items: [{ key, label, recipients, types: [] }] }]`。
 - `isLineNotifyEnabled(type)` → boolean：master OFF → false；type 對應到某項目 → 該項目值（未設定＝ON）；type 不在目錄（legacy 4 種＋已停用的會員 `course_confirmed`）→ true（只受總開關管）。
 - `getLineNotifyState()` → `{ master: boolean, groups: [{ key, label, items: [{ key, label, recipients, enabled }] }] }`（不含 `types`，前端不需要）。
-- `setLineNotifyState({ master, items })`：`master` 若提供必須是 boolean，否則 `ApiError(400, 'invalid_line_notify_master')`；`items` 若提供必須是物件、每個 key 必須是目錄內的項目 key，否則 `ApiError(400, 'invalid_line_notify_item')`；每個值必須是 boolean，否則 `ApiError(400, 'invalid_line_notify_value')`。先全部驗證再於 `tx()` 內寫入，回傳 `getLineNotifyState()`。`ApiError` 從 `./registration.js` 取（`registration.js` 不 import 本檔，無循環）。
+- `setLineNotifyState({ master, items })`：`master` 若提供必須是 boolean，否則 `ApiError(400, 'invalid_line_notify_master')`；`items` 若提供必須是物件、每個 key 必須是目錄內的項目 key，否則 `ApiError(400, 'invalid_line_notify_item')`；每個值必須是 boolean，否則 `ApiError(400, 'invalid_line_notify_value')`。先全部驗證再於 `tx()` 內寫入，回傳 `getLineNotifyState()`。`ApiError` 從 `./registration.js` 取：這會形成間接循環（registration → notifications → 本檔 → registration），但 `ApiError` 只在函式呼叫時取用、`isLineNotifyEnabled` 是函式宣告（hoisted），三個模組頂層都不互相取值，對 ESM 評估順序安全。
 
 **項目目錄（3 組 16 項）**
 
