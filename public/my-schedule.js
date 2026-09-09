@@ -191,14 +191,14 @@ async function openLineBindModal() {
 const DOW_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const DOW_ZH = ['日', '一', '二', '三', '四', '五', '六'];
 
+// 日期方塊：單行完整日期（含年份）＋週幾，全部同一字級
 function dateBlock(start_at) {
   const dt = new Date(start_at);
-  const dnum = String(dt.getDate());
-  const mon = `${String(dt.getMonth() + 1).padStart(2, '0')}月`;
+  const p = (n) => String(n).padStart(2, '0');
+  const ymd = `${dt.getFullYear()}/${p(dt.getMonth() + 1)}/${p(dt.getDate())}`;
   return `
     <div class="sn-date">
-      <span class="sn-mon">${mon}</span>
-      <span class="sn-dnum">${dnum}</span>
+      <span class="sn-ymd">${ymd}</span>
       <span class="sn-dow">週${DOW_ZH[dt.getDay()]}</span>
     </div>
   `;
@@ -227,9 +227,9 @@ function resolveStatus(item) {
   if (item.kind === 'booking') {
     if (item.status === 'cancelled') return { label: '已取消', cls: 'badge-cancelled' };
     if (item.status === 'confirmed') {
-      // 兩階段：admin 核對款項前為「待確認」
+      // 兩階段：admin 核對款項前為「待確認」；已上完的堂顯示「已完課」
       return item.paid
-        ? { label: '已確認', cls: 'badge-confirmed' }
+        ? { label: item.is_past ? '已完課' : '已確認', cls: 'badge-confirmed' }
         : { label: '待確認', cls: 'badge-waitlisted' };
     }
     return { label: item.status, cls: 'badge-completed' };
@@ -245,7 +245,7 @@ function resolveStatus(item) {
     return { label: '已請假', cls: 'badge-leave' };
   }
   const labels = {
-    confirmed:  '已確認',
+    confirmed:  item.is_past ? '已完課' : '已確認',
     waitlisted: '候補中',
     cancelled:  '已取消',
     rejected:   '未開課',
