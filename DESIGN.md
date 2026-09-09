@@ -139,7 +139,7 @@ components:
 
 ### Hierarchy
 - **Poster**（900，clamp(38px, 8vw, 60px)，行高 1.14）：門面 hero 主標，一屏一句。浮水印變體：Archivo 900、clamp(120px, 26vw, 210px)、rgba(255,255,255,.12)，純裝飾、aria-hidden。
-- **Display**（Archivo 900，19–30px 依場景，行高 ~0.95，字距 -0.03em）：數字錨點——課表日期方塊、打卡時間、剩餘堂數、本期時數；門面 tray 總額 21px、步驟數字 28px 同屬此聲部。永遠 tabular。
+- **Display**（Archivo 900，19–30px 依場景，行高 ~0.95，字距 -0.03em）：數字錨點——打卡時間、剩餘堂數、本期時數；門面 tray 總額 21px、步驟數字 28px 同屬此聲部。永遠 tabular。（我的課表日期方塊 2026-09 起改為 Label 聲部的單行完整日期 `2026/09/17`＋週幾、12px，業主為了看得到年份而選擇放棄大日數錨點。）
 - **Headline**（Inter 800，28px／display clamp 28–42px）：頁面主標。
 - **Title**（Inter 700，17–20px）：卡片標題、區塊標題；人名 900 加重（.ck-coach、.sn-title 15.5px 900）。
 - **Body**（Inter 400–500，14px，行高 1.55）：內文，行長 ≤ 65–75ch。
