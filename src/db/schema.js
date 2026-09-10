@@ -271,7 +271,7 @@ CREATE INDEX IF NOT EXISTS idx_availability_exceptions_coach_date ON coach_avail
 CREATE TABLE IF NOT EXISTS discount_codes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code TEXT NOT NULL UNIQUE,
-  discount_type TEXT NOT NULL CHECK(discount_type IN ('percent','fixed')),
+  discount_type TEXT NOT NULL CHECK(discount_type IN ('percent','fixed','fixed_price')),
   discount_value INTEGER NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
   valid_from TEXT,

@@ -1298,10 +1298,21 @@ async function getDiscountCodes() {
   try { adminDiscountCodesCache = await api('/api/coach/discount-codes'); } catch { adminDiscountCodesCache = []; }
   return adminDiscountCodesCache;
 }
+// 折扣型態文案（列表徽章／下拉共用）
+const DC_TYPE_BADGE = { percent: 'confirmed', fixed: 'waitlisted', fixed_price: 'pending' };
+function discountTypeText(c) {
+  if (c.discount_type === 'percent') return `減 ${c.discount_value}%`;
+  if (c.discount_type === 'fixed_price') return `每堂 $${c.discount_value}`;
+  return `減 $${c.discount_value}`;
+}
+function discountOptionText(c) {
+  if (c.discount_type === 'percent') return `${c.discount_value}% 折扣`;
+  if (c.discount_type === 'fixed_price') return `每堂 $${c.discount_value}`;
+  return `折抵 $${c.discount_value}`;
+}
 function discountOptionsHtml(codes) {
-  const label = (c) => c.discount_type === 'percent' ? `${c.discount_value}% 折扣` : `折抵 $${c.discount_value}`;
   return '<option value="">不使用折扣碼</option>' +
-    codes.map(c => `<option value="${escapeHtml(c.code)}">${escapeHtml(c.code)} — ${label(c)}</option>`).join('');
+    codes.map(c => `<option value="${escapeHtml(c.code)}">${escapeHtml(c.code)} — ${discountOptionText(c)}</option>`).join('');
 }
 
 async function renderMemberPackages(memberId, mountEl) {
@@ -2148,7 +2159,7 @@ function renderDiscountCodes() {
   }
   const { visible, rest } = limitSlice('discounts', codes);
   container.innerHTML = visible.map(c => {
-    const typeLabel = c.discount_type === 'percent' ? `減 ${c.discount_value}%` : `減 $${c.discount_value}`;
+    const typeLabel = discountTypeText(c);
     const usageText = c.max_uses != null ? `${c.used_count}/${c.max_uses}` : `已用 ${c.used_count}`;
     const limits = [];
     if (c.valid_from || c.valid_until) {
@@ -2162,7 +2173,7 @@ function renderDiscountCodes() {
         <div class="a-row-main">
           <div class="a-row-title">
             <h3 class="card-title font-mono">${escapeHtml(c.code)}</h3>
-            <span class="badge badge-${c.discount_type === 'percent' ? 'confirmed' : 'waitlisted'}">${escapeHtml(typeLabel)}</span>
+            <span class="badge badge-${DC_TYPE_BADGE[c.discount_type] || 'completed'}">${escapeHtml(typeLabel)}</span>
             <span class="badge badge-${c.active ? 'open' : 'completed'}">${c.active ? '啟用中' : '已停用'}</span>
           </div>
           <div class="a-row-sub">
@@ -2227,6 +2238,7 @@ function renderDiscountCodes() {
       document.getElementById('dc-code').value = codeData.code;
       document.getElementById('dc-code').readOnly = true;
       document.getElementById('dc-type').value = codeData.discount_type;
+      syncDcValueHint();
       document.getElementById('dc-value').value = codeData.discount_value;
       document.getElementById('dc-valid-from').value = codeData.valid_from ?? '';
       document.getElementById('dc-valid-until').value = codeData.valid_until ?? '';
@@ -2262,10 +2274,24 @@ function renderDiscountCodes() {
   });
 }
 
+// 折扣值欄位提示與 placeholder 依型態切換
+const DC_VALUE_HINT = { percent: ['（%，1–100）', '10'], fixed: ['（$，扣除金額）', '100'], fixed_price: ['（$，每堂固定價）', '1200'] };
+function syncDcValueHint() {
+  const type = document.getElementById('dc-type')?.value;
+  const [hint, ph] = DC_VALUE_HINT[type] || DC_VALUE_HINT.percent;
+  const hintEl = document.getElementById('dc-value-hint');
+  const valEl = document.getElementById('dc-value');
+  if (hintEl) hintEl.textContent = hint;
+  if (valEl) valEl.placeholder = ph;
+}
+document.getElementById('dc-type')?.addEventListener('change', syncDcValueHint);
+syncDcValueHint();
+
 // reset discount code form to create mode
 function resetDiscountCodeForm() {
   document.getElementById('discount-code-edit-id').value = '';
   document.getElementById('discount-code-form').reset();
+  syncDcValueHint();
   document.getElementById('dc-code').readOnly = false;
   document.getElementById('dc-submit-btn').textContent = '建立折扣碼';
   document.getElementById('dc-cancel-btn').classList.add('hidden');
@@ -2316,7 +2342,7 @@ document.getElementById('discount-code-form')?.addEventListener('submit', async 
   } catch (err) {
     const errorMsgs = {
       code_exists: '此折扣碼已存在',
-      invalid_value: '折扣值無效（百分比需 1–100，定額需大於 0）',
+      invalid_value: '折扣值無效（百分比需 1–100，定額／固定金額需大於 0）',
       invalid_type: '折扣型態無效',
       invalid_limit: '限制數值無效',
       missing_code: '折扣碼不能為空',

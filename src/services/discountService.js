@@ -9,8 +9,13 @@ const getCodeStmt = db.prepare('SELECT * FROM discount_codes WHERE code = ?');
 const countUsesStmt = db.prepare('SELECT COUNT(*) AS c FROM discount_redemptions WHERE code_id = ?');
 const countPhoneUsesStmt = db.prepare('SELECT COUNT(*) AS c FROM discount_redemptions WHERE code_id = ? AND phone = ?');
 
-export function computeDiscount(type, value, subtotal) {
-  let discountAmount = type === 'percent' ? Math.floor((subtotal * value) / 100) : Math.min(value, subtotal);
+/** 折扣計算的唯一入口。qty＝堂數（fixed_price 用；非正整數一律當 1）；percent／fixed 忽略 qty。 */
+export function computeDiscount(type, value, subtotal, qty = 1) {
+  const n = Number.isInteger(qty) && qty > 0 ? qty : 1;
+  let discountAmount;
+  if (type === 'percent') discountAmount = Math.floor((subtotal * value) / 100);
+  else if (type === 'fixed_price') discountAmount = subtotal - value * n;   // 每堂固定 X → 折掉「原價 − X×堂數」；不會變貴
+  else discountAmount = Math.min(value, subtotal);
   if (discountAmount < 0) discountAmount = 0;
   return { discountAmount, finalTotal: Math.max(0, subtotal - discountAmount) };
 }
@@ -18,7 +23,7 @@ export function computeDiscount(type, value, subtotal) {
 function todayLocal() { return nowLocal().slice(0, 10); } // 'YYYY-MM-DD'
 
 /** 純驗證不寫入。丟 ApiError 各錯誤碼。回 { codeId, code, type, value, discountAmount, finalTotal, subtotal }。 */
-export function validateDiscount({ code, phone, subtotal }) {
+export function validateDiscount({ code, phone, subtotal, qty = 1 }) {
   const norm = normalizeCode(code);
   if (!norm) throw new ApiError(400, 'invalid_code');
   const c = getCodeStmt.get(norm);
@@ -32,7 +37,7 @@ export function validateDiscount({ code, phone, subtotal }) {
   if (c.per_phone_limit != null && phone && countPhoneUsesStmt.get(c.id, phone).c >= c.per_phone_limit) {
     throw new ApiError(409, 'per_phone_exhausted');
   }
-  const { discountAmount, finalTotal } = computeDiscount(c.discount_type, c.discount_value, subtotal);
+  const { discountAmount, finalTotal } = computeDiscount(c.discount_type, c.discount_value, subtotal, qty);
   // 剩餘可用次數（取「總量上限」與「每人上限」較小者；null = 不限）。
   // 循環預約前端用它估算「前 X 堂折扣＋後 Y 堂原價」的總計。
   const leftGlobal = c.max_uses != null ? c.max_uses - countUsesStmt.get(c.id).c : null;
@@ -48,10 +53,10 @@ const deleteRedemption = db.prepare('DELETE FROM discount_redemptions WHERE kind
 
 /** 在 caller 的 tx() 內呼叫：重新 validate（含用量上限即時 COUNT）→ 記 redemption。
  *  code 為空 → 回 null（不套用）。回 { discountCode, discountAmount, finalTotal, originalAmount }。 */
-export function applyDiscountTx({ code, phone, subtotal, kind, refId }) {
+export function applyDiscountTx({ code, phone, subtotal, kind, refId, qty = 1 }) {
   const norm = normalizeCode(code);
   if (!norm) return null;
-  const v = validateDiscount({ code: norm, phone, subtotal });
+  const v = validateDiscount({ code: norm, phone, subtotal, qty });
   insertRedemption.run(v.codeId, phone, kind, refId, v.discountAmount);
   return { discountCode: v.code, discountAmount: v.discountAmount, finalTotal: v.finalTotal, originalAmount: subtotal };
 }
@@ -73,7 +78,7 @@ export function listActiveDiscountCodes() {
 }
 
 /** 方案折扣報價：驗 active＋效期，算折扣（**不查用量上限**，方案不限用量）。空碼→null。 */
-export function quoteDiscount({ code, amount }) {
+export function quoteDiscount({ code, amount, qty = 1 }) {
   const norm = normalizeCode(code);
   if (!norm) return null;
   const c = getCodeStmt.get(norm);
@@ -82,7 +87,7 @@ export function quoteDiscount({ code, amount }) {
   const today = todayLocal();
   if (c.valid_from && today < c.valid_from) throw new ApiError(409, 'code_not_started');
   if (c.valid_until && today > c.valid_until) throw new ApiError(409, 'code_expired');
-  const { discountAmount, finalTotal } = computeDiscount(c.discount_type, c.discount_value, amount);
+  const { discountAmount, finalTotal } = computeDiscount(c.discount_type, c.discount_value, amount, qty);
   return { code: c.code, discountAmount, finalTotal };
 }
 
@@ -92,7 +97,7 @@ export function listDiscountCodes() {
 }
 
 function validateCodeFields({ discount_type, discount_value, max_uses, per_phone_limit, min_amount }) {
-  if (!['percent', 'fixed'].includes(discount_type)) throw new ApiError(400, 'invalid_type');
+  if (!['percent', 'fixed', 'fixed_price'].includes(discount_type)) throw new ApiError(400, 'invalid_type');
   const val = Number(discount_value);
   if (!Number.isInteger(val) || val < 1 || (discount_type === 'percent' && val > 100)) throw new ApiError(400, 'invalid_value');
   for (const v of [max_uses, per_phone_limit, min_amount]) {

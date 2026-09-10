@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
-import { normalizeCode, computeDiscount, validateDiscount } from '../src/services/discountService.js';
+import { normalizeCode, computeDiscount, validateDiscount, quoteDiscount } from '../src/services/discountService.js';
 import { ApiError } from '../src/services/registration.js';
 
 function reset(){ db.exec("DELETE FROM discount_redemptions WHERE phone LIKE '0994%'; DELETE FROM discount_codes WHERE code LIKE 'TESTD%';"); }
@@ -84,5 +84,33 @@ expect('remainingUses：無上限 → null', ()=>{
   assert.equal(v.remainingUses,null);
 });
 console.log('[discount-service] D5 done');
+
+// ── D6: fixed_price（每堂固定價；qty = 堂數）──
+console.log('[discount-service] D6 start');
+expect('computeDiscount fixed_price 單堂：1500 → 1200', ()=>assert.deepEqual(computeDiscount('fixed_price',1200,1500),{discountAmount:300,finalTotal:1200}));
+expect('computeDiscount fixed_price 兩堂：3000 → 2400', ()=>assert.deepEqual(computeDiscount('fixed_price',1200,3000,2),{discountAmount:600,finalTotal:2400}));
+expect('computeDiscount fixed_price 不會變貴：X ≥ 原價 → 折 0', ()=>assert.deepEqual(computeDiscount('fixed_price',2000,1500),{discountAmount:0,finalTotal:1500}));
+expect('computeDiscount fixed_price qty 非法（0/undefined/小數/負/字串）一律當 1', ()=>{
+  for (const q of [0, undefined, 1.5, -2, '3']) assert.deepEqual(computeDiscount('fixed_price',1200,3000,q),{discountAmount:1800,finalTotal:1200}, `qty=${q}`);
+});
+expect('percent/fixed 不受 qty 影響', ()=>{
+  assert.deepEqual(computeDiscount('percent',10,1050,5),{discountAmount:105,finalTotal:945});
+  assert.deepEqual(computeDiscount('fixed',800,500,5),{discountAmount:500,finalTotal:0});
+});
+mk({code:'TESTD_FP', discount_type:'fixed_price', discount_value:1200, active:1});
+expect('validateDiscount fixed_price 帶 qty=3：4500 → 3600', ()=>{ const v=validateDiscount({code:'testd_fp',phone:'0994000040',subtotal:4500,qty:3}); assert.equal(v.type,'fixed_price'); assert.equal(v.value,1200); assert.equal(v.discountAmount,900); assert.equal(v.finalTotal,3600); });
+expect('validateDiscount fixed_price 不帶 qty → 當 1', ()=>{ const v=validateDiscount({code:'testd_fp',phone:'0994000040',subtotal:1500}); assert.equal(v.finalTotal,1200); });
+expect('quoteDiscount fixed_price qty=10：15000 → 12000', ()=>assert.equal(quoteDiscount({code:'TESTD_FP',amount:15000,qty:10}).finalTotal,12000));
+expect('applyDiscountTx fixed_price qty=2 記 redemption amount 600', ()=>{
+  tx(()=>applyDiscountTx({code:'TESTD_FP',phone:'0994000041',subtotal:3000,kind:'group_order',refId:999041,qty:2}));
+  const r=db.prepare("SELECT amount FROM discount_redemptions WHERE kind='group_order' AND ref_id=999041").get();
+  assert.equal(r.amount,600);
+  releaseRedemption({kind:'group_order',refId:999041});
+});
+expect('createDiscountCode fixed_price OK', ()=>{ const c=createDiscountCode({code:'testd_fp2',discount_type:'fixed_price',discount_value:990}); assert.equal(c.discount_type,'fixed_price'); assert.equal(c.discount_value,990); });
+expect('createDiscountCode fixed_price 值 0 → invalid_value', ()=>{ try{createDiscountCode({code:'TESTD_FP0',discount_type:'fixed_price',discount_value:0});assert.fail('should throw');}catch(e){assert.equal(e.code,'invalid_value');} });
+expect('createDiscountCode 型態 bogus → invalid_type', ()=>{ try{createDiscountCode({code:'TESTD_BOGUS',discount_type:'bogus',discount_value:10});assert.fail('should throw');}catch(e){assert.equal(e.code,'invalid_type');} });
+expect('updateDiscountCode 改型態為 fixed_price', ()=>{ const c=createDiscountCode({code:'testd_fp3',discount_type:'percent',discount_value:10}); const u=updateDiscountCode(c.id,{discount_type:'fixed_price',discount_value:1000}); assert.equal(u.discount_type,'fixed_price'); assert.equal(u.discount_value,1000); });
+console.log('[discount-service] D6 done');
 
 reset();

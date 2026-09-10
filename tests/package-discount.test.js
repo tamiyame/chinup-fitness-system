@@ -38,5 +38,15 @@ expect('createPackage 無碼 → amount 原值、discount_code null', () => {
   assert.equal(p.amount,15000); assert.equal(p.discount_code,null);
 });
 expect('createPackage 停用碼 → 擋', () => assert.throws(()=>createPackage({memberId:m,sessionType:'1on1',totalSessions:5,amount:5000,discountCode:'PDOFF'}),/code_inactive/));
+db.prepare("INSERT INTO discount_codes (code,discount_type,discount_value,active) VALUES ('PDFP','fixed_price',1200,1)").run();
+expect('quoteDiscount fixed_price qty=10：15000 → 12000', () => { assert.equal(quoteDiscount({code:'PDFP',amount:15000,qty:10}).finalTotal, 12000); });
+expect('createPackage fixed_price 碼 → amount = 1200×10', () => {
+  const p=createPackage({memberId:m,sessionType:'1on1',totalSessions:10,amount:15000,discountCode:'PDFP'});
+  assert.equal(p.amount,12000); assert.equal(p.discount_code,'PDFP');
+});
+expect('createPackage fixed_price X ≥ 單價 → 金額不變', () => {
+  const p=createPackage({memberId:m,sessionType:'1on1',totalSessions:5,amount:5000,discountCode:'PDFP'});
+  assert.equal(p.amount,5000);
+});
 clean();
 console.log('[package-discount test] done');

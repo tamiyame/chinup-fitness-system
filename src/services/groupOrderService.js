@@ -113,7 +113,7 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
       expiresAt = db.prepare('SELECT expires_at FROM group_orders WHERE id = ?').get(orderId).expires_at;
 
       // 折扣：原價 = total（付款場次加總）。套用在同一 tx 內（防併發超用）。
-      const applied = applyDiscountTx({ code: discountCode, phone, subtotal: total, kind: 'group_order', refId: orderId });
+      const applied = applyDiscountTx({ code: discountCode, phone, subtotal: total, kind: 'group_order', refId: orderId, qty: paySessionIds.length });
       if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalTotal = applied.finalTotal; }
       db.prepare('UPDATE group_orders SET original_amount=?, discount_amount=?, discount_code=?, total_amount=? WHERE id=?')
         .run(originalAmount, discountAmount, discountCode_, finalTotal, orderId);
@@ -565,7 +565,7 @@ export function adminCancelRegistration({ registrationId, actorId, refundAmount 
         let discountAmount = null, finalTotal = remaining.subtotal;
         if (order.discount_code) {
           try {
-            const q = quoteDiscount({ code: order.discount_code, amount: remaining.subtotal });
+            const q = quoteDiscount({ code: order.discount_code, amount: remaining.subtotal, qty: remaining.c });
             if (q) { discountAmount = q.discountAmount; finalTotal = q.finalTotal; }
           } catch { /* 折扣碼已失效/停用 → 折扣歸零，應付=新原價 */ }
         }
