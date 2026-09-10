@@ -2285,6 +2285,7 @@ function syncDcValueHint() {
   if (valEl) valEl.placeholder = ph;
 }
 document.getElementById('dc-type')?.addEventListener('change', syncDcValueHint);
+syncDcValueHint();
 
 // reset discount code form to create mode
 function resetDiscountCodeForm() {

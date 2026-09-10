@@ -309,9 +309,11 @@ document.addEventListener('DOMContentLoaded', () => {
           discountAmount: result.discount_amount,
           finalTotal: result.final_total,
         };
-        msgEl.textContent = result.discount_type === 'fixed_price'
-          ? `折扣套用成功：每堂 NT$${Number(result.discount_value).toLocaleString()}，應付 NT$${result.final_total.toLocaleString()}`
-          : `折扣套用成功：折 NT$${result.discount_amount.toLocaleString()}，應付 NT$${result.final_total.toLocaleString()}`;
+        msgEl.textContent = result.discount_type === 'fixed_price' && result.discount_amount === 0
+          ? `折扣碼已套用：每堂價 NT$${Number(result.discount_value).toLocaleString()} 不低於原價，維持原價 NT$${result.final_total.toLocaleString()}`
+          : result.discount_type === 'fixed_price'
+            ? `折扣套用成功：每堂 NT$${Number(result.discount_value).toLocaleString()}，應付 NT$${result.final_total.toLocaleString()}`
+            : `折扣套用成功：折 NT$${result.discount_amount.toLocaleString()}，應付 NT$${result.final_total.toLocaleString()}`;
         msgEl.style.color = '#15803d';
         msgEl.classList.remove('hidden');
         updateOrderSummary();

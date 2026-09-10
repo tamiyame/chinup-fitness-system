@@ -474,7 +474,7 @@ $('back-to-list').addEventListener('click', () => show('list'));
 let modalCoach = null;
 // modalSlot 存 { start, remain } 物件（start 為 ISO datetime 字串）
 let modalSlot = null;
-// Discount state: null or { code, discountAmount, finalTotal }
+// Discount state: null or { code, type, value, discountAmount, finalTotal, remainingUses }
 let modalAppliedDiscount = null;
 // '1on1' | '1on2'，預設 1對1
 let modalSessionType = '1on1';
@@ -492,9 +492,11 @@ function refreshModalPrice() {
   const msgEl = $('modal-discount-msg');
   priceRow.classList.add('hidden'); // 單筆模式不顯示總計列
   if (modalAppliedDiscount) {
-    msgEl.textContent = modalAppliedDiscount.type === 'fixed_price'
-      ? `折扣套用成功：每堂 $${Number(modalAppliedDiscount.value).toLocaleString()}，折後現場應付 $${modalAppliedDiscount.finalTotal.toLocaleString()}`
-      : `折扣套用成功：折後現場應付 $${modalAppliedDiscount.finalTotal.toLocaleString()}`;
+    msgEl.textContent = modalAppliedDiscount.type === 'fixed_price' && modalAppliedDiscount.discountAmount === 0
+      ? `折扣碼已套用：每堂價 $${Number(modalAppliedDiscount.value).toLocaleString()} 不低於原價，現場應付 $${modalAppliedDiscount.finalTotal.toLocaleString()}`
+      : modalAppliedDiscount.type === 'fixed_price'
+        ? `折扣套用成功：每堂 $${Number(modalAppliedDiscount.value).toLocaleString()}，折後現場應付 $${modalAppliedDiscount.finalTotal.toLocaleString()}`
+        : `折扣套用成功：折後現場應付 $${modalAppliedDiscount.finalTotal.toLocaleString()}`;
     msgEl.style.color = '#15803d';
     msgEl.classList.remove('hidden');
   }
@@ -627,7 +629,7 @@ $('modal-apply-discount').addEventListener('click', async () => {
       body: { kind: 'one_on_one', code, phone: rawPhone, sessionType: modalSessionType },
     });
     modalAppliedDiscount = { code: code.toUpperCase(), type: result.discount_type, value: result.discount_value, discountAmount: result.discount_amount, finalTotal: result.final_total, remainingUses: result.remaining_uses ?? null };
-    refreshModalPrice(); // 訊息（單筆：折後現場應付／循環：折後預估總計）由此統一寫入
+    refreshModalPrice(); // 訊息（折後現場應付）由此統一寫入
   } catch (err) {
     modalAppliedDiscount = null;
     refreshModalPrice();
