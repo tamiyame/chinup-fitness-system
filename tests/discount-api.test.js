@@ -51,6 +51,10 @@ db.prepare(`INSERT OR IGNORE INTO discount_codes (code, discount_type, discount_
   VALUES ('TESTAPI10', 'percent', 10, 1)`).run();
 db.prepare(`INSERT OR IGNORE INTO discount_codes (code, discount_type, discount_value, active, valid_until)
   VALUES ('TESTAPI_EXP', 'fixed', 100, 1, '2000-01-01')`).run();
+db.prepare(`INSERT OR IGNORE INTO discount_codes (code, discount_type, discount_value, active)
+  VALUES ('TESTAPI_FP', 'fixed_price', 300, 1)`).run();
+db.prepare(`INSERT OR IGNORE INTO discount_codes (code, discount_type, discount_value, active)
+  VALUES ('TESTAPI_FPHI', 'fixed_price', 9000, 1)`).run();
 
 // ── Admin login ──
 const loginRes = await req('POST', '/api/auth/login', {
@@ -124,6 +128,32 @@ expect('valid=true', () => assert.equal(vGroup.data?.valid, true));
 expect('original=1000 (2×500)', () => assert.equal(vGroup.data?.original, 1000));
 expect('discount_amount=100', () => assert.equal(vGroup.data?.discount_amount, 100));
 expect('final_total=900', () => assert.equal(vGroup.data?.final_total, 900));
+
+// ── [3b] fixed_price：group 兩場 → 300×2；one_on_one → 300；X ≥ 單價 → 折 0 ──
+console.log('[3b] validate fixed_price');
+const vFpGroup = await req('POST', '/api/public/discounts/validate', {
+  body: { code: 'TESTAPI_FP', phone: '0995001004', kind: 'group', sessionIds: [sid1, sid2] },
+});
+expect('fixed_price group 200', () => assert.equal(vFpGroup.status, 200));
+expect('fixed_price group discount_type', () => assert.equal(vFpGroup.data?.discount_type, 'fixed_price'));
+expect('fixed_price group discount_value=300', () => assert.equal(vFpGroup.data?.discount_value, 300));
+expect('fixed_price group original=1000、discount_amount=400、final_total=600', () => {
+  assert.equal(vFpGroup.data?.original, 1000); assert.equal(vFpGroup.data?.discount_amount, 400); assert.equal(vFpGroup.data?.final_total, 600);
+});
+const vFpBogus = await req('POST', '/api/public/discounts/validate', {
+  body: { code: 'TESTAPI_FP', phone: '0995001004', kind: 'group', sessionIds: [sid1, sid2, 999999999] },
+});
+expect('fixed_price group 含無效場次 id：不計金額也不計堂數 → original 1000、discount 400、final_total 600', () => {
+  assert.equal(vFpBogus.status, 200); assert.equal(vFpBogus.data?.original, 1000); assert.equal(vFpBogus.data?.discount_amount, 400); assert.equal(vFpBogus.data?.final_total, 600);
+});
+const vFp1v1 = await req('POST', '/api/public/discounts/validate', {
+  body: { code: 'TESTAPI_FP', phone: '0995001004', kind: 'one_on_one' },
+});
+expect('fixed_price one_on_one final_total=300', () => { assert.equal(vFp1v1.status, 200); assert.equal(vFp1v1.data?.final_total, 300); assert.equal(vFp1v1.data?.discount_amount, 1500 - 300); });
+const vFpHi = await req('POST', '/api/public/discounts/validate', {
+  body: { code: 'TESTAPI_FPHI', phone: '0995001004', kind: 'one_on_one' },
+});
+expect('fixed_price X ≥ 單價 → discount_amount 0、final_total=原價', () => { assert.equal(vFpHi.status, 200); assert.equal(vFpHi.data?.discount_amount, 0); assert.equal(vFpHi.data?.final_total, 1500); });
 
 // ── [4] Validate error paths ──
 console.log('[4] validate error paths');

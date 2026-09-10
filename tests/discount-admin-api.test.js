@@ -73,6 +73,34 @@ expect('active=1 by default', () => assert.equal(createRes.data?.active, 1));
 const createdId = createRes.data?.id;
 expect('id returned', () => assert.ok(createdId));
 
+// ── [2b] fixed_price 建立／更新／驗證 ──
+console.log('[2b] fixed_price create/update/validate');
+const fpRes = await req('POST', '/api/admin/discount-codes', {
+  token: adminToken, body: { code: 'testadm_fp', discount_type: 'fixed_price', discount_value: 1200 },
+});
+expect('create fixed_price → 201', () => assert.equal(fpRes.status, 201));
+expect('discount_type=fixed_price', () => assert.equal(fpRes.data?.discount_type, 'fixed_price'));
+expect('discount_value=1200', () => assert.equal(fpRes.data?.discount_value, 1200));
+const fpId = fpRes.data?.id;
+const fpPatch = await req('PATCH', `/api/admin/discount-codes/${fpId}`, {
+  token: adminToken, body: { discount_type: 'percent', discount_value: 20 },
+});
+expect('PATCH fixed_price → percent 20 → 200', () => { assert.equal(fpPatch.status, 200); assert.equal(fpPatch.data?.discount_type, 'percent'); assert.equal(fpPatch.data?.discount_value, 20); });
+const fpBack = await req('PATCH', `/api/admin/discount-codes/${fpId}`, {
+  token: adminToken, body: { discount_type: 'fixed_price', discount_value: 990 },
+});
+expect('PATCH 改回 fixed_price 990 → 200', () => { assert.equal(fpBack.status, 200); assert.equal(fpBack.data?.discount_type, 'fixed_price'); assert.equal(fpBack.data?.discount_value, 990); });
+const fpZero = await req('POST', '/api/admin/discount-codes', {
+  token: adminToken, body: { code: 'testadm_fp0', discount_type: 'fixed_price', discount_value: 0 },
+});
+expect('create fixed_price 0 → 400 invalid_value', () => { assert.equal(fpZero.status, 400); assert.equal(fpZero.data?.error, 'invalid_value'); });
+const fpBogus = await req('POST', '/api/admin/discount-codes', {
+  token: adminToken, body: { code: 'testadm_bogus', discount_type: 'bogus', discount_value: 10 },
+});
+expect('create 型態 bogus → 400 invalid_type', () => { assert.equal(fpBogus.status, 400); assert.equal(fpBogus.data?.error, 'invalid_type'); });
+const listFp = await req('GET', '/api/coach/discount-codes', { token: adminToken });
+expect('GET /api/coach/discount-codes 含 fixed_price 型態', () => { assert.equal(listFp.status, 200); const c = listFp.data.find((x) => x.code === 'TESTADM_FP'); assert.ok(c); assert.equal(c.discount_type, 'fixed_price'); });
+
 // ── [3] Duplicate code → 409 ──
 console.log('[3] duplicate code → 409');
 const dupRes = await req('POST', '/api/admin/discount-codes', {
