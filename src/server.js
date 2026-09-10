@@ -1010,6 +1010,7 @@ app.get('/api/public/one-on-one-price', asyncHandler((req, res) => {
 app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
   const { code, phone, kind, sessionIds, sessionType } = req.body || {};
   let subtotal;
+  let qty = 1;   // 堂數：fixed_price 用（一對一 1、團課＝找得到範本的付款場次數）
   if (kind === 'one_on_one') {
     // 與 /api/public/bookings 一致：非法 sessionType 直接擋下，避免報出 1對1 價、送出時才失敗
     if (sessionType != null && sessionType !== '1on1' && sessionType !== '1on2') {
@@ -1017,15 +1018,16 @@ app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
     }
     subtotal = getOneOnOnePriceByType(sessionType);
   } else {
-    // group：由 sessionIds 即時加總付款場次單價（server 權威）
+    // group：由 sessionIds 即時加總付款場次單價（server 權威）；找不到範本的 id 不計入金額也不計入堂數
     const ids = (sessionIds || []).map(Number);
-    subtotal = ids.reduce((sum, sid) => {
+    subtotal = 0; qty = 0;
+    for (const sid of ids) {
       const s = db.prepare('SELECT template_id FROM course_sessions WHERE id=?').get(sid);
       const tpl = s ? db.prepare('SELECT price_per_session FROM course_templates WHERE id=?').get(s.template_id) : null;
-      return sum + (tpl ? tpl.price_per_session : 0);
-    }, 0);
+      if (tpl) { subtotal += tpl.price_per_session; qty++; }
+    }
   }
-  const v = validateDiscount({ code, phone, subtotal });
+  const v = validateDiscount({ code, phone, subtotal, qty });
   res.json({ valid: true, discount_type: v.type, discount_value: v.value, discount_amount: v.discountAmount, original: v.subtotal, final_total: v.finalTotal, remaining_uses: v.remainingUses });
 }));
 

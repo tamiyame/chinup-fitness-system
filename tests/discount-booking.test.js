@@ -41,6 +41,18 @@ db.prepare(`INSERT INTO discount_codes (code, discount_type, discount_value, act
 
 const price = getOneOnOnePrice(); // e.g. 1500
 
+// Seed: fixed_price 1200 code（一對一單堂 → 1200）
+db.prepare(`INSERT INTO discount_codes (code, discount_type, discount_value, active)
+  VALUES ('TESTDBK_FP', 'fixed_price', 1200, 1)`).run();
+expect('createBookingAnon fixed_price：original=單堂價、final=1200', () => {
+  const r = createBookingAnon({ coachId: coach.id, startAt: futureLocal(5, 9), name: '固丙', phone: '0992000090', discountCode: 'TESTDBK_FP' });
+  assert.equal(r.originalAmount, price);
+  assert.equal(r.discountAmount, price - 1200);
+  assert.equal(r.finalAmount, 1200);
+  const row = db.prepare('SELECT original_amount, discount_amount, discount_code FROM bookings WHERE id=?').get(r.id);
+  assert.deepEqual({ ...row }, { original_amount: price, discount_amount: price - 1200, discount_code: 'TESTDBK_FP' });
+});
+
 // ── Test 1: createBookingAnon with discountCode ──
 let discountBookingId;
 expect('createBookingAnon with discountCode: returns discount fields', () => {

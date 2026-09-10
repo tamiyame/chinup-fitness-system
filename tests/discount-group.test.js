@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
 import { createTemplate, processDeadlines } from '../src/services/courseService.js';
-import { createGroupOrder, cancelGroupOrder, cancelRegistrationPublic, confirmGroupOrder } from '../src/services/groupOrderService.js';
+import { createGroupOrder, cancelGroupOrder, cancelRegistrationPublic, confirmGroupOrder, adminCancelRegistration } from '../src/services/groupOrderService.js';
 
 function reset() {
   db.exec(`
@@ -209,6 +209,28 @@ expect('(c) under-capacity deadline cancel → session cancelled, reg rejected, 
   const reg = db.prepare("SELECT status FROM registrations WHERE order_id=?").get(o.orderId);
   assert.equal(reg.status, 'rejected', 'reg should be rejected');
   assert.equal(redemptionRow(o.orderId), undefined, 'redemption should be released after under-capacity cancel');
+});
+
+// ── fixed_price：X × 付款場次數；管理者取消一場（pending）後以剩餘場次重算 ──
+db.prepare(`INSERT INTO discount_codes (code, discount_type, discount_value, active) VALUES ('TESTDG_FP', 'fixed_price', 300, 1)`).run();
+let fpOrderId;
+expect('fixed_price 兩場：original 1000、折 400、total 600（300×2）', () => {
+  const o = createGroupOrder({ name: '固甲', phone: '0993000050', paySessionIds: [s1, s2], waitlistSessionIds: [], discountCode: 'TESTDG_FP' });
+  fpOrderId = o.orderId;
+  assert.equal(o.originalAmount, 1000); assert.equal(o.discountAmount, 400); assert.equal(o.total, 600);
+  const row = db.prepare('SELECT original_amount, discount_amount, total_amount FROM group_orders WHERE id=?').get(fpOrderId);
+  assert.deepEqual({ ...row }, { original_amount: 1000, discount_amount: 400, total_amount: 600 });
+});
+expect('管理者取消其中一場（pending）→ 重算 original 500、折 200、total 300（300×1）', () => {
+  const reg = db.prepare("SELECT id FROM registrations WHERE order_id=? AND session_id=? AND status='pending'").get(fpOrderId, s2);
+  adminCancelRegistration({ registrationId: reg.id, actorId: 1 });
+  const row = db.prepare('SELECT original_amount, discount_amount, total_amount FROM group_orders WHERE id=?').get(fpOrderId);
+  assert.deepEqual({ ...row }, { original_amount: 500, discount_amount: 200, total_amount: 300 });
+});
+expect('fixed_price X ≥ 單價 → 折 0、金額不變', () => {
+  db.prepare(`INSERT INTO discount_codes (code, discount_type, discount_value, active) VALUES ('TESTDG_FPHI', 'fixed_price', 800, 1)`).run();
+  const o = createGroupOrder({ name: '固乙', phone: '0993000051', paySessionIds: [s1], waitlistSessionIds: [], discountCode: 'TESTDG_FPHI' });
+  assert.equal(o.originalAmount, 500); assert.equal(o.discountAmount, 0); assert.equal(o.total, 500);
 });
 
 // ── Cleanup ──

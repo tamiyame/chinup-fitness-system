@@ -138,7 +138,7 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
     r.lineOfficialUrl = getLineOfficialUrl();
     const subtotal = getOneOnOnePriceByType(sessionType);
     let originalAmount = subtotal, discountAmount = null, discountCode_ = null, finalAmount = subtotal;
-    const applied = applyDiscountTx({ code: discountCode, phone, subtotal, kind: 'booking', refId: r.id });
+    const applied = applyDiscountTx({ code: discountCode, phone, subtotal, kind: 'booking', refId: r.id, qty: 1 });
     if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalAmount = applied.finalTotal; }
     db.prepare('UPDATE bookings SET original_amount=?, discount_amount=?, discount_code=?, customer_email=? WHERE id=?')
       .run(originalAmount, discountAmount, discountCode_, (email || null), r.id);

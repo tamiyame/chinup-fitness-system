@@ -44,7 +44,7 @@ export function createPackage({ memberId, sessionType, totalSessions, amount = n
   let discountCodeStored = null;
   // 僅在「有填金額」時才套折扣：amt==null（金額留空）→ 略過，不存碼、不把金額變成 0。
   if (discountCode != null && String(discountCode).trim() !== '' && amt != null) {
-    const q = quoteDiscount({ code: discountCode, amount: amt });
+    const q = quoteDiscount({ code: discountCode, amount: amt, qty: total });
     if (q) { amt = q.finalTotal; discountCodeStored = q.code; }
   }
   // created_at 用 nowLocal()（本地 wall-clock，與全站一致；不用 DEFAULT 的 UTC datetime('now')）。
