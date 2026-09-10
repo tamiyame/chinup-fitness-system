@@ -2456,7 +2456,7 @@ function prToggleDetail(tr) {
     <tr><td>${prDT(x.startAt)}</td>
         <td>${escapeHtml(x.courseName)}</td>
         <td>${x.headcount} 人</td>
-        <td class="text-right">${prNT(x.revenue)}</td></tr>`).join('');
+        <td class="text-right">${prNT(x.revenue)}${x.discount > 0 ? `<span class="subtle text-sm">（含折扣 −${prNT(x.discount)}）</span>` : ''}</td></tr>`).join('');
   const shRows = c.shift.details.map((x) => `
     <tr><td>${x.workDate.slice(5).replace('-', '/')}　${x.startTime}–${x.endTime}</td>
         <td>${prHoursNum(x.hours)} 小時</td>

@@ -43,13 +43,26 @@ const bookingsStmt = db.prepare(`
   WHERE b.status = 'confirmed' AND b.start_at >= ? AND b.start_at < ?
   ORDER BY b.coach_id ASC, b.start_at ASC
 `);
+// 團課每場實收：confirmed 且非請假的報名者，各自以「定價 − 訂單折扣分攤」計。
+// 訂單折扣（group_orders.discount_amount，三種折扣型態皆同）依該報名者定價占訂單原價的比例分攤：
+//   share = ROUND(discount_amount × amount_due ÷ original_amount)
+// 只看自己的定價與該單的原價／折扣，付款後取消或退款其他場次不影響本場；無折扣或無訂單（舊資料）→ 定價。
 const groupSessionsStmt = db.prepare(`
   SELECT s.id, s.coach_id, s.start_at, t.name AS course_name,
-         COUNT(r.id) AS headcount,
-         COALESCE(SUM(CASE WHEN r.id IS NULL THEN 0 ELSE COALESCE(r.amount_due, t.price_per_session) END), 0) AS revenue
+         COUNT(x.reg_id) AS headcount,
+         COALESCE(SUM(COALESCE(x.amount_due, t.price_per_session) - x.share), 0) AS revenue,
+         COALESCE(SUM(x.share), 0) AS discount
   FROM course_sessions s
   JOIN course_templates t ON t.id = s.template_id
-  LEFT JOIN registrations r ON r.session_id = s.id AND r.status = 'confirmed' AND r.on_leave = 0
+  LEFT JOIN (
+    SELECT r.id AS reg_id, r.session_id, r.amount_due,
+           CASE WHEN r.amount_due IS NOT NULL AND o.discount_amount > 0 AND o.original_amount > 0
+                THEN CAST(ROUND(o.discount_amount * 1.0 * r.amount_due / o.original_amount) AS INTEGER)
+                ELSE 0 END AS share
+    FROM registrations r
+    LEFT JOIN group_orders o ON o.id = r.order_id
+    WHERE r.status = 'confirmed' AND r.on_leave = 0
+  ) x ON x.session_id = s.id
   WHERE s.coach_id IS NOT NULL AND s.status != 'cancelled' AND s.start_at >= ? AND s.start_at < ?
   GROUP BY s.id
   ORDER BY s.coach_id ASC, s.start_at ASC
@@ -97,7 +110,7 @@ export function computePayroll({ period } = {}) {
     c.group.headcount += s.headcount;
     c.group.revenue += s.revenue;
     c.group.details.push({ sessionId: s.id, startAt: s.start_at, courseName: s.course_name,
-      headcount: s.headcount, revenue: s.revenue });
+      headcount: s.headcount, revenue: s.revenue, discount: s.discount });
   }
 
   const shiftMap = shiftSummaryByCoach(displayStart, displayEnd);

@@ -31,9 +31,13 @@
 ### B. 團體課（另計，不併入級距門檻）
 
 - **場次納入**：`course_sessions.coach_id = 該教練` 且 `status != 'cancelled'` 且 `start_at` 落在期間內。
-- **每場營收** = Σ 該場 `registrations.status = 'confirmed'` 且 `on_leave = 0` 的報名者之 `COALESCE(amount_due, 範本 price_per_session)`。
+- **每場營收** = Σ 該場 `registrations.status = 'confirmed'` 且 `on_leave = 0` 的報名者之**實收**：
+  `COALESCE(amount_due, 範本 price_per_session) − 訂單折扣分攤`，其中
+  `折扣分攤 = ROUND(group_orders.discount_amount × amount_due ÷ group_orders.original_amount)`（依該報名者定價占訂單原價的比例分攤；三種折扣型態 percent／fixed／fixed_price 一體適用）。
   - 請假（`on_leave = 1`）不列入（教練實際未教到該員）。
-  - `amount_due` 為報名當下實付單價（含折扣攤分）；NULL（舊資料）以範本定價補。
+  - `amount_due` 存的是報名當下的**定價**（不含折扣）；NULL（舊資料）以範本定價補、視為無折扣。無訂單或訂單無折扣 → 分攤 0。
+  - 分攤只看該報名者自己的定價與所屬訂單的原價／折扣：付款後取消其他場次或退款，不改變本場實收。
+  - 2026-09-10 業主拍板：教練團課抽成一律以實收計（此前實作誤以定價計，已修正；`computePayroll` 回傳的每場 `discount` 欄為該場折扣分攤合計，後台明細顯示「含折扣 −NT$X」）。
 - **團課薪資** = `Math.round(期間團課營收總額 × 團課% ÷ 100)`，固定比例（預設 50%），不看堂數級距。
 
 ### C. 應發合計

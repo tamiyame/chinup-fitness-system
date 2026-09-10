@@ -10,6 +10,8 @@ console.log('[payroll-service test] start');
 // ── 清理本測試資料（範圍鎖 2031 年，避免碰其他測試）──
 db.exec(`
   DELETE FROM registrations WHERE session_id IN (SELECT id FROM course_sessions WHERE start_at LIKE '2031-%');
+  DELETE FROM group_order_refunds WHERE order_id IN (SELECT id FROM group_orders WHERE customer_name LIKE 'PR%');
+  DELETE FROM group_orders WHERE customer_name LIKE 'PR%';
   DELETE FROM course_sessions WHERE start_at LIKE '2031-%';
   DELETE FROM course_templates WHERE name LIKE 'PR測試%';
   DELETE FROM bookings WHERE start_at LIKE '2031-%';
@@ -249,3 +251,74 @@ expect('totals = 各教練加總', () => {
 }
 
 console.log('[payroll-service test] done');
+
+// ── 團課實收：訂單折扣依定價比例分攤到每位報名者（教練抽成以實收計）──
+{
+  const coachE = mkCoach('pr-e@x.com', 'PR教練E', 1);
+  const mkTpl = (name, price) => Number(db.prepare(`
+    INSERT INTO course_templates (name, min_capacity, max_capacity, day_of_week, start_time, recurrence,
+      cycle_start_date, cycle_end_date, price_per_session, coach_id)
+    VALUES (?, 1, 20, 2, '19:00', 'weekly', '2031-01-01', '2031-03-01', ?, ?)`).run(name, price, coachE).lastInsertRowid);
+  const tE1 = mkTpl('PR測試折扣團課', 400);
+  const tE2 = mkTpl('PR測試折扣團課高價', 800);
+  const mkSess = (tpl, startAt) => Number(db.prepare(`
+    INSERT INTO course_sessions (template_id, session_date, start_at, end_at, registration_deadline, status, coach_id)
+    VALUES (?,?,?,?,?,'open',?)`).run(tpl, startAt.slice(0, 10), startAt, startAt.slice(0, 11) + '20:00:00', startAt, coachE).lastInsertRowid);
+  const e1 = mkSess(tE1, '2031-01-14T19:00:00');
+  const e2 = mkSess(tE1, '2031-01-21T19:00:00');
+  const e3 = mkSess(tE2, '2031-01-15T19:00:00');
+  const e4 = mkSess(tE1, '2031-01-28T19:00:00');
+  const e5 = mkSess(tE1, '2031-02-04T19:00:00');
+  const om = [];
+  for (let i = 0; i < 8; i++) om.push(uid(`PR訂單員${i}`, `pr-o${i}@x.com`));
+  // 已付款訂單：original_amount = 各場定價加總、discount_amount = 折扣額、total_amount = 實付
+  const mkOrder = (memberId, original, discount) => Number(db.prepare(`
+    INSERT INTO group_orders (member_id, customer_name, customer_phone, total_amount, status, expires_at, paid_at, discount_code, discount_amount, original_amount)
+    VALUES (?, 'PR訂單', '0900000000', ?, 'paid', '2031-01-01T00:00:00', '2031-01-02T00:00:00', ?, ?, ?)`)
+    .run(memberId, original - (discount ?? 0), discount == null ? null : 'PRCODE', discount, original).lastInsertRowid);
+  const mkOReg = (sessionId, userId, orderId, amountDue, { status = 'confirmed', onLeave = 0 } = {}) =>
+    db.prepare('INSERT INTO registrations (session_id, user_id, status, order_id, amount_due, on_leave) VALUES (?,?,?,?,?,?)')
+      .run(sessionId, userId, status, orderId, amountDue, onLeave);
+
+  const o1 = mkOrder(om[0], 800, 80);   mkOReg(e1, om[0], o1, 400); mkOReg(e2, om[0], o1, 400);   // 9 折 → 各 360
+  const o2 = mkOrder(om[1], 800, 100);  mkOReg(e1, om[1], o2, 400); mkOReg(e2, om[1], o2, 400);   // 定額折 100 → 各 350
+  const o3 = mkOrder(om[2], 800, 200);  mkOReg(e1, om[2], o3, 400); mkOReg(e2, om[2], o3, 400);   // 每堂固定 300 → 各 300
+  const o4 = mkOrder(om[3], 1200, 100); mkOReg(e1, om[3], o4, 400); mkOReg(e3, om[3], o4, 800);   // 混價：折 100 依 400:800 分攤 → 367 / 733
+  const o5 = mkOrder(om[4], 400, null); mkOReg(e4, om[4], o5, 400);                                 // 無折扣 → 400
+  const o6 = mkOrder(om[5], 800, 80);   mkOReg(e4, om[5], o6, 400); mkOReg(e5, om[5], o6, 400, { status: 'cancelled' }); // 付款後取消 e5 並退款 → e4 仍 360
+  db.prepare("INSERT INTO group_order_refunds (order_id, amount, refunded_at) VALUES (?, 400, '2031-01-25T00:00:00')").run(o6);
+  db.prepare('INSERT INTO registrations (session_id, user_id, status, amount_due) VALUES (?,?,?,?)').run(e4, om[6], 'confirmed', 400); // 無訂單（舊資料）→ 400
+  const o7 = mkOrder(om[7], 400, 40);   mkOReg(e4, om[7], o7, 400, { onLeave: 1 });               // 請假 → 不計（實收與折扣都不計）
+
+  const r = computePayroll({ period: '2031-02' });
+  const c = r.coaches.find((x) => x.coachId === coachE);
+  const det = (sid) => c.group.details.find((d) => d.sessionId === sid);
+  expect('9 折／定額／每堂固定：每位實收 = 定價 − 依定價比例分攤的折扣（e1：360+350+300+367）', () => {
+    assert.equal(det(e1).headcount, 4);
+    assert.equal(det(e1).revenue, 1377);
+    assert.equal(det(e1).discount, 223);          // 40+50+100+33
+    assert.equal(det(e2).headcount, 3);
+    assert.equal(det(e2).revenue, 1010);          // 360+350+300
+    assert.equal(det(e2).discount, 190);
+  });
+  expect('混價訂單：折扣依 400:800 分攤（高價場 733、折 67）', () => {
+    assert.equal(det(e3).headcount, 1);
+    assert.equal(det(e3).revenue, 733);
+    assert.equal(det(e3).discount, 67);
+  });
+  expect('無折扣訂單／舊資料無訂單 → 定價；付款後取消另一場不影響本場；請假不計', () => {
+    assert.equal(det(e4).headcount, 3);           // o5 + o6 + 舊資料（請假不計）
+    assert.equal(det(e4).revenue, 1160);          // 400 + 360 + 400
+    assert.equal(det(e4).discount, 40);
+    assert.equal(det(e5).headcount, 0);           // 已取消
+    assert.equal(det(e5).revenue, 0);
+    assert.equal(det(e5).discount, 0);
+  });
+  expect('教練團課實收與薪資以實收計（4280 × 50% = 2140）', () => {
+    assert.equal(c.group.headcount, 11);
+    assert.equal(c.group.revenue, 4280);          // 1377+1010+733+1160
+    assert.equal(c.group.pct, 50);
+    assert.equal(c.group.salary, 2140);
+  });
+}
+console.log('[payroll-service test] group-discount done');
