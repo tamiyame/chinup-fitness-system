@@ -31,9 +31,14 @@
 ### B. 團體課（另計，不併入級距門檻）
 
 - **場次納入**：`course_sessions.coach_id = 該教練` 且 `status != 'cancelled'` 且 `start_at` 落在期間內。
-- **每場營收** = Σ 該場 `registrations.status = 'confirmed'` 且 `on_leave = 0` 的報名者之 `COALESCE(amount_due, 範本 price_per_session)`。
+- **每場營收** = Σ 該場 `registrations.status = 'confirmed'` 且 `on_leave = 0` 的報名者之**實收**：
+  `COALESCE(amount_due, 範本 price_per_session) − 訂單折扣分攤`，其中
+  `折扣分攤 = ROUND(group_orders.discount_amount × amount_due ÷ group_orders.original_amount)`（依該報名者定價占訂單原價的比例分攤；三種折扣型態 percent／fixed／fixed_price 一體適用）。
   - 請假（`on_leave = 1`）不列入（教練實際未教到該員）。
-  - `amount_due` 為報名當下實付單價（含折扣攤分）；NULL（舊資料）以範本定價補。
+  - `amount_due` 存的是報名當下的**定價**（不含折扣）；NULL（舊資料）以範本定價補、視為無折扣。無訂單或訂單無折扣 → 分攤 0。
+  - 分攤只看該報名者自己的定價與所屬訂單的原價／折扣：付款後取消其他場次或退款，不改變本場實收。
+  - 同一張訂單各報名者的分攤逐項四捨五入，加總可能與 `discount_amount` 差 ±1 上下（已知、可接受，不做湊整）。分攤以 `MIN(定價, …)` 封頂，實收永不為負。
+  - 2026-09-10 業主拍板：教練團課抽成一律以實收計（此前實作誤以定價計，已修正；`computePayroll` 回傳的每場 `discount` 欄為該場折扣分攤合計，後台明細顯示「含折扣 −NT$X」）。
 - **團課薪資** = `Math.round(期間團課營收總額 × 團課% ÷ 100)`，固定比例（預設 50%），不看堂數級距。
 
 ### C. 應發合計
@@ -77,10 +82,10 @@
         ]
       },
       "group": {
-        "headcount": 30, "revenue": 12000, "pct": 50, "salary": 6000,
+        "headcount": 30, "revenue": 12000, "discount": 500, "pct": 50, "salary": 6000,
         "details": [
           { "sessionId": 5, "startAt": "2026-06-12T19:00:00", "courseName": "綜合體能",
-            "headcount": 6, "revenue": 2400 }
+            "headcount": 6, "revenue": 2400, "discount": 100 }
         ]
       },
       "total": 33000
@@ -114,8 +119,9 @@
 3. 取消預約排除；折扣正確相減（含 1對2 折扣）；方案登錄單價（amount÷total_sessions）流入計算。
 4. 無單價：以 0 計、堂數與 unpriced 正確。
 5. 團課：只計 confirmed 報名、排除 on_leave、排除 cancelled 場次、amount_due NULL 回退範本價、固定 groupPct 不受級距影響。
-6. 設定：GET 回傳預設值；PATCH 驗證（越界 400）與寫入後重算生效。
-7. 權限：未登入/非管理者 401/403。
+6. 團課實收：訂單折扣依定價比例分攤（9 折／定額／每堂固定／混價）、無折扣與舊資料回定價、付款後取消另一場不影響本場、請假不計、教練層 `discount` 合計、期外場次與訂單不滲入本期。
+7. 設定：GET 回傳預設值；PATCH 驗證（越界 400）與寫入後重算生效。
+8. 權限：未登入/非管理者 401/403。
 
 ## 明確不做（YAGNI）
 
