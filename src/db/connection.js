@@ -145,6 +145,46 @@ addColumnIfMissing('group_orders', 'discount_amount', 'INTEGER');
 addColumnIfMissing('group_orders', 'original_amount', 'INTEGER');
 addColumnIfMissing('bookings', 'discount_code', 'TEXT');
 addColumnIfMissing('bookings', 'discount_amount', 'INTEGER');
+
+// ── 2026-09-10 折扣碼型態加 fixed_price：CHECK 改不了 → 整表 rebuild（比照 registrations）。
+// 偵測訊號：建表 SQL 不含 'fixed_price'。id 原樣複製，discount_redemptions 的 FK 不受影響；重跑 no-op。
+{
+  const dcSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='discount_codes'").get()?.sql || '';
+  if (dcSql && !dcSql.includes("'fixed_price'")) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      db.exec('BEGIN');
+      db.exec(`
+        CREATE TABLE discount_codes_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          code TEXT NOT NULL UNIQUE,
+          discount_type TEXT NOT NULL CHECK(discount_type IN ('percent','fixed','fixed_price')),
+          discount_value INTEGER NOT NULL,
+          active INTEGER NOT NULL DEFAULT 1,
+          valid_from TEXT,
+          valid_until TEXT,
+          max_uses INTEGER,
+          per_phone_limit INTEGER,
+          min_amount INTEGER,
+          note TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+      db.exec(`
+        INSERT INTO discount_codes_new (id, code, discount_type, discount_value, active, valid_from, valid_until, max_uses, per_phone_limit, min_amount, note, created_at)
+        SELECT id, code, discount_type, discount_value, active, valid_from, valid_until, max_uses, per_phone_limit, min_amount, note, created_at FROM discount_codes`);
+      db.exec('DROP TABLE discount_codes');
+      db.exec('ALTER TABLE discount_codes_new RENAME TO discount_codes');
+      db.exec('COMMIT');
+    } catch (e) {
+      try { db.exec('ROLLBACK'); } catch {}
+      throw e;
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON');
+    }
+    console.log('[migrate] discount_codes rebuilt (fixed_price type)');
+  }
+}
+
 addColumnIfMissing('bookings', 'original_amount', 'INTEGER');
 
 // ── 2026-05-31 單一場次手動開放/關閉 ──
