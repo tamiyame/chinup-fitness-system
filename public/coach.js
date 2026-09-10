@@ -521,7 +521,9 @@ async function getDiscountCodes() {
   return regDiscountCodesCache;
 }
 function discountOptionsHtml(codes) {
-  const label = (c) => c.discount_type === 'percent' ? `${c.discount_value}% 折扣` : `折抵 $${c.discount_value}`;
+  const label = (c) => c.discount_type === 'percent' ? `${c.discount_value}% 折扣`
+    : c.discount_type === 'fixed_price' ? `每堂 $${c.discount_value}`
+    : `折抵 $${c.discount_value}`;
   return '<option value="">不使用折扣碼</option>' +
     codes.map(c => `<option value="${escapeHtml(c.code)}">${escapeHtml(c.code)} — ${label(c)}</option>`).join('');
 }

@@ -772,12 +772,13 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
             <select id="dc-type" required class="form-select">
               <option value="percent">百分比折扣</option>
               <option value="fixed">定額折扣</option>
+              <option value="fixed_price">固定金額（每堂）</option>
             </select>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="form-label">折扣值 <span class="text-red-500">*</span><span class="subtle text-xs ml-1">（% 或 $）</span></label>
+            <label class="form-label">折扣值 <span class="text-red-500">*</span><span id="dc-value-hint" class="subtle text-xs ml-1">（%，1–100）</span></label>
             <input id="dc-value" type="number" min="1" required class="form-input" placeholder="10">
           </div>
           <div>

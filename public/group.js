@@ -303,11 +303,15 @@ document.addEventListener('DOMContentLoaded', () => {
           // so no escapeHtml here). Use the server-returned discount_value, not a client reverse-calc.
           code: result.discount_type === 'percent'
             ? `${code.toUpperCase()}（減${result.discount_value}%）`
-            : code.toUpperCase(),
+            : result.discount_type === 'fixed_price'
+              ? `${code.toUpperCase()}（每堂 NT$${Number(result.discount_value).toLocaleString()}）`
+              : code.toUpperCase(),
           discountAmount: result.discount_amount,
           finalTotal: result.final_total,
         };
-        msgEl.textContent = `折扣套用成功：折 NT$${result.discount_amount.toLocaleString()}，應付 NT$${result.final_total.toLocaleString()}`;
+        msgEl.textContent = result.discount_type === 'fixed_price'
+          ? `折扣套用成功：每堂 NT$${Number(result.discount_value).toLocaleString()}，應付 NT$${result.final_total.toLocaleString()}`
+          : `折扣套用成功：折 NT$${result.discount_amount.toLocaleString()}，應付 NT$${result.final_total.toLocaleString()}`;
         msgEl.style.color = '#15803d';
         msgEl.classList.remove('hidden');
         updateOrderSummary();
