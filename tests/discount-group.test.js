@@ -38,7 +38,7 @@ const tpl = createTemplate({
   registration_deadline_hours: 1, price_per_session: 500,
 });
 const sessions = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at ASC').all(tpl.templateId);
-const s1 = sessions[0].id, s2 = sessions[1].id;
+const s1 = sessions[0].id, s2 = sessions[1].id, s3 = sessions[2].id;
 
 // Seed a percent-10 discount code
 db.prepare(`INSERT INTO discount_codes (code, discount_type, discount_value, active)
@@ -214,18 +214,19 @@ expect('(c) under-capacity deadline cancel → session cancelled, reg rejected, 
 // ── fixed_price：X × 付款場次數；管理者取消一場（pending）後以剩餘場次重算 ──
 db.prepare(`INSERT INTO discount_codes (code, discount_type, discount_value, active) VALUES ('TESTDG_FP', 'fixed_price', 300, 1)`).run();
 let fpOrderId;
-expect('fixed_price 兩場：original 1000、折 400、total 600（300×2）', () => {
-  const o = createGroupOrder({ name: '固甲', phone: '0993000050', paySessionIds: [s1, s2], waitlistSessionIds: [], discountCode: 'TESTDG_FP' });
+expect('fixed_price 三場：original 1500、折 600、total 900（300×3）', () => {
+  assert.ok(s3);
+  const o = createGroupOrder({ name: '固甲', phone: '0993000050', paySessionIds: [s1, s2, s3], waitlistSessionIds: [], discountCode: 'TESTDG_FP' });
   fpOrderId = o.orderId;
-  assert.equal(o.originalAmount, 1000); assert.equal(o.discountAmount, 400); assert.equal(o.total, 600);
+  assert.equal(o.originalAmount, 1500); assert.equal(o.discountAmount, 600); assert.equal(o.total, 900);
   const row = db.prepare('SELECT original_amount, discount_amount, total_amount FROM group_orders WHERE id=?').get(fpOrderId);
-  assert.deepEqual({ ...row }, { original_amount: 1000, discount_amount: 400, total_amount: 600 });
+  assert.deepEqual({ ...row }, { original_amount: 1500, discount_amount: 600, total_amount: 900 });
 });
-expect('管理者取消其中一場（pending）→ 重算 original 500、折 200、total 300（300×1）', () => {
-  const reg = db.prepare("SELECT id FROM registrations WHERE order_id=? AND session_id=? AND status='pending'").get(fpOrderId, s2);
+expect('管理者取消其中一場（pending）→ 重算 original 1000、折 400、total 600（300×2）', () => {
+  const reg = db.prepare("SELECT id FROM registrations WHERE order_id=? AND session_id=? AND status='pending'").get(fpOrderId, s3);
   adminCancelRegistration({ registrationId: reg.id, actorId: 1 });
   const row = db.prepare('SELECT original_amount, discount_amount, total_amount FROM group_orders WHERE id=?').get(fpOrderId);
-  assert.deepEqual({ ...row }, { original_amount: 500, discount_amount: 200, total_amount: 300 });
+  assert.deepEqual({ ...row }, { original_amount: 1000, discount_amount: 400, total_amount: 600 });
 });
 expect('fixed_price X ≥ 單價 → 折 0、金額不變', () => {
   db.prepare(`INSERT INTO discount_codes (code, discount_type, discount_value, active) VALUES ('TESTDG_FPHI', 'fixed_price', 800, 1)`).run();
