@@ -47,6 +47,9 @@ const bookingsStmt = db.prepare(`
 // 訂單折扣（group_orders.discount_amount，三種折扣型態皆同）依該報名者定價占訂單原價的比例分攤：
 //   share = ROUND(discount_amount × amount_due ÷ original_amount)
 // 只看自己的定價與該單的原價／折扣，付款後取消或退款其他場次不影響本場；無折扣或無訂單（舊資料）→ 定價。
+// share 以 MIN(定價, …) 保險封頂（現行 discount_amount ≤ original_amount 的不變量下不會觸發），實收永不為負。
+// 派生表另以期間內場次 id 篩選（與外層同一組 lo/hi），避免對整張 registrations 全表掃描。
+// 同一張訂單各報名者 share 逐項四捨五入，加總可能與 discount_amount 差 ±1 上下（已知、可接受）。
 const groupSessionsStmt = db.prepare(`
   SELECT s.id, s.coach_id, s.start_at, t.name AS course_name,
          COUNT(x.reg_id) AS headcount,
@@ -57,11 +60,12 @@ const groupSessionsStmt = db.prepare(`
   LEFT JOIN (
     SELECT r.id AS reg_id, r.session_id, r.amount_due,
            CASE WHEN r.amount_due IS NOT NULL AND o.discount_amount > 0 AND o.original_amount > 0
-                THEN CAST(ROUND(o.discount_amount * 1.0 * r.amount_due / o.original_amount) AS INTEGER)
+                THEN MIN(r.amount_due, CAST(ROUND(o.discount_amount * 1.0 * r.amount_due / o.original_amount) AS INTEGER))
                 ELSE 0 END AS share
     FROM registrations r
     LEFT JOIN group_orders o ON o.id = r.order_id
     WHERE r.status = 'confirmed' AND r.on_leave = 0
+      AND r.session_id IN (SELECT id FROM course_sessions WHERE start_at >= ? AND start_at < ?)
   ) x ON x.session_id = s.id
   WHERE s.coach_id IS NOT NULL AND s.status != 'cancelled' AND s.start_at >= ? AND s.start_at < ?
   GROUP BY s.id
@@ -83,7 +87,7 @@ export function computePayroll({ period } = {}) {
   const byCoach = new Map(coachesStmt.all().map((c) => [c.id, {
     coachId: c.id, displayName: c.display_name, isActive: c.is_active,
     oneOnOne: { sessions: 0, revenue: 0, unpriced: 0, future: 0, pct: settings.pctLow, salary: 0, details: [] },
-    group: { headcount: 0, revenue: 0, pct: settings.groupPct, salary: 0, details: [] },
+    group: { headcount: 0, revenue: 0, discount: 0, pct: settings.groupPct, salary: 0, details: [] },
     shift: { hours: 0, rate: c.hourly_rate ?? null, salary: 0, details: [] },
     total: 0,
   }]));
@@ -104,11 +108,12 @@ export function computePayroll({ period } = {}) {
     });
   }
 
-  for (const s of groupSessionsStmt.all(lo, hi)) {
+  for (const s of groupSessionsStmt.all(lo, hi, lo, hi)) {
     const c = byCoach.get(s.coach_id);
     if (!c) continue;
     c.group.headcount += s.headcount;
     c.group.revenue += s.revenue;
+    c.group.discount += s.discount;
     c.group.details.push({ sessionId: s.id, startAt: s.start_at, courseName: s.course_name,
       headcount: s.headcount, revenue: s.revenue, discount: s.discount });
   }

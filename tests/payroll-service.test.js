@@ -289,6 +289,9 @@ console.log('[payroll-service test] done');
   db.prepare("INSERT INTO group_order_refunds (order_id, amount, refunded_at) VALUES (?, 400, '2031-01-25T00:00:00')").run(o6);
   db.prepare('INSERT INTO registrations (session_id, user_id, status, amount_due) VALUES (?,?,?,?)').run(e4, om[6], 'confirmed', 400); // 無訂單（舊資料）→ 400
   const o7 = mkOrder(om[7], 400, 40);   mkOReg(e4, om[7], o7, 400, { onLeave: 1 });               // 請假 → 不計（實收與折扣都不計）
+  // 期外陷阱：2031-03 的場次掛一張折扣極大的訂單，不得滲入本期數字
+  const e6 = mkSess(tE1, '2031-03-04T19:00:00');
+  const o8 = mkOrder(om[0], 400, 399);  mkOReg(e6, om[0], o8, 400);
 
   const r = computePayroll({ period: '2031-02' });
   const c = r.coaches.find((x) => x.coachId === coachE);
@@ -314,11 +317,17 @@ console.log('[payroll-service test] done');
     assert.equal(det(e5).revenue, 0);
     assert.equal(det(e5).discount, 0);
   });
-  expect('教練團課實收與薪資以實收計（4280 × 50% = 2140）', () => {
+  expect('教練團課實收與薪資以實收計（4280 × 50% = 2140）、教練層折扣合計 520', () => {
     assert.equal(c.group.headcount, 11);
     assert.equal(c.group.revenue, 4280);          // 1377+1010+733+1160
+    assert.equal(c.group.discount, 520);          // 223+190+67+40
     assert.equal(c.group.pct, 50);
     assert.equal(c.group.salary, 2140);
+  });
+  expect('期外場次與其訂單不滲入本期（派生表已用期間篩選）', () => {
+    assert.equal(det(e6), undefined);
+    const next = computePayroll({ period: '2031-03' }).coaches.find((x) => x.coachId === coachE);   // 2031-03 期 = 02/06–03/05，含 03/04
+    assert.equal(next.group.details.find((d) => d.sessionId === e6).revenue, 1);   // 400 − 399
   });
 }
 console.log('[payroll-service test] group-discount done');

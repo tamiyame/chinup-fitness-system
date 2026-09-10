@@ -2467,7 +2467,7 @@ function prToggleDetail(tr) {
   row.innerHTML = `<td colspan="12" class="cell-span"><div class="pr-detail-block">
       <h4>一對一明細（${o.sessions} 堂・實收 ${prNT(o.revenue)}）</h4>
       ${oneRows ? `<table><tbody>${oneRows}</tbody></table>` : '<div class="subtle text-sm">本期無一對一堂數</div>'}
-      <h4>團體課明細（${c.group.headcount} 人次・實收 ${prNT(c.group.revenue)}）</h4>
+      <h4>團體課明細（${c.group.headcount} 人次・實收 ${prNT(c.group.revenue)}${c.group.discount > 0 ? `・含折扣 −${prNT(c.group.discount)}` : ''}）</h4>
       ${grpRows ? `<table><tbody>${grpRows}</tbody></table>` : '<div class="subtle text-sm">本期無授課團課場次</div>'}
       <h4>駐場明細（${prHoursNum(c.shift.hours)} 小時${c.shift.rate != null ? '・時薪 ' + prNT(c.shift.rate) : ''}）</h4>
       ${shRows ? `<table><tbody>${shRows}</tbody></table>` : '<div class="subtle text-sm">本期無駐場出席</div>'}
