@@ -40,9 +40,10 @@ const listMemberStmt = db.prepare(`
 `);
 
 const listCoachStmt = db.prepare(`
-  SELECT b.*, u.name AS member_name, u.email AS member_email
+  SELECT b.*, u.name AS member_name, u.email AS member_email, u2.name AS companion_name
   FROM bookings b
   JOIN users u ON u.id = b.member_id
+  LEFT JOIN users u2 ON u2.id = b.member2_id
   WHERE b.coach_id = ?
   ORDER BY b.created_at DESC, b.id DESC
 `);
@@ -96,9 +97,11 @@ const listPendingPaymentStmt = db.prepare(`
   SELECT b.id, b.start_at, b.session_type, b.created_at, b.recurring_group_id,
          b.original_amount, b.discount_amount, b.discount_code,
          u.name AS member_name, u.phone AS member_phone,
+         u2.name AS companion_name,
          c.display_name AS coach_display_name
   FROM bookings b
   JOIN users u ON u.id = b.member_id
+  LEFT JOIN users u2 ON u2.id = b.member2_id
   JOIN coaches c ON c.id = b.coach_id
   WHERE b.status = 'confirmed' AND b.paid_at IS NULL
   ORDER BY b.created_at DESC, b.id DESC
@@ -364,6 +367,7 @@ export function listPendingPaymentBookings() {
         member_name: b.member_name, member_phone: b.member_phone,
         coach_display_name: b.coach_display_name, session_type: b.session_type,
         sessions: [], total_amount: 0, discount_code: b.discount_code,
+        companion_name: b.companion_name,
       };
       groups.set(b.recurring_group_id, g);
       out.push(g);
@@ -397,11 +401,13 @@ export function confirmBookingPayment({ bookingId, actorId }) {
 export function listConfirmedPayments() {
   const bookingRows = db.prepare(`
     SELECT 'booking' AS type, b.id, b.recurring_group_id, u.name AS customer_name, u.phone AS customer_phone,
+           u2.name AS companion_name,
            CASE WHEN b.original_amount IS NULL THEN NULL
                 ELSE b.original_amount - COALESCE(b.discount_amount, 0) END AS amount,
            b.start_at AS detail, b.session_type, b.paid_at, b.refunded_at, pu.name AS paid_by_name
     FROM bookings b
     JOIN users u ON u.id = b.member_id
+    LEFT JOIN users u2 ON u2.id = b.member2_id
     LEFT JOIN users pu ON pu.id = b.paid_by
     WHERE b.paid_at IS NOT NULL
     ORDER BY b.paid_at DESC LIMIT 200
@@ -416,7 +422,8 @@ export function listConfirmedPayments() {
       g = { type: 'booking_group', id: r.recurring_group_id, customer_name: r.customer_name,
             customer_phone: r.customer_phone, amount: 0, session_type: r.session_type,
             count: 0, refunded_count: 0, first_at: r.detail, detail: '',
-            paid_at: r.paid_at, paid_by_name: r.paid_by_name, refunded_at: null };
+            paid_at: r.paid_at, paid_by_name: r.paid_by_name, refunded_at: null,
+            companion_name: r.companion_name };
       bGroups.set(r.recurring_group_id, g);
       bookings.push(g);
     }
