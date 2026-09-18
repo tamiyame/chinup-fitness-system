@@ -129,4 +129,67 @@ expect('全店同小時第 4 組 → 409 slot_full', () => {
   assert.throws(() => createBookingAnon({ coachId: coach4.id, startAt: capSlot, name: '丁', phone: '0998000888' }), /slot_full/);
 });
 
+// ── 1對2 同行客人 ────────────────────────────────────────────────────────
+const staffPhoneUser = db.prepare("INSERT INTO users (name,email,password_hash,role,phone) VALUES ('員工丙','anon-bk-staff@x.com',?,'coach','0998000778')").run(hashPassword('x'));
+const rc = createBookingAnon({ coachId: coach.id, startAt: futureLocal(8), name: '主客甲', phone: '0998000501', sessionType: '1on2',
+  companion: { name: '同行乙', phone: '0998000502' } });
+expect('1on2 帶同行：member2_id 寫入、同行帳號建立、回傳 companionName', () => {
+  const row = db.prepare('SELECT member_id, member2_id, session_type FROM bookings WHERE id=?').get(rc.id);
+  const u2 = db.prepare("SELECT id, name, role FROM users WHERE phone='0998000502'").get();
+  assert.ok(u2 && u2.role === 'user' && u2.name === '同行乙');
+  assert.equal(row.member2_id, u2.id);
+  assert.notEqual(row.member_id, row.member2_id);
+  assert.equal(rc.companionName, '同行乙');
+});
+expect('教練 booking_created 的 member_name 為「主客甲＋同行乙」、同行也收 booking_confirmed', () => {
+  const coachNotif = db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='booking_created' ORDER BY id DESC LIMIT 1").get(cu.lastInsertRowid);
+  assert.ok(coachNotif && coachNotif.body.includes('主客甲＋同行乙'), coachNotif && coachNotif.body);
+  const u2 = db.prepare("SELECT id FROM users WHERE phone='0998000502'").get();
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_confirmed'").get(u2.id).c, 1);
+});
+expect('同行電話＝主客人 → 400 companion_same_person', () => {
+  try { createBookingAnon({ coachId: coach.id, startAt: futureLocal(9), name: '主客甲', phone: '0998000501', sessionType: '1on2', companion: { name: '主客甲', phone: '0998000501' } }); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 400); assert.equal(e.code, 'companion_same_person'); }
+});
+expect('1on1 帶同行 → 400 companion_not_allowed', () => {
+  try { createBookingAnon({ coachId: coach.id, startAt: futureLocal(9), name: '主客甲', phone: '0998000501', sessionType: '1on1', companion: { name: '同行乙', phone: '0998000502' } }); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 400); assert.equal(e.code, 'companion_not_allowed'); }
+});
+expect('同行只填姓名沒電話 → 400 invalid_companion', () => {
+  try { createBookingAnon({ coachId: coach.id, startAt: futureLocal(9), name: '主客甲', phone: '0998000501', sessionType: '1on2', companion: { name: '同行乙', phone: '' } }); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 400); assert.equal(e.code, 'invalid_companion'); }
+});
+expect('同行電話是員工帳號 → 409 phone_unavailable', () => {
+  try { createBookingAnon({ coachId: coach.id, startAt: futureLocal(9), name: '主客甲', phone: '0998000501', sessionType: '1on2', companion: { name: '員工丙', phone: '0998000778' } }); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 409); assert.equal(e.code, 'phone_unavailable'); }
+});
+expect('無關第三者取消 → 403', () => {
+  try { cancelBookingAnon({ bookingId: rc.id, phone: '0998000333', name: '阿明' }); assert.fail('no throw'); }
+  catch (e) { assert.equal(e.status, 403); }
+});
+expect('同行取消 → 整筆取消、教練收「同行乙 取消」、主客人收 booking_cancelled_by_companion', () => {
+  const res = cancelBookingAnon({ bookingId: rc.id, phone: '0998000502', name: '同行乙' });
+  assert.equal(res.ok, true);
+  const row = db.prepare('SELECT status, cancelled_by FROM bookings WHERE id=?').get(rc.id);
+  const u2 = db.prepare("SELECT id FROM users WHERE phone='0998000502'").get();
+  const u1 = db.prepare("SELECT id FROM users WHERE phone='0998000501'").get();
+  assert.equal(row.status, 'cancelled'); assert.equal(row.cancelled_by, u2.id);
+  const coachNotif = db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='booking_cancelled_by_member' ORDER BY id DESC LIMIT 1").get(cu.lastInsertRowid);
+  assert.ok(coachNotif && coachNotif.body.includes('同行乙'), coachNotif && coachNotif.body);
+  const mate = db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='booking_cancelled_by_companion' ORDER BY id DESC LIMIT 1").get(u1.id);
+  assert.ok(mate && mate.body.includes('同行乙') && mate.body.includes('Coach U'), mate && mate.body);
+});
+expect('主客人取消 → 同行收 booking_cancelled_by_companion', () => {
+  const r2 = createBookingAnon({ coachId: coach.id, startAt: futureLocal(10), name: '主客甲', phone: '0998000501', sessionType: '1on2', companion: { name: '同行乙', phone: '0998000502' } });
+  cancelBookingAnon({ bookingId: r2.id, phone: '0998000501', name: '主客甲' });
+  const u2 = db.prepare("SELECT id FROM users WHERE phone='0998000502'").get();
+  const mate = db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='booking_cancelled_by_companion' ORDER BY id DESC LIMIT 1").get(u2.id);
+  assert.ok(mate && mate.body.includes('主客甲'), mate && mate.body);
+});
+expect('1on2 不帶同行 → member2_id NULL、companionName null', () => {
+  const r3 = createBookingAnon({ coachId: coach.id, startAt: futureLocal(11), name: '主客甲', phone: '0998000501', sessionType: '1on2' });
+  assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(r3.id).member2_id, null);
+  assert.equal(r3.companionName, null);
+});
+
 console.log('[booking-anon test] done');

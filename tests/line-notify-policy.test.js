@@ -23,6 +23,7 @@ const ACTIVE_TYPES = [
   'booking_created', 'booking_confirmed', 'booking_recurring_created', 'booking_recurring_created_coach',
   'booking_payment_received', 'booking_rescheduled', 'booking_rescheduled_coach',
   'booking_cancelled_by_coach', 'booking_cancelled_by_shop', 'booking_refunded',
+  'booking_cancelled_by_companion',
   'booking_cancelled_by_member', 'booking_cancelled_by_shop_coach',
   'payment_received', 'course_registered_coach', 'course_registered_coach_batch',
   'course_registered_admin', 'course_registered_admin_batch',

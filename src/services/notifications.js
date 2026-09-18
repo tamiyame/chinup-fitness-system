@@ -68,6 +68,10 @@ const TEMPLATES = {
     subject: '會員取消預約 - {{member_name}}',
     body: '⚠️ {{member_name}} 取消了 {{start_at}} 的一對一預約。',
   },
+  booking_cancelled_by_companion: {  // 寄給另一位客人（一對二同行取消了共用的預約）
+    subject: '同行取消預約 - {{coach_display_name}}',
+    body: '⚠️ 您與 {{other_name}} 同行的 {{coach_display_name}} 教練課（{{start_at}}）已由 {{other_name}} 取消，此堂課不會進行。',
+  },
   booking_cancelled_by_coach: {  // 寄給會員
     subject: '教練取消預約 - {{coach_display_name}}',
     body: '⚠️ {{coach_display_name}} 教練取消了你 {{start_at}} 的預約，點數已退回。',

@@ -12,8 +12,8 @@ const START_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const insertBookingStmt = db.prepare(`
-  INSERT INTO bookings (coach_id, member_id, start_at, end_at, note, session_type)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO bookings (coach_id, member_id, start_at, end_at, note, session_type, member2_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 
 const getBookingStmt = db.prepare('SELECT * FROM bookings WHERE id = ?');
@@ -50,6 +50,48 @@ const listCoachStmt = db.prepare(`
 const getCoachStmt = db.prepare('SELECT * FROM coaches WHERE id = ?');
 const getUserNameStmt = db.prepare('SELECT name FROM users WHERE id = ?');
 
+const getUserBasicStmt = db.prepare('SELECT id, name, phone, role FROM users WHERE id = ?');
+
+/** 同行守則（既有會員 id 版；教練登錄／後台編輯用）。回 users 列或 null。 */
+function resolveCompanionById({ companionId, memberId, sessionType }) {
+  if (companionId == null || companionId === '') return null;
+  if (sessionType !== '1on2') throw new ApiError(400, 'companion_not_allowed');
+  const id = Number(companionId);
+  const u = Number.isInteger(id) ? getUserBasicStmt.get(id) : null;
+  if (!u || u.role !== 'user') throw new ApiError(404, 'companion_not_found');
+  if (u.id === Number(memberId)) throw new ApiError(400, 'companion_same_person');
+  return u;
+}
+
+/** 同行守則（公開頁姓名＋電話版）：兩者皆須有值；建立或對到既有一般會員（員工電話 409）。 */
+function resolveCompanionByPhone({ companion, memberId, memberPhone, sessionType }) {
+  if (!companion) return null;
+  const name = typeof companion.name === 'string' ? companion.name.trim() : '';
+  const phone = typeof companion.phone === 'string' ? companion.phone.trim() : '';
+  if (!name && !phone) return null;                        // 兩欄留白＝沒有同行
+  if (sessionType !== '1on2') throw new ApiError(400, 'companion_not_allowed');
+  if (!name || !phone) throw new ApiError(400, 'invalid_companion');
+  if (phone === String(memberPhone)) throw new ApiError(400, 'companion_same_person');
+  let u;
+  try { u = findOrCreateUserByPhone({ phone, name }); }
+  catch (e) { if (e instanceof ApiError && e.code === 'invalid_phone') throw new ApiError(400, 'invalid_companion'); throw e; }
+  if (u.id === Number(memberId)) throw new ApiError(400, 'companion_same_person');
+  return u;
+}
+
+/** 員工端通知用的客人標籤：有同行 → 「主客人＋同行」。 */
+function partyLabel(b) {
+  const m = getUserNameStmt.get(b.member_id)?.name || '';
+  const c = b.member2_id ? getUserNameStmt.get(b.member2_id)?.name : null;
+  return c ? `${m}＋${c}` : m;
+}
+
+/** 會員端通知鏡射：主客人與同行（若有）各一則同款通知。 */
+function notifyCustomers(b, type, vars) {
+  notify({ userId: b.member_id, sessionId: null, type, vars });
+  if (b.member2_id) notify({ userId: b.member2_id, sessionId: null, type, vars });
+}
+
 const listPendingPaymentStmt = db.prepare(`
   SELECT b.id, b.start_at, b.session_type, b.created_at, b.recurring_group_id,
          b.original_amount, b.discount_amount, b.discount_code,
@@ -84,7 +126,7 @@ const getMostRecentBookingWithCoachStmt = db.prepare(`
 `);
 
 // 核心建單：寫 bookings + 通知教練/會員。不碰點數。
-function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1', silent = false, enforceAvailability = true }) {
+function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1', silent = false, enforceAvailability = true, member2Id = null }) {
   const endAt = addMinutes(startAt, 60);
   // 同教練重疊 / 全店容量（tx 內、純 DB → 無競態）。UNIQUE index 仍為最後兜底。
   // enforceAvailability=false（員工手動登錄）：跳過班表/容量檢查，允許任意整點；
@@ -94,7 +136,7 @@ function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1
   }
   let bookingId;
   try {
-    const info = insertBookingStmt.run(coach.id, memberId, startAt, endAt, note, sessionType);
+    const info = insertBookingStmt.run(coach.id, memberId, startAt, endAt, note, sessionType, member2Id);
     bookingId = info.lastInsertRowid;
   } catch (e) {
     if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
@@ -103,12 +145,13 @@ function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1
   const memberRow = getUserNameStmt.get(memberId);
   if (memberRow && !silent) {  // silent：循環預約逐堂不通知（由呼叫端發一則摘要）
     const startFmt = fmtDateForLine(startAt);
+    const label = partyLabel({ member_id: memberId, member2_id: member2Id });
     notify({ userId: coach.user_id, sessionId: null, type: 'booking_created',
-      vars: { member_name: memberRow.name, start_at: startFmt } });
-    notify({ userId: memberId, sessionId: null, type: 'booking_confirmed',
-      vars: { coach_display_name: coach.display_name, start_at: startFmt } });
+      vars: { member_name: label, start_at: startFmt } });
+    notifyCustomers({ member_id: memberId, member2_id: member2Id }, 'booking_confirmed',
+      { coach_display_name: coach.display_name, start_at: startFmt });
     // 加掛：店家管理者廣播（第三人稱、中性，沿用 booking_created 文案）
-    notifyAdmins({ type: 'booking_created', excludeUserIds: [memberId, coach.user_id], vars: { member_name: memberRow.name, start_at: startFmt } });
+    notifyAdmins({ type: 'booking_created', excludeUserIds: [memberId, member2Id, coach.user_id].filter(Boolean), vars: { member_name: label, start_at: startFmt } });
   }
   return { id: bookingId, startAt, endAt };
 }
@@ -122,7 +165,7 @@ export function createBooking({ coachId, memberId, startAt, note = null }) {
   return tx(() => createBookingCore({ coach, memberId, startAt, note }));
 }
 
-export function createBookingAnon({ coachId, startAt, name, phone, note = null, discountCode = null, sessionType = '1on1', email = null }) {
+export function createBookingAnon({ coachId, startAt, name, phone, note = null, discountCode = null, sessionType = '1on1', email = null, companion = null }) {
   if (!coachId || !startAt) throw new ApiError(400, 'missing_fields');
   if (sessionType !== '1on1' && sessionType !== '1on2') throw new ApiError(400, 'invalid_session_type');
   if (typeof startAt !== 'string' || !START_AT_RE.test(startAt)) throw new ApiError(400, 'invalid_start_at');
@@ -132,7 +175,8 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
   if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
   return tx(() => {
     const user = findOrCreateUserByPhone({ phone, name });
-    const r = createBookingCore({ coach, memberId: user.id, startAt, note, sessionType });
+    const companionUser = resolveCompanionByPhone({ companion, memberId: user.id, memberPhone: phone, sessionType });
+    const r = createBookingCore({ coach, memberId: user.id, startAt, note, sessionType, member2Id: companionUser ? companionUser.id : null });
     // 綁定碼只發給一般會員（縱深防禦：Fix A 已擋員工電話，這裡再保險一次）。
     if (user.role === 'user' && !user.line_user_id) r.lineBindCode = generateBindCode(user.id).code;
     r.lineOfficialUrl = getLineOfficialUrl();
@@ -145,6 +189,7 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
     r.sessionType = sessionType;
     r.customerEmail = email || null;
     r.originalAmount = originalAmount; r.discountAmount = discountAmount; r.discountCode = discountCode_; r.finalAmount = finalAmount;
+    r.companionName = companionUser ? companionUser.name : null;
     return r;
   });
 }
@@ -210,7 +255,8 @@ export function cancelBookingFromGcal(bookingId) {
     db.prepare('UPDATE bookings SET gcal_event_id = NULL WHERE id = ?').run(bookingId);
     const memberRow = getUserNameStmt.get(b.member_id);
     return { ok: true, coachName: coach?.display_name || '', memberName: memberRow?.name || '',
-             startAt: b.start_at, refunded: !!b.package_id };
+             startAt: b.start_at, refunded: !!b.package_id,
+             companionName: b.member2_id ? (getUserNameStmt.get(b.member2_id)?.name || '') : null };
   });
 }
 
@@ -220,15 +266,21 @@ export function cancelBookingAnon({ bookingId, phone, name }) {
     if (!b) throw new ApiError(404, 'booking_not_found');
     if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
     const user = getUserByPhoneAndName({ phone, name });
-    if (!user || user.id !== b.member_id) throw new ApiError(403, 'forbidden');
+    const isPrimary = !!user && user.id === b.member_id;
+    const isCompanion = !!user && b.member2_id != null && user.id === b.member2_id;
+    if (!isPrimary && !isCompanion) throw new ApiError(403, 'forbidden');
     cancelBookingStmt.run(nowLocal(), user.id, null, bookingId);
     refundPackageForBooking(b);
     releaseRedemption({ kind: 'booking', refId: bookingId });
     const coach = getCoachStmt.get(b.coach_id);
-    const memberRow = getUserNameStmt.get(b.member_id);
-    if (coach && memberRow) {
+    if (coach) {
+      const startFmt = fmtDateForLine(b.start_at);
       notify({ userId: coach.user_id, sessionId: null, type: 'booking_cancelled_by_member',
-        vars: { member_name: memberRow.name, start_at: fmtDateForLine(b.start_at) } });
+        vars: { member_name: user.name, start_at: startFmt } });
+      // 一對二：另一位客人要知道共用的這堂課被取消了
+      const otherId = isPrimary ? b.member2_id : b.member_id;
+      if (otherId) notify({ userId: otherId, sessionId: null, type: 'booking_cancelled_by_companion',
+        vars: { other_name: user.name, coach_display_name: coach.display_name, start_at: startFmt } });
     }
     return { ok: true };
   });

@@ -13,7 +13,7 @@ export const LINE_NOTIFY_GROUPS = [
     { key: 'booking_recurring', label: '循環登錄排定', recipients: '會員摘要＋教練', types: ['booking_recurring_created', 'booking_recurring_created_coach'] },
     { key: 'booking_payment', label: '款項已確認', recipients: '會員', types: ['booking_payment_received'] },
     { key: 'booking_reschedule', label: '改期', recipients: '會員＋教練', types: ['booking_rescheduled', 'booking_rescheduled_coach'] },
-    { key: 'booking_cancel_member', label: '預約取消／退款', recipients: '會員', types: ['booking_cancelled_by_coach', 'booking_cancelled_by_shop', 'booking_refunded'] },
+    { key: 'booking_cancel_member', label: '預約取消／退款', recipients: '會員', types: ['booking_cancelled_by_coach', 'booking_cancelled_by_shop', 'booking_refunded', 'booking_cancelled_by_companion'] },
     { key: 'booking_cancel_coach', label: '預約取消', recipients: '教練', types: ['booking_cancelled_by_member', 'booking_cancelled_by_shop_coach'] },
   ] },
   { key: 'group', label: '團體課程', items: [
