@@ -147,5 +147,59 @@ expect('reschedule actorUserId=null（gcal 拖拉路徑同參數）→ 教練+1'
   rescheduleBooking({ bookingId:bid, newStartAt:`${D}T05:00:00`, actorUserId:null, isAdmin:true });
   assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled_coach'").get(cu).c, cB+1);
 });
+
+// ── 一對二同行客人：設定／清除／權限；改客人方案與改期的連動 ──
+const { setBookingCompanion } = await import('../src/services/bookingService.js');
+// D 當天 16-23 點／08 點多數已被前面案例佔用 → 改用隔天 D2（同法產生）；mkBk2 比照 mkBk 但綁定 D2
+const D2=`${new Date(Date.now()+14*86400000).getFullYear()}-${pad(new Date(Date.now()+14*86400000).getMonth()+1)}-${pad(new Date(Date.now()+14*86400000).getDate())}`;
+const mkBk2=(memberId,hh,pkgId=null,sType='1on1')=>Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,package_id,paid_at) VALUES (?,?,?,?,?,?,?)").run(coach,memberId,`${D2}T${hh}:00:00`,`${D2}T${String(Number(hh)+1).padStart(2,'0')}:00:00`,sType,pkgId,pkgId?'2026-06-24T00:00:00':null).lastInsertRowid);
+const m3=Number(db.prepare("INSERT INTO users (name,email,role,phone) VALUES ('be客3','be-m3@x.com','user','0981000003')").run().lastInsertRowid);
+expect('setBookingCompanion：設定同行、新同行收 booking_confirmed', () => {
+  const bid=mkBk2(m1,'16',null,'1on2');
+  const before=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_confirmed'").get(m2).c;
+  const r=setBookingCompanion({ bookingId:bid, companionId:m2, actorUserId:cu, isAdmin:false });
+  assert.equal(r.companionId, m2); assert.equal(r.companionName, 'be客2');
+  assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(bid).member2_id, m2);
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_confirmed'").get(m2).c, before+1);
+});
+expect('setBookingCompanion：換人 → 舊同行收 booking_cancelled_by_shop、清除 → member2_id NULL', () => {
+  const bid=mkBk2(m1,'17',null,'1on2');
+  setBookingCompanion({ bookingId:bid, companionId:m2, actorUserId:cu });
+  const before=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop'").get(m2).c;
+  setBookingCompanion({ bookingId:bid, companionId:m3, actorUserId:cu });
+  assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(bid).member2_id, m3);
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop'").get(m2).c, before+1);
+  const r=setBookingCompanion({ bookingId:bid, companionId:null, actorUserId:cu });
+  assert.equal(r.companionId, null);
+  assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(bid).member2_id, null);
+});
+expect('setBookingCompanion：1on1 → 400、他教練 → 403、管理者可代', () => {
+  const b1=mkBk2(m1,'18');
+  assert.throws(()=>setBookingCompanion({ bookingId:b1, companionId:m2, actorUserId:cu }), /companion_not_allowed/);
+  const b2=mkBk2(m1,'19',null,'1on2');
+  assert.throws(()=>setBookingCompanion({ bookingId:b2, companionId:m2, actorUserId:cu2 }), /forbidden/);
+  assert.equal(setBookingCompanion({ bookingId:b2, companionId:m2, actorUserId:admin, isAdmin:true }).companionId, m2);
+});
+expect('reassign：新方案 1on1 → 清同行；新主客人＝原同行 → 清同行；否則保留', () => {
+  const p2=createPackage({ memberId:m2, sessionType:'1on1', totalSessions:5 });
+  const b1=mkBk2(m1,'20',null,'1on2'); setBookingCompanion({ bookingId:b1, companionId:m3, actorUserId:cu });
+  reassignBooking({ bookingId:b1, newMemberId:m2, newPackageId:p2.id, actorUserId:cu });
+  assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(b1).member2_id, null);
+  const p3=createPackage({ memberId:m3, sessionType:'1on2', totalSessions:5 });
+  const b2=mkBk2(m1,'21',null,'1on2'); setBookingCompanion({ bookingId:b2, companionId:m3, actorUserId:cu });
+  reassignBooking({ bookingId:b2, newMemberId:m3, newPackageId:p3.id, actorUserId:cu });
+  assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(b2).member2_id, null);
+  const p1=createPackage({ memberId:m1, sessionType:'1on2', totalSessions:5 });
+  const b3=mkBk2(m2,'22',null,'1on2'); setBookingCompanion({ bookingId:b3, companionId:m3, actorUserId:cu });
+  reassignBooking({ bookingId:b3, newMemberId:m1, newPackageId:p1.id, actorUserId:cu });
+  assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(b3).member2_id, m3);
+});
+expect('reschedule：同行也收 booking_rescheduled', () => {
+  const bid=mkBk2(m1,'08',null,'1on2'); setBookingCompanion({ bookingId:bid, companionId:m3, actorUserId:cu });
+  const before=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled'").get(m3).c;
+  rescheduleBooking({ bookingId:bid, newStartAt:`${D2}T23:00:00`, actorUserId:cu, isAdmin:false });
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled'").get(m3).c, before+1);
+});
+
 clean();
 console.log('[booking-edit test] done');
