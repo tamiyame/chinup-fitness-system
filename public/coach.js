@@ -960,6 +960,7 @@ function renderRegmBody() {
         $('regm-results').innerHTML = list.map(u => `<div class="regm-result" data-id="${u.id}" data-name="${escapeHtml(u.name)}" data-phone="${escapeHtml(u.phone || '')}">${escapeHtml(u.name)} <span class="regm-sub">${escapeHtml(u.phone || '')}</span></div>`).join('');
         $('regm-results').querySelectorAll('.regm-result').forEach(r => r.addEventListener('click', () => {
           regmCustomer = list.find(u => u.id === Number(r.dataset.id));
+          regmCompanion = null; // 換主客人 → 同行需重選
           $('regm-results').innerHTML = ''; search.value = regmCustomer.name;
           loadRegmPackages();
         }));
@@ -1040,6 +1041,7 @@ function renderRegmNewCustomer(query) {
     try {
       const u = await api('/api/coach/customers', { method: 'POST', body: phone ? { name, phone } : { name } });
       regmCustomer = u;
+      regmCompanion = null; // 換主客人 → 同行需重選
       $('regm-results').innerHTML = '';
       $('regm-search').value = u.name;
       loadRegmPackages();

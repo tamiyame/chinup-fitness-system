@@ -552,6 +552,10 @@ function openBookingModal(coach, slot) {
   $('modal-phone-err').textContent = '';
   $('modal-email-err').textContent = '';
   $('modal-general-err').textContent = '';
+  $('modal-companion-name').value = '';
+  $('modal-companion-phone').value = '';
+  $('modal-companion-err').textContent = '';
+  $('modal-companion').classList.add('hidden');
   $('modal-submit-btn').disabled = false;
   $('modal-submit-btn').textContent = '確認預約';
 
@@ -749,7 +753,11 @@ $('modal-submit-btn').addEventListener('click', async () => {
     } else if (errCode === 'missing_phone') {
       $('modal-phone-err').textContent = '請輸入電話';
     } else if (errCode === 'phone_unavailable') {
-      $('modal-phone-err').textContent = '此電話號碼無法用於線上預約，請確認號碼是否正確。';
+      if (modalSessionType === '1on2' && cName && cPhone) {
+        $('modal-companion-err').textContent = '主客人或同行的電話無法用於線上預約，請確認兩組電話';
+      } else {
+        $('modal-phone-err').textContent = '此電話號碼無法用於線上預約，請確認號碼是否正確。';
+      }
     } else if (errCode === 'invalid_companion') {
       $('modal-companion-err').textContent = '同行客人的姓名與電話需一併填寫，電話 8–15 碼數字';
     } else if (errCode === 'companion_same_person') {
