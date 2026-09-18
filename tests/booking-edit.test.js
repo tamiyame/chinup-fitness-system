@@ -200,6 +200,19 @@ expect('reschedule：同行也收 booking_rescheduled', () => {
   rescheduleBooking({ bookingId:bid, newStartAt:`${D2}T23:00:00`, actorUserId:cu, isAdmin:false });
   assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_rescheduled'").get(m3).c, before+1);
 });
+expect('cancelCoachGroup：1on2 群組取消 → 同行收 booking_cancelled_by_shop、教練訊息帶＋同行', () => {
+  const G4=7004;
+  const mkG2=(hh)=>Number(db.prepare("INSERT INTO bookings (coach_id,member_id,member2_id,start_at,end_at,session_type,recurring_group_id) VALUES (?,?,?,?,?, '1on2', ?)").run(coach,m1,m3,`${D2}T${hh}:00:00`,`${D2}T${String(Number(hh)+1).padStart(2,'0')}:00:00`,G4).lastInsertRowid);
+  const b1=mkG2('09'); const b2=mkG2('10');
+  const before=db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop'").get(m3).c;
+  const r=cancelCoachGroup({ bookingId:b1, actorUserId:admin, isAdmin:true });
+  assert.deepEqual([...r.cancelled].sort((a,b)=>a-b),[b1,b2].sort((a,b)=>a-b));
+  // 同行(m3)也收到店家取消通知
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop'").get(m3).c, before+1);
+  // 教練訊息用 partyLabel → 含全形＋
+  const row=db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='booking_cancelled_by_shop_coach' ORDER BY id DESC").get(cu);
+  assert.ok(row.body.includes('＋'));
+});
 
 clean();
 console.log('[booking-edit test] done');

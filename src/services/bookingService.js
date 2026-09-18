@@ -790,11 +790,11 @@ export function cancelCoachGroup({ bookingId, actorUserId, isAdmin = false, reas
     const memberRow = getUserNameStmt.get(rows[0].member_id);
     if (coach && memberRow) {
       const startFmt = `${fmtDateForLine(rows[0].start_at)} 起共 ${rows.length} 堂`;
-      notify({ userId: rows[0].member_id, sessionId: null, type: 'booking_cancelled_by_shop',
-        vars: { coach_display_name: coach.display_name, start_at: startFmt, reason_suffix: '' } });
+      notifyCustomers(rows[0], 'booking_cancelled_by_shop',
+        { coach_display_name: coach.display_name, start_at: startFmt, reason_suffix: '' });
       if (coach.user_id !== actorUserId) {
         notify({ userId: coach.user_id, sessionId: null, type: 'booking_cancelled_by_shop_coach',
-          vars: { member_name: memberRow.name, start_at: startFmt } });
+          vars: { member_name: partyLabel(rows[0]), start_at: startFmt } });
       }
     }
     return { ok: true, cancelled: rows.map((r) => r.id) };
@@ -816,12 +816,12 @@ export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
     const memberRow = getUserNameStmt.get(rows[0].member_id);
     if (coach && memberRow) {
       const startFmt = `${fmtDateForLine(rows[0].start_at)} 起共 ${rows.length} 堂`;
-      notify({ userId: rows[0].member_id, sessionId: null, type: 'booking_cancelled_by_shop',
-        vars: { coach_display_name: coach.display_name, start_at: startFmt,
-                reason_suffix: reason ? `（原因：${reason}）` : '' } });
+      notifyCustomers(rows[0], 'booking_cancelled_by_shop',
+        { coach_display_name: coach.display_name, start_at: startFmt,
+          reason_suffix: reason ? `（原因：${reason}）` : '' });
       if (coach.user_id !== actorId) {
         notify({ userId: coach.user_id, sessionId: null, type: 'booking_cancelled_by_shop_coach',
-          vars: { member_name: memberRow.name, start_at: startFmt } });
+          vars: { member_name: partyLabel(rows[0]), start_at: startFmt } });
       }
     }
     return { ok: true, cancelled: rows.map(r => r.id) };

@@ -186,9 +186,15 @@ async function renderBookings() {
   const groups = new Map();
   for (const b of list) {
     let g = groups.get(b.member_id);
-    if (!g) { g = { memberId: b.member_id, name: b.companion_name ? `${b.member_name}＋${b.companion_name}` : b.member_name, has1on2: false, gs: [] }; groups.set(b.member_id, g); }
+    if (!g) { g = { memberId: b.member_id, memberName: b.member_name, has1on2: false, gs: [] }; groups.set(b.member_id, g); }
     g.gs.push(b);
     if (b.session_type === '1on2') g.has1on2 = true;
+  }
+  // 標題名牌：整組每一堂都是同一位同行才顯示 A＋B，否則只顯示 A
+  for (const g of groups.values()) {
+    const mate = g.gs[0].companion_name && g.gs.every(b => b.companion_name === g.gs[0].companion_name)
+      ? g.gs[0].companion_name : null;
+    g.name = mate ? `${g.memberName}＋${mate}` : g.memberName;
   }
 
   // 每組算錨點 + 排序資料
@@ -1169,7 +1175,7 @@ function renderRegmPicked() {
   const mateBox = document.createElement('div');
   mateBox.id = 'regm-mate';
   mateBox.style.marginTop = '8px';
-  picked.appendChild(mateBox);
+  picked.insertBefore(mateBox, $('regm-preview'));
   renderRegmMate(pkg);
 }
 

@@ -71,7 +71,7 @@ export async function processEvent(ev, calId) {
     const r = cancelBookingFromGcal(b.id);
     if (!r.ok) return;
     notifyAdmins({ type: 'gcal_delete_cancelled', vars: {
-      coach_display_name: r.coachName, member_name: r.memberName,
+      coach_display_name: r.coachName, member_name: r.memberName + (r.companionName ? `＋${r.companionName}` : ''),
       start_at: fmtDateForLine(r.startAt), refund_note: r.refunded ? '，方案已回補 1 堂' : '' } });
     return;
   }

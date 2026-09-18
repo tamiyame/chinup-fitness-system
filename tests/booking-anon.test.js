@@ -130,7 +130,7 @@ expect('全店同小時第 4 組 → 409 slot_full', () => {
 });
 
 // ── 1對2 同行客人 ────────────────────────────────────────────────────────
-const staffPhoneUser = db.prepare("INSERT INTO users (name,email,password_hash,role,phone) VALUES ('員工丙','anon-bk-staff@x.com',?,'coach','0998000778')").run(hashPassword('x'));
+db.prepare("INSERT INTO users (name,email,password_hash,role,phone) VALUES ('員工丙','anon-bk-staff@x.com',?,'coach','0998000778')").run(hashPassword('x'));
 const rc = createBookingAnon({ coachId: coach.id, startAt: futureLocal(8), name: '主客甲', phone: '0998000501', sessionType: '1on2',
   companion: { name: '同行乙', phone: '0998000502' } });
 expect('1on2 帶同行：member2_id 寫入、同行帳號建立、回傳 companionName', () => {

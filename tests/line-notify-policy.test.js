@@ -18,7 +18,7 @@ function throwsApi(fn, status, code) {
 const clearSettings = () => db.exec("DELETE FROM app_settings WHERE key LIKE 'line_notify_%'");
 const allItems = () => LINE_NOTIFY_GROUPS.flatMap((g) => g.items);
 
-// 31 種現役推播模板（2026-09-08 盤點；legacy 4 種＋已停用會員 course_confirmed 不在內）
+// 32 種現役推播模板（2026-09-08 盤點；legacy 4 種＋已停用會員 course_confirmed 不在內）
 const ACTIVE_TYPES = [
   'booking_created', 'booking_confirmed', 'booking_recurring_created', 'booking_recurring_created_coach',
   'booking_payment_received', 'booking_rescheduled', 'booking_rescheduled_coach',
@@ -45,7 +45,7 @@ expect('3 組 16 項、項目 key 唯一', () => {
   assert.equal(items.length, 16);
   assert.equal(new Set(items.map((i) => i.key)).size, 16);
 });
-expect('每個 type 只屬一個項目、31 個現役 type 全涵蓋、無多餘', () => {
+expect('每個 type 只屬一個項目、32 個現役 type 全涵蓋、無多餘', () => {
   const all = allItems().flatMap((i) => i.types);
   assert.equal(new Set(all).size, all.length);
   for (const t of ACTIVE_TYPES) assert(all.includes(t), `missing ${t}`);
