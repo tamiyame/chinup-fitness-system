@@ -346,6 +346,7 @@ function cardHtml(item, isNext = false) {
         <div class="sn-l2">
           <span class="sn-time"><span class="sn-clock">${time}</span></span>
           <span class="sn-status ${tone}"><span class="sn-dot"></span>${escapeHtml(label)}</span>
+          ${isBooking && item.companion_name ? `<span class="sn-mate">${item.is_companion ? `與 ${escapeHtml(item.companion_name)} 同行` : `同行：${escapeHtml(item.companion_name)}`}</span>` : ''}
         </div>
         ${paymentLine(item)}
       </div>

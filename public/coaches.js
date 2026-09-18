@@ -524,6 +524,8 @@ function setSessionType(type) {
   modalSessionType = type;
   refreshSessionTypeButtons();
   refreshModalPrice();
+  $('modal-companion').classList.toggle('hidden', type !== '1on2');
+  if (type !== '1on2') { $('modal-companion-name').value = ''; $('modal-companion-phone').value = ''; $('modal-companion-err').textContent = ''; }
   // 型態改變 → 之前算出的折扣金額不再正確，需重新套用
   if (modalAppliedDiscount) {
     modalAppliedDiscount = null;
@@ -580,6 +582,10 @@ function closeBookingModal() {
   modalCoach = null;
   modalSlot = null;
   modalAppliedDiscount = null;
+  $('modal-companion').classList.add('hidden');
+  $('modal-companion-name').value = '';
+  $('modal-companion-phone').value = '';
+  $('modal-companion-err').textContent = '';
 }
 
 $('modal-close-btn').addEventListener('click', closeBookingModal);
@@ -672,6 +678,7 @@ $('modal-submit-btn').addEventListener('click', async () => {
   $('modal-phone-err').textContent = '';
   $('modal-email-err').textContent = '';
   $('modal-general-err').textContent = '';
+  $('modal-companion-err').textContent = '';
 
   // Client-side validation
   let hasErr = false;
@@ -688,6 +695,12 @@ $('modal-submit-btn').addEventListener('click', async () => {
     $('modal-email-err').textContent = 'Email 格式不正確';
     hasErr = true;
   }
+  const cName = $('modal-companion-name').value.trim();
+  const cPhone = $('modal-companion-phone').value.replace(/\D/g, '');
+  if (modalSessionType === '1on2' && ((cName && !cPhone) || (!cName && cPhone))) {
+    $('modal-companion-err').textContent = '請一併填寫同行客人的姓名與電話';
+    hasErr = true;
+  }
   if (hasErr) return;
 
   const btn = $('modal-submit-btn');
@@ -698,6 +711,7 @@ $('modal-submit-btn').addEventListener('click', async () => {
     const bookingBody = { coachId: modalCoach.id, startAt: modalSlot.start, name: nameVal, phone: phoneNormalized, sessionType: modalSessionType };
     if (emailVal) bookingBody.email = emailVal;
     if (modalAppliedDiscount) bookingBody.discountCode = modalAppliedDiscount.code;
+    if (modalSessionType === '1on2' && cName && cPhone) { bookingBody.companionName = cName; bookingBody.companionPhone = cPhone; }
     const result = await api('/api/public/bookings', {
       method: 'POST',
       body: bookingBody,
@@ -736,6 +750,12 @@ $('modal-submit-btn').addEventListener('click', async () => {
       $('modal-phone-err').textContent = '請輸入電話';
     } else if (errCode === 'phone_unavailable') {
       $('modal-phone-err').textContent = '此電話號碼無法用於線上預約，請確認號碼是否正確。';
+    } else if (errCode === 'invalid_companion') {
+      $('modal-companion-err').textContent = '同行客人的姓名與電話需一併填寫，電話 8–15 碼數字';
+    } else if (errCode === 'companion_same_person') {
+      $('modal-companion-err').textContent = '同行客人不可與您本人相同';
+    } else if (errCode === 'companion_not_allowed') {
+      $('modal-companion-err').textContent = '只有 1對2 可填同行客人';
     } else if (errCode === 'coach_not_found' || errCode === 'coach_inactive') {
       $('modal-general-err').textContent = '教練目前無法預約，請重新整理頁面。';
     } else {
@@ -775,6 +795,7 @@ function showSuccessView(bookingResult, coach = modalCoach, slot = modalSlot) {
   const successEl = $('view-success');
   const coachName = escapeHtml(coach?.display_name ?? '');
   const slotTime = escapeHtml(fmtDate(slot ?? bookingResult.startAt));
+  const mateHtml = bookingResult.companionName ? `<div class="mt-1 text-sm text-slate-600">同行：${escapeHtml(bookingResult.companionName)}</div>` : '';
 
   let lineHtml = '';
   if (bookingResult.lineBindCode) {
@@ -821,6 +842,7 @@ function showSuccessView(bookingResult, coach = modalCoach, slot = modalSlot) {
       <div class="card mt-4 mb-2 text-left">
         <div class="mb-2"><span class="text-slate-500">教練</span><br><strong>${coachName}</strong></div>
         <div class="mb-2"><span class="text-slate-500">時間</span><br><strong>${slotTime}</strong></div>
+        ${mateHtml}
         <div><span class="text-slate-500">課程型態</span><br><strong>${escapeHtml(SESSION_TYPE_LABELS[bookingResult.sessionType] ?? '1對1')}</strong></div>
         ${paymentHtml}
         ${emailLine}

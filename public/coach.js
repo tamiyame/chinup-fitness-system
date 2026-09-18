@@ -186,7 +186,7 @@ async function renderBookings() {
   const groups = new Map();
   for (const b of list) {
     let g = groups.get(b.member_id);
-    if (!g) { g = { memberId: b.member_id, name: b.member_name, has1on2: false, gs: [] }; groups.set(b.member_id, g); }
+    if (!g) { g = { memberId: b.member_id, name: b.companion_name ? `${b.member_name}＋${b.companion_name}` : b.member_name, has1on2: false, gs: [] }; groups.set(b.member_id, g); }
     g.gs.push(b);
     if (b.session_type === '1on2') g.has1on2 = true;
   }
@@ -633,7 +633,7 @@ async function renderRegister() {
           const coachLbl = isAll ? `<span class="reg-sub">· ${escapeHtml(b.coach_name || '')}</span>` : '';
           const colored = isAll && b.coach_color;
           const style = colored ? ` style="background:${escapeHtml(b.coach_color)};"` : '';
-          return `<div class="reg-bk${colored ? ' reg-bk-colored' : ''}" data-bk="${b.id}"${style}>${escapeHtml(b.member_name)} <span class="reg-sub">${tag}</span>${coachLbl}</div>`;
+          return `<div class="reg-bk${colored ? ' reg-bk-colored' : ''}" data-bk="${b.id}"${style}>${escapeHtml(b.member_name)}${b.companion_name ? '＋' + escapeHtml(b.companion_name) : ''} <span class="reg-sub">${tag}</span>${coachLbl}</div>`;
         }).join('');
         inner += gps.map(g => `<div class="reg-gp">${escapeHtml(g.name)} <span class="reg-sub">團課${isAll ? '· ' + escapeHtml(g.coach_name || '') : ''}</span></div>`).join('');
         rows += `<div class="reg-cell reg-multi">${inner}</div>`;
@@ -787,6 +787,7 @@ function renderBkeditBody() {
   body.innerHTML = `
     <div class="bke-detail">
       <div><b>客人：</b>${escapeHtml(b.member_name)}${b.member_phone ? `　${escapeHtml(b.member_phone)}` : ''}</div>
+      ${b.session_type === '1on2' ? `<div><b>同行：</b>${b.companion_name ? escapeHtml(b.companion_name) + (b.companion_phone ? '　' + escapeHtml(b.companion_phone) : '') : '<span class="regm-sub">（無）</span>'}</div>` : ''}
       <div><b>教練：</b>${escapeHtml(b.coach_name || '')}</div>
       <div><b>時段：</b>${bkSlotLabel(b.start_at)}（${tag}）</div>
       <div><b>付款：</b>${paid}　<b>來源：</b>${source}</div>
@@ -794,6 +795,7 @@ function renderBkeditBody() {
     <div class="bke-actions">
       <button id="bke-resched-btn" class="btn-secondary">改時段</button>
       <button id="bke-reassign-btn" class="btn-secondary">改客人/方案</button>
+      ${b.session_type === '1on2' ? '<button id="bke-mate-btn" class="btn-secondary">設定同行</button>' + (b.member2_id ? '<button id="bke-mate-clear-btn" class="btn-secondary">移除同行</button>' : '') : ''}
       <button id="bke-cancel-btn" class="btn-danger">取消預約</button>
       ${b.recurring_group_id ? '<button id="bke-cancel-group-btn" class="btn-danger">取消全部預約</button>' : ''}
     </div>
@@ -802,6 +804,11 @@ function renderBkeditBody() {
   $('bke-resched-btn').onclick = renderBkResched;
   $('bke-reassign-btn').onclick = renderBkReassign;
   const cg = $('bke-cancel-group-btn'); if (cg) cg.onclick = doBkCancelGroup;
+  const mb = $('bke-mate-btn'); if (mb) mb.onclick = renderBkMate;
+  const mc = $('bke-mate-clear-btn'); if (mc) mc.onclick = async () => {
+    try { await api(`/api/coach/bookings/${b.id}/companion`, { method: 'PATCH', body: { companionId: null } }); toast('已移除同行客人', 'success'); bkeditClose(); renderRegister(); }
+    catch (e) { toast(`失敗：${e.message}`, 'error'); }
+  };
 }
 
 async function doBkCancel() {
@@ -884,16 +891,46 @@ function renderBkReassign() {
   });
 }
 
+function renderBkMate() {
+  const b = bkeditBooking;
+  $('bke-panel').innerHTML = `
+    <div class="bke-sub">設定同行客人：</div>
+    <input id="bke-mate-search" class="form-input" placeholder="搜尋客人姓名或電話…" autocomplete="off" />
+    <div id="bke-mate-results" class="regm-results"></div>`;
+  const search = $('bke-mate-search'); let t = null;
+  search.addEventListener('input', () => {
+    clearTimeout(t); const q = search.value.trim();
+    if (!q) { $('bke-mate-results').innerHTML = ''; return; }
+    t = setTimeout(async () => {
+      try {
+        const list = await api(`/api/coach/customers/search?q=${encodeURIComponent(q)}`);
+        $('bke-mate-results').innerHTML = list.length ? list.map(u => `<div class="regm-result" data-id="${u.id}">${escapeHtml(u.name)} <span class="regm-sub">${escapeHtml(u.phone || '')}</span></div>`).join('') : '<div class="regm-sub" style="padding:6px;">查無客人</div>';
+        $('bke-mate-results').querySelectorAll('.regm-result').forEach(r => r.addEventListener('click', async () => {
+          const picked = list.find(u => u.id === Number(r.dataset.id));
+          try {
+            await api(`/api/coach/bookings/${b.id}/companion`, { method: 'PATCH', body: { companionId: picked.id } });
+            toast('已設定同行客人', 'success'); bkeditClose(); renderRegister();
+          } catch (e) {
+            const m = { companion_same_person: '同行客人不可與主客人相同', companion_not_allowed: '只有 1對2 可設定同行', companion_not_found: '找不到此客人', forbidden: '無權限' };
+            toast(m[e.data?.error] || `失敗：${e.message}`, 'error');
+          }
+        }));
+      } catch (e) { $('bke-mate-results').innerHTML = `<div class="regm-sub" style="color:#dc2626;padding:6px;">${escapeHtml(e.message)}</div>`; }
+    }, 250);
+  });
+}
+
 let regmSlot = null;       // 'YYYY-MM-DDTHH:00:00'
 let regmCustomer = null;   // {id,name,phone}
 let regmPackages = [];     // 該客人有效方案
 let regmPackageId = null;  // 選中方案
+let regmCompanion = null; // {id,name,phone}｜同行客人（1對2 方案才有）
 
 const PKG_TYPE = { '1on1': '一對一', '1on2': '一對二' };
-function regmClose() { $('regm-overlay').style.display = 'none'; regmCustomer = null; regmPackages = []; regmPackageId = null; }
+function regmClose() { $('regm-overlay').style.display = 'none'; regmCustomer = null; regmPackages = []; regmPackageId = null; regmCompanion = null; }
 
 function openRegisterModal(startAtISO) {
-  regmSlot = startAtISO; regmCustomer = null; regmPackages = []; regmPackageId = null;
+  regmSlot = startAtISO; regmCustomer = null; regmPackages = []; regmPackageId = null; regmCompanion = null;
   const ov = $('regm-overlay'); ov.style.display = 'grid';
   $('regm-close').onclick = regmClose;
   ov.onclick = (e) => { if (e.target === ov) regmClose(); };
@@ -942,6 +979,47 @@ async function loadRegmPackages(selectId = null) {
     ? selectId
     : (regmPackages.length ? regmPackages[0].id : null);
   renderRegmPicked();
+}
+
+/** 1對2 方案：同行客人（選填）搜尋／挑選／新增；非 1對2 隱藏並清空。 */
+function renderRegmMate(pkg) {
+  const box = document.getElementById('regm-mate'); if (!box) return;
+  if (!pkg || pkg.session_type !== '1on2') { box.innerHTML = ''; regmCompanion = null; return; }
+  if (regmCompanion) {
+    box.innerHTML = `<label class="regm-label">同行客人（選填）</label>
+      <div class="regm-sub">已選：<strong>${escapeHtml(regmCompanion.name)}</strong> ${escapeHtml(regmCompanion.phone || '')} <button id="regm-mate-clear" class="btn-secondary" style="margin-left:6px;">移除</button></div>`;
+    $('regm-mate-clear').onclick = () => { regmCompanion = null; renderRegmMate(pkg); };
+    return;
+  }
+  box.innerHTML = `<label class="regm-label">同行客人（選填，1對2）</label>
+    <input id="regm-mate-search" class="form-input regm-input" placeholder="搜尋同行客人姓名或電話…留白可" autocomplete="off" />
+    <div id="regm-mate-results" class="regm-results"></div>`;
+  const search = $('regm-mate-search'); let t = null;
+  search.addEventListener('input', () => {
+    clearTimeout(t); const q = search.value.trim();
+    if (!q) { $('regm-mate-results').innerHTML = ''; return; }
+    t = setTimeout(async () => {
+      try {
+        const list = (await api(`/api/coach/customers/search?q=${encodeURIComponent(q)}`)).filter(u => !regmCustomer || u.id !== regmCustomer.id);
+        if (!list.length) {
+          const isDigits = /^\d+$/.test(q);
+          $('regm-mate-results').innerHTML = `<div style="display:grid;gap:6px;padding:6px 0;"><div class="regm-sub">查無此客人，可直接新增：</div>
+            <input id="regm-mate-newname" class="form-input" placeholder="姓名" value="${escapeHtml(isDigits ? '' : q)}" autocomplete="off" />
+            <input id="regm-mate-newphone" class="form-input" placeholder="電話（選填）" value="${escapeHtml(isDigits ? q : '')}" inputmode="numeric" autocomplete="off" />
+            <button id="regm-mate-create" class="btn-primary">新增同行客人</button></div>`;
+          $('regm-mate-create').onclick = async () => {
+            const name = $('regm-mate-newname').value.trim(); const phone = $('regm-mate-newphone').value.trim();
+            if (!name) { toast('請填姓名', 'error'); return; }
+            try { regmCompanion = await api('/api/coach/customers', { method: 'POST', body: phone ? { name, phone } : { name } }); renderRegmMate(pkg); }
+            catch (e) { const m = { missing_name: '請填姓名', invalid_phone: '電話格式須 8–15 碼數字', phone_unavailable: '此電話為員工帳號，不可用於客人' }; toast(m[e.data?.error] || `新增失敗：${e.message}`, 'error'); }
+          };
+          return;
+        }
+        $('regm-mate-results').innerHTML = list.map(u => `<div class="regm-result" data-id="${u.id}">${escapeHtml(u.name)} <span class="regm-sub">${escapeHtml(u.phone || '')}</span></div>`).join('');
+        $('regm-mate-results').querySelectorAll('.regm-result').forEach(r => r.addEventListener('click', () => { regmCompanion = list.find(u => u.id === Number(r.dataset.id)); renderRegmMate(pkg); }));
+      } catch (e) { $('regm-mate-results').innerHTML = `<div class="regm-sub" style="color:#dc2626;padding:6px;">${escapeHtml(e.message)}</div>`; }
+    }, 250);
+  });
 }
 
 function renderRegmNewCustomer(query) {
@@ -1061,7 +1139,7 @@ function renderRegmPicked() {
     </div>`;
   const sel = $('regm-pkg');
   if (regmPackageId && regmPackages.some(p => p.id === regmPackageId)) sel.value = String(regmPackageId);
-  sel.onchange = () => { regmPackageId = Number(sel.value); };
+  sel.onchange = () => { regmPackageId = Number(sel.value); renderRegmMate(regmPackages.find(p => p.id === regmPackageId)); };
   regmPackageId = Number(sel.value);
   $('regm-np-toggle').onclick = () => $('regm-np-box').classList.toggle('hidden');
   bindRegmNewPkgForm((pkg) => loadRegmPackages(pkg.id));
@@ -1085,6 +1163,12 @@ function renderRegmPicked() {
   });
   $('regm-preview-btn').onclick = doRegmPreview;
   $('regm-submit').onclick = doRegmSubmit;
+  const pkg = regmPackages.find(p => p.id === regmPackageId);
+  const mateBox = document.createElement('div');
+  mateBox.id = 'regm-mate';
+  mateBox.style.marginTop = '8px';
+  picked.appendChild(mateBox);
+  renderRegmMate(pkg);
 }
 
 function buildRecurrence() {
@@ -1115,11 +1199,11 @@ async function doRegmPreview() {
 
 async function doRegmSubmit() {
   try {
-    const r = await api('/api/coach/register', { method: 'POST', body: regTargetBody({ memberId: regmCustomer.id, packageId: regmPackageId, startAt: regmSlot, recurrence: buildRecurrence() }) });
+    const r = await api('/api/coach/register', { method: 'POST', body: regTargetBody({ memberId: regmCustomer.id, packageId: regmPackageId, startAt: regmSlot, recurrence: buildRecurrence(), companionId: regmCompanion ? regmCompanion.id : null }) });
     toast(`已登錄 ${r.created.length} 筆${r.skipped.length ? `（跳過 ${r.skipped.length}）` : ''}`, 'success');
     regmClose(); renderRegister();
   } catch (e) {
-    const msgs = { package_invalid: '方案已失效/用罄', package_member_mismatch: '方案不屬此客人', nothing_created: '無可建立場次（全衝突或用罄）', slot_taken: '此時段已被預約' };
+    const msgs = { package_invalid: '方案已失效/用罄', package_member_mismatch: '方案不屬此客人', nothing_created: '無可建立場次（全衝突或用罄）', slot_taken: '此時段已被預約', companion_not_allowed: '只有 1對2 方案可加同行客人', companion_same_person: '同行客人不可與主客人相同', companion_not_found: '找不到同行客人' };
     toast(msgs[e.data?.error] || `登錄失敗：${e.message}`, 'error');
   }
 }
