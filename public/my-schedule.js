@@ -446,6 +446,7 @@ function render() {
     pastWrap.style.display = 'block';
     pastCount.textContent = past.length;
     pastCaret.textContent = state.pastOpen ? '▼' : '▶';
+    document.getElementById('past-toggle').classList.toggle('is-collapsed', !state.pastOpen);   // 收合＝酒紅、展開＝天藍（色在 CSS）
     if (state.pastOpen) {
       pastList.style.display = 'block';
       pastList.innerHTML = past.map(it => cardHtml(it, false)).join('');
