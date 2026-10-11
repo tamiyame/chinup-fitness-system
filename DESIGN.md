@@ -190,7 +190,6 @@ components:
 
 ### Navigation
 - 員工後台為分頁籤；區塊標題用 section-label（Archivo 大寫寬字距＋髮絲尾線）。手機 <768px 表格重排成卡片（pr-table RWD 語彙）。
-- **可收合區塊標題（sec-toggle）**：區塊標題一旦能展開／收合就是「行動」，不再用灰色 section-label——改全寬行動列：`--brand-100` 底、`--brand-900` Label 字、左側 20px `--brand-700` 方角箭頭鈕（CSS 畫的白色箭頭，收合朝右、展開朝下）、右側「展開／收合」字樣，高 ≥44px，`<button aria-expanded>`。不加左緣條（The Rail Rule）。現用於我的課表「即將到來／已結束」。靜態區塊標題仍用 section-label。
 
 ### 門面 Sheet／Tray（facade.css）
 - **Sheet 白紙卡**：`#fff`、直角、無邊框無陰影，浮在天藍場地上——課程手風琴、表單卡、FAQ、入口卡皆是 sheet。sheet 內部回到工具層規則（髮絲線、token 色）。

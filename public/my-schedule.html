@@ -39,43 +39,23 @@
     color: #fff;
     font-weight: 700;
   }
-  /* 區塊標題＝可收合的行動列（即將到來／已結束共用）：天藍底色階＋方角箭頭鈕＋「展開／收合」字樣。
-     藍屬於行動（The One-Sky Rule）；不加左緣條——3px 左緣是「下一堂」專屬（The Rail Rule）。 */
-  .sec-toggle {
+  .past-toggle {
     display: flex;
     align-items: center;
-    gap: 10px;
-    width: 100%;
-    min-height: 44px;
-    padding: 8px 12px 8px 10px;   /* 垂直留白：窄螢幕標題折行時不貼邊 */
-    margin: 6px 0 2px;
-    border: 0;
-    border-radius: 0;
-    background: var(--brand-100);
-    color: var(--brand-900);
+    gap: 8px;
+    padding: 16px 0 8px;
+    margin-top: 6px;
     font-family: "Archivo", "Noto Sans TC", sans-serif;
     font-weight: 700;
-    font-size: 11.5px;
-    letter-spacing: .16em;
+    font-size: 11px;
+    letter-spacing: .2em;
     text-transform: uppercase;
-    text-align: left;
+    color: var(--brand-700);   /* 區塊標題用天藍深階（同「下一堂」日期與內文連結），不再是灰字 */
     cursor: pointer;
     user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    transition: box-shadow .16s ease;
   }
-  @media (hover: hover) { .sec-toggle:hover { box-shadow: inset 0 0 0 1.5px var(--brand-600); } }
-  .sec-toggle:focus-visible { outline: 0; box-shadow: inset 0 0 0 1.5px var(--brand-600), var(--ring-focus); }
-  .sec-caret { flex: none; display: grid; place-items: center; width: 20px; height: 20px; background: var(--brand-700); }
-  .sec-caret::before { content: ""; width: 6px; height: 6px; border-right: 2px solid #fff; border-bottom: 2px solid #fff; transform: translateX(-1px) rotate(-45deg); transition: transform .16s ease; }
-  .sec-toggle[aria-expanded="true"] .sec-caret::before { transform: translateY(-1px) rotate(45deg); }
-  .sec-title { flex: 1; min-width: 0; }
-  .sec-count { font-variant-numeric: tabular-nums; letter-spacing: .04em; }
-  .sec-hint { flex: none; font-size: 11px; letter-spacing: .12em; }
-  .sec-hint::before { content: "展開"; }
-  .sec-toggle[aria-expanded="true"] .sec-hint::before { content: "收合"; }
-  #past-toggle-wrap { margin-top: 18px; }
-  @media (prefers-reduced-motion: reduce) { .sec-toggle, .sec-caret::before { transition: none; } }
+  .past-toggle #past-caret { letter-spacing: 0; font-size: 9px; }
+  .past-toggle::after { content: ""; flex: 1; height: 1px; background: var(--line); }
   .past-list .card,
   .past-card { opacity: 0.72; }
   /* 我的課表卡片 · 運動力學壓縮版（日期錨點 / 2 行內容 / 動作鈕右側；無 emoji、無彩條圓角卡） */
@@ -129,6 +109,7 @@
     margin: 6px 0 4px;
   }
   .section-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  #upcoming-section .section-label { color: var(--brand-700); }
   /* 動作鈕方角化：對齊 DESIGN.md 方角語彙（本頁 legacy .btn 去圓角去光暈；nav 不受影響） */
   main .btn-primary, main .btn-ghost { border-radius: 0; box-shadow: none; }
   main .btn-primary:hover { box-shadow: none; }
@@ -276,32 +257,25 @@
       <div class="tab-btn" data-filter="registration">團課</div>
     </div>
 
-    <!-- Upcoming (collapsible, 預設展開) -->
+    <!-- Upcoming -->
     <div id="upcoming-section">
-      <button type="button" class="sec-toggle" id="upcoming-toggle" aria-expanded="true" aria-controls="upcoming-body">
-        <span class="sec-caret" aria-hidden="true"></span>
-        <span class="sec-title">Upcoming · 即將到來<span class="sec-count">（<span id="upcoming-count">0</span>）</span></span>
-        <span class="sec-hint" aria-hidden="true"></span>
-      </button>
-      <div id="upcoming-body">
-        <div id="upcoming-list" class="sn-list"></div>
-        <div id="upcoming-empty" class="empty-state" style="display:none;">
-          <p id="upcoming-empty-msg">尚無預約</p>
-          <div class="flex gap-2 justify-center mt-3 flex-wrap">
-            <a href="/" class="btn btn-ghost">瀏覽課程</a>
-            <a href="/coaches.html" class="btn btn-primary">預約一對一</a>
-          </div>
+      <div class="section-label">Upcoming · 即將到來</div>
+      <div id="upcoming-list" class="sn-list"></div>
+      <div id="upcoming-empty" class="empty-state" style="display:none;">
+        <p id="upcoming-empty-msg">尚無預約</p>
+        <div class="flex gap-2 justify-center mt-3 flex-wrap">
+          <a href="/" class="btn btn-ghost">瀏覽課程</a>
+          <a href="/coaches.html" class="btn btn-primary">預約一對一</a>
         </div>
       </div>
     </div>
 
     <!-- Past (collapsible) -->
     <div id="past-toggle-wrap" style="display:none;">
-      <button type="button" class="sec-toggle" id="past-toggle" aria-expanded="false" aria-controls="past-list">
-        <span class="sec-caret" aria-hidden="true"></span>
-        <span class="sec-title">Past · 已結束<span class="sec-count">（<span id="past-count">0</span>）</span></span>
-        <span class="sec-hint" aria-hidden="true"></span>
-      </button>
+      <div class="past-toggle" id="past-toggle">
+        <span id="past-caret">▶</span>
+        <span>Past · 已結束（<span id="past-count">0</span>）</span>
+      </div>
       <div id="past-list" class="past-list sn-list" style="display:none;"></div>
     </div>
 

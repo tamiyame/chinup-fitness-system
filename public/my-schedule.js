@@ -9,7 +9,6 @@ await bootPublic();
 const state = {
   items: [],
   filter: 'all',
-  upOpen: true,      // 即將到來：預設展開
   pastOpen: false,
   creds: null,  // { phone, name } after successful lookup
   lineBound: null,  // true / false / null（非客戶或未查詢）
@@ -414,12 +413,9 @@ function render() {
   const past = filtered.filter(i => i.is_past)
     .sort((a, b) => (a.start_at > b.start_at ? -1 : a.start_at < b.start_at ? 1 : 0));
 
-  // Upcoming（可收合；收合只藏內容，清單照常渲染）
+  // Upcoming
   const upWrap  = document.getElementById('upcoming-list');
   const upEmpty = document.getElementById('upcoming-empty');
-  document.getElementById('upcoming-count').textContent = upcoming.length;
-  document.getElementById('upcoming-toggle').setAttribute('aria-expanded', String(state.upOpen));
-  document.getElementById('upcoming-body').style.display = state.upOpen ? 'block' : 'none';
   if (upcoming.length === 0) {
     upWrap.innerHTML = '';
     upEmpty.style.display = 'block';
@@ -442,14 +438,14 @@ function render() {
   const pastWrap  = document.getElementById('past-toggle-wrap');
   const pastList  = document.getElementById('past-list');
   const pastCount = document.getElementById('past-count');
-  const pastToggle = document.getElementById('past-toggle');
+  const pastCaret = document.getElementById('past-caret');
 
   if (past.length === 0) {
     pastWrap.style.display = 'none';
   } else {
     pastWrap.style.display = 'block';
     pastCount.textContent = past.length;
-    pastToggle.setAttribute('aria-expanded', String(state.pastOpen));
+    pastCaret.textContent = state.pastOpen ? '▼' : '▶';
     if (state.pastOpen) {
       pastList.style.display = 'block';
       pastList.innerHTML = past.map(it => cardHtml(it, false)).join('');
@@ -515,7 +511,7 @@ async function handleCancel(btn) {
   }
 }
 
-// ── Tab + section toggles ────────────────────────────────────────────────────────
+// ── Tab + past toggle ────────────────────────────────────────────────────────
 
 function bindTabs() {
   document.querySelectorAll('#tab-bar .tab-btn').forEach(btn => {
@@ -528,11 +524,7 @@ function bindTabs() {
   });
 }
 
-function bindSectionToggles() {
-  document.getElementById('upcoming-toggle').addEventListener('click', () => {
-    state.upOpen = !state.upOpen;
-    render();
-  });
+function bindPastToggle() {
   document.getElementById('past-toggle').addEventListener('click', () => {
     state.pastOpen = !state.pastOpen;
     render();
@@ -543,7 +535,7 @@ function bindSectionToggles() {
 
 bindLookupForm();
 bindTabs();
-bindSectionToggles();
+bindPastToggle();
 
 // "換帳號" button in results area
 document.getElementById('change-lookup-btn').addEventListener('click', () => {
