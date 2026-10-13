@@ -15,11 +15,13 @@ const BK_COLS = `b.id, b.coach_id, b.start_at, b.end_at, b.session_type, b.packa
        u.name AS member_name, u.phone AS member_phone, b.member_id, b.recurring_group_id, c.display_name AS coach_name,
        c.color AS coach_color,
        cp.session_type AS pkg_session_type, cp.remaining_sessions AS pkg_remaining,
-       cp.total_sessions AS pkg_total, cp.created_at AS pkg_created_at, cp.note AS pkg_note`;
+       cp.total_sessions AS pkg_total, cp.created_at AS pkg_created_at, cp.note AS pkg_note,
+       b.member2_id, u2.name AS companion_name, u2.phone AS companion_phone`;
 const weekBookings = db.prepare(`
   SELECT ${BK_COLS}
   FROM bookings b JOIN users u ON u.id = b.member_id JOIN coaches c ON c.id = b.coach_id
   LEFT JOIN customer_packages cp ON cp.id = b.package_id
+  LEFT JOIN users u2 ON u2.id = b.member2_id
   WHERE b.coach_id = ? AND b.status = 'confirmed' AND b.start_at >= ? AND b.start_at < ?
   ORDER BY b.start_at ASC
 `);
@@ -27,6 +29,7 @@ const weekAllBookings = db.prepare(`
   SELECT ${BK_COLS}
   FROM bookings b JOIN users u ON u.id = b.member_id JOIN coaches c ON c.id = b.coach_id
   LEFT JOIN customer_packages cp ON cp.id = b.package_id
+  LEFT JOIN users u2 ON u2.id = b.member2_id
   WHERE b.status = 'confirmed' AND b.start_at >= ? AND b.start_at < ?
   ORDER BY b.start_at ASC
 `);

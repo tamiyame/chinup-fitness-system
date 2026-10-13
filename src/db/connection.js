@@ -146,6 +146,9 @@ addColumnIfMissing('group_orders', 'original_amount', 'INTEGER');
 addColumnIfMissing('bookings', 'discount_code', 'TEXT');
 addColumnIfMissing('bookings', 'discount_amount', 'INTEGER');
 
+// ── 2026-09-18 一對二同行客人（可空；只限 session_type='1on2'，守則在 bookingService）
+addColumnIfMissing('bookings', 'member2_id', 'INTEGER REFERENCES users(id)');
+
 // ── 2026-09-10 折扣碼型態加 fixed_price：CHECK 改不了 → 整表 rebuild（比照 registrations）。
 // 偵測訊號：建表 SQL 不含 'fixed_price'。id 原樣複製，discount_redemptions 的 FK 不受影響；重跑 no-op。
 {

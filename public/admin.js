@@ -282,6 +282,7 @@ function typeLabel(t) {
     promoted: '遞補', course_confirmed: '成班', course_cancelled: '取消',
     reminder: '提醒', registration_cancelled: '取消報名',
     period_rollover_admin: '期課續期',
+    booking_cancelled_by_companion: '同行取消',
   }[t] || t;
 }
 
@@ -1766,7 +1767,7 @@ function pendingBookingGroupCardHtml(g) {
     <article class="a-row">
       <div class="a-row-main">
         <div class="a-row-title">
-          <h3 class="card-title">${escapeHtml(g.member_name)}</h3>
+          <h3 class="card-title">${escapeHtml(g.member_name)}${g.companion_name ? '＋' + escapeHtml(g.companion_name) : ''}</h3>
           <span class="badge badge-completed">教練課 ×${g.sessions.length} 堂</span>
           <span class="badge badge-waitlisted">待核對</span>
         </div>
@@ -1795,7 +1796,7 @@ function pendingBookingCardHtml(b) {
     <article class="a-row">
       <div class="a-row-main">
         <div class="a-row-title">
-          <h3 class="card-title">${escapeHtml(b.member_name)}</h3>
+          <h3 class="card-title">${escapeHtml(b.member_name)}${b.companion_name ? '＋' + escapeHtml(b.companion_name) : ''}</h3>
           <span class="badge badge-completed">教練課</span>
           <span class="badge badge-waitlisted">待核對</span>
         </div>
@@ -1958,7 +1959,7 @@ function renderConfirmedPayments() {
                data-refunded="${x.refunded_at ? '1' : '0'}">
         <div class="a-row-main">
           <div class="a-row-title"${x.refunded_at ? ' style="opacity:.55"' : ''}>
-            <strong>${escapeHtml(x.customer_name)}</strong>
+            <strong>${escapeHtml(x.customer_name)}${x.companion_name ? '＋' + escapeHtml(x.companion_name) : ''}</strong>
             ${typeBadge}${refundBadge}
             <span class="subtle text-sm">${escapeHtml(detail || '')}</span>
             <span class="subtle text-sm" style="display:inline-flex;align-items:center;gap:5px;">${ICO.cash.replace('class="nk-ico"', 'style="width:14px;height:14px;flex:none;"')} ${x.amount != null ? 'NT$' + Number(x.amount).toLocaleString() : '—'}${x.refund_sum > 0 && !x.refunded_at ? ' · 已退 NT$' + Number(x.refund_sum).toLocaleString() : ''}</span>
