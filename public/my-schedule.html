@@ -50,10 +50,11 @@
     font-size: 11px;
     letter-spacing: .2em;
     text-transform: uppercase;
-    color: var(--ink-mute);
+    color: var(--brand-700);   /* 區塊標題用天藍深階（同「下一堂」日期與內文連結），不再是灰字 */
     cursor: pointer;
     user-select: none;
   }
+  .past-toggle.is-collapsed { color: #800020; }   /* 業主指定：收合時勃艮第酒紅，展開回天藍；全站僅此一處（見 DESIGN.md） */
   .past-toggle #past-caret { letter-spacing: 0; font-size: 9px; }
   .past-toggle::after { content: ""; flex: 1; height: 1px; background: var(--line); }
   .past-list .card,
@@ -110,6 +111,7 @@
     margin: 6px 0 4px;
   }
   .section-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  #upcoming-section .section-label { color: var(--brand-700); }
   /* 動作鈕方角化：對齊 DESIGN.md 方角語彙（本頁 legacy .btn 去圓角去光暈；nav 不受影響） */
   main .btn-primary, main .btn-ghost { border-radius: 0; box-shadow: none; }
   main .btn-primary:hover { box-shadow: none; }
@@ -272,7 +274,7 @@
 
     <!-- Past (collapsible) -->
     <div id="past-toggle-wrap" style="display:none;">
-      <div class="past-toggle" id="past-toggle">
+      <div class="past-toggle is-collapsed" id="past-toggle">
         <span id="past-caret">▶</span>
         <span>Past · 已結束（<span id="past-count">0</span>）</span>
       </div>

@@ -24,9 +24,8 @@
   .paper { background:#fff; color:var(--ink); max-width:794px; margin:0 auto 48px; padding:44px 48px 40px;
     box-shadow:0 2px 18px rgba(15,23,42,.10); }
 
-  /* 狀態橫幅屬於內容：失效/作廢時列印也照印（防過期單被拿去簽）。 */
+  /* 狀態橫幅屬於內容：作廢時列印也照印。過期單不顯示橫幅（業主決定；後台列表已有「已過期」章，單上仍印有效期限）。 */
   .status-banner { padding:10px 14px; font-weight:700; margin-bottom:20px; border-left:4px solid; }
-  .status-banner.expired { background:#fff7ed; border-color:#ea580c; color:#9a3412; }
   .status-banner.voided { background:#fef2f2; border-color:#dc2626; color:#991b1b; }
 
   .q-head { display:flex; justify-content:space-between; gap:24px; padding-bottom:18px; border-bottom:2px solid var(--ink); }
@@ -177,7 +176,6 @@ const token = location.pathname.split('/').pop();
 
   const banner = document.getElementById('banner');
   if (q.voided) banner.innerHTML = '<div class="status-banner voided">此報價單已作廢，僅供留存參考。</div>';
-  else if (q.expired) banner.innerHTML = `<div class="status-banner expired">此報價單已於 ${esc(q.valid_until)} 失效，如需重新報價請與我們聯繫。</div>`;
 
   document.getElementById('co-name').textContent = co.name || 'CHINUP Performance';
   document.getElementById('co-meta').textContent = [
