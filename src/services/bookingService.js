@@ -12,8 +12,8 @@ const START_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const insertBookingStmt = db.prepare(`
-  INSERT INTO bookings (coach_id, member_id, start_at, end_at, note, session_type)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO bookings (coach_id, member_id, start_at, end_at, note, session_type, member2_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 
 const getBookingStmt = db.prepare('SELECT * FROM bookings WHERE id = ?');
@@ -40,9 +40,10 @@ const listMemberStmt = db.prepare(`
 `);
 
 const listCoachStmt = db.prepare(`
-  SELECT b.*, u.name AS member_name, u.email AS member_email
+  SELECT b.*, u.name AS member_name, u.email AS member_email, u2.name AS companion_name
   FROM bookings b
   JOIN users u ON u.id = b.member_id
+  LEFT JOIN users u2 ON u2.id = b.member2_id
   WHERE b.coach_id = ?
   ORDER BY b.created_at DESC, b.id DESC
 `);
@@ -50,13 +51,57 @@ const listCoachStmt = db.prepare(`
 const getCoachStmt = db.prepare('SELECT * FROM coaches WHERE id = ?');
 const getUserNameStmt = db.prepare('SELECT name FROM users WHERE id = ?');
 
+const getUserBasicStmt = db.prepare('SELECT id, name, phone, role FROM users WHERE id = ?');
+
+/** 同行守則（既有會員 id 版；教練登錄／後台編輯用）。回 users 列或 null。 */
+function resolveCompanionById({ companionId, memberId, sessionType }) {
+  if (companionId == null || companionId === '') return null;
+  if (sessionType !== '1on2') throw new ApiError(400, 'companion_not_allowed');
+  const id = Number(companionId);
+  const u = Number.isInteger(id) ? getUserBasicStmt.get(id) : null;
+  if (!u || u.role !== 'user') throw new ApiError(404, 'companion_not_found');
+  if (u.id === Number(memberId)) throw new ApiError(400, 'companion_same_person');
+  return u;
+}
+
+/** 同行守則（公開頁姓名＋電話版）：兩者皆須有值；建立或對到既有一般會員（員工電話 409）。 */
+function resolveCompanionByPhone({ companion, memberId, memberPhone, sessionType }) {
+  if (!companion) return null;
+  const name = typeof companion.name === 'string' ? companion.name.trim() : '';
+  const phone = typeof companion.phone === 'string' ? companion.phone.trim() : '';
+  if (!name && !phone) return null;                        // 兩欄留白＝沒有同行
+  if (sessionType !== '1on2') throw new ApiError(400, 'companion_not_allowed');
+  if (!name || !phone) throw new ApiError(400, 'invalid_companion');
+  if (phone === String(memberPhone)) throw new ApiError(400, 'companion_same_person');
+  let u;
+  try { u = findOrCreateUserByPhone({ phone, name }); }
+  catch (e) { if (e instanceof ApiError && e.code === 'invalid_phone') throw new ApiError(400, 'invalid_companion'); throw e; }
+  if (u.id === Number(memberId)) throw new ApiError(400, 'companion_same_person');
+  return u;
+}
+
+/** 員工端通知用的客人標籤：有同行 → 「主客人＋同行」。 */
+function partyLabel(b) {
+  const m = getUserNameStmt.get(b.member_id)?.name || '';
+  const c = b.member2_id ? getUserNameStmt.get(b.member2_id)?.name : null;
+  return c ? `${m}＋${c}` : m;
+}
+
+/** 會員端通知鏡射：主客人與同行（若有）各一則同款通知。 */
+function notifyCustomers(b, type, vars) {
+  notify({ userId: b.member_id, sessionId: null, type, vars });
+  if (b.member2_id) notify({ userId: b.member2_id, sessionId: null, type, vars });
+}
+
 const listPendingPaymentStmt = db.prepare(`
   SELECT b.id, b.start_at, b.session_type, b.created_at, b.recurring_group_id,
          b.original_amount, b.discount_amount, b.discount_code,
          u.name AS member_name, u.phone AS member_phone,
+         u2.name AS companion_name,
          c.display_name AS coach_display_name
   FROM bookings b
   JOIN users u ON u.id = b.member_id
+  LEFT JOIN users u2 ON u2.id = b.member2_id
   JOIN coaches c ON c.id = b.coach_id
   WHERE b.status = 'confirmed' AND b.paid_at IS NULL
   ORDER BY b.created_at DESC, b.id DESC
@@ -84,7 +129,7 @@ const getMostRecentBookingWithCoachStmt = db.prepare(`
 `);
 
 // 核心建單：寫 bookings + 通知教練/會員。不碰點數。
-function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1', silent = false, enforceAvailability = true }) {
+function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1', silent = false, enforceAvailability = true, member2Id = null }) {
   const endAt = addMinutes(startAt, 60);
   // 同教練重疊 / 全店容量（tx 內、純 DB → 無競態）。UNIQUE index 仍為最後兜底。
   // enforceAvailability=false（員工手動登錄）：跳過班表/容量檢查，允許任意整點；
@@ -94,7 +139,7 @@ function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1
   }
   let bookingId;
   try {
-    const info = insertBookingStmt.run(coach.id, memberId, startAt, endAt, note, sessionType);
+    const info = insertBookingStmt.run(coach.id, memberId, startAt, endAt, note, sessionType, member2Id);
     bookingId = info.lastInsertRowid;
   } catch (e) {
     if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
@@ -103,12 +148,13 @@ function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1
   const memberRow = getUserNameStmt.get(memberId);
   if (memberRow && !silent) {  // silent：循環預約逐堂不通知（由呼叫端發一則摘要）
     const startFmt = fmtDateForLine(startAt);
+    const label = partyLabel({ member_id: memberId, member2_id: member2Id });
     notify({ userId: coach.user_id, sessionId: null, type: 'booking_created',
-      vars: { member_name: memberRow.name, start_at: startFmt } });
-    notify({ userId: memberId, sessionId: null, type: 'booking_confirmed',
-      vars: { coach_display_name: coach.display_name, start_at: startFmt } });
+      vars: { member_name: label, start_at: startFmt } });
+    notifyCustomers({ member_id: memberId, member2_id: member2Id }, 'booking_confirmed',
+      { coach_display_name: coach.display_name, start_at: startFmt });
     // 加掛：店家管理者廣播（第三人稱、中性，沿用 booking_created 文案）
-    notifyAdmins({ type: 'booking_created', excludeUserIds: [memberId, coach.user_id], vars: { member_name: memberRow.name, start_at: startFmt } });
+    notifyAdmins({ type: 'booking_created', excludeUserIds: [memberId, member2Id, coach.user_id].filter(Boolean), vars: { member_name: label, start_at: startFmt } });
   }
   return { id: bookingId, startAt, endAt };
 }
@@ -122,7 +168,7 @@ export function createBooking({ coachId, memberId, startAt, note = null }) {
   return tx(() => createBookingCore({ coach, memberId, startAt, note }));
 }
 
-export function createBookingAnon({ coachId, startAt, name, phone, note = null, discountCode = null, sessionType = '1on1', email = null }) {
+export function createBookingAnon({ coachId, startAt, name, phone, note = null, discountCode = null, sessionType = '1on1', email = null, companion = null }) {
   if (!coachId || !startAt) throw new ApiError(400, 'missing_fields');
   if (sessionType !== '1on1' && sessionType !== '1on2') throw new ApiError(400, 'invalid_session_type');
   if (typeof startAt !== 'string' || !START_AT_RE.test(startAt)) throw new ApiError(400, 'invalid_start_at');
@@ -132,7 +178,8 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
   if (!coach.is_active) throw new ApiError(409, 'coach_inactive');
   return tx(() => {
     const user = findOrCreateUserByPhone({ phone, name });
-    const r = createBookingCore({ coach, memberId: user.id, startAt, note, sessionType });
+    const companionUser = resolveCompanionByPhone({ companion, memberId: user.id, memberPhone: phone, sessionType });
+    const r = createBookingCore({ coach, memberId: user.id, startAt, note, sessionType, member2Id: companionUser ? companionUser.id : null });
     // 綁定碼只發給一般會員（縱深防禦：Fix A 已擋員工電話，這裡再保險一次）。
     if (user.role === 'user' && !user.line_user_id) r.lineBindCode = generateBindCode(user.id).code;
     r.lineOfficialUrl = getLineOfficialUrl();
@@ -145,6 +192,7 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
     r.sessionType = sessionType;
     r.customerEmail = email || null;
     r.originalAmount = originalAmount; r.discountAmount = discountAmount; r.discountCode = discountCode_; r.finalAmount = finalAmount;
+    r.companionName = companionUser ? companionUser.name : null;
     return r;
   });
 }
@@ -163,7 +211,7 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
       if (!adminOnBehalf && coach.user_id !== actorUserId) throw new ApiError(403, 'forbidden');
       if (!reason || !reason.trim()) throw new ApiError(400, 'missing_reason');
     } else {
-      if (b.member_id !== actorUserId) throw new ApiError(403, 'forbidden');
+      if (b.member_id !== actorUserId && b.member2_id !== actorUserId) throw new ApiError(403, 'forbidden');
     }
 
     cancelBookingStmt.run(nowLocal(), actorUserId, reason, bookingId);
@@ -177,19 +225,18 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
       // adminOnBehalf 視為教練取消：通知會員「教練取消」
       const isCoachCancel = adminOnBehalf || actorUserId === coach.user_id;
       if (isCoachCancel) {
-        notify({
-          userId: b.member_id,
-          sessionId: null,
-          type: 'booking_cancelled_by_coach',
-          vars: { coach_display_name: coach.display_name, start_at: startFmt },
-        });
+        notifyCustomers(b, 'booking_cancelled_by_coach',
+          { coach_display_name: coach.display_name, start_at: startFmt });
       } else {
         notify({
           userId: coach.user_id,
           sessionId: null,
           type: 'booking_cancelled_by_member',
-          vars: { member_name: memberRow.name, start_at: startFmt },
+          vars: { member_name: getUserNameStmt.get(actorUserId)?.name || memberRow.name, start_at: startFmt },
         });
+        const otherId = actorUserId === b.member_id ? b.member2_id : b.member_id;
+        if (otherId) notify({ userId: otherId, sessionId: null, type: 'booking_cancelled_by_companion',
+          vars: { other_name: getUserNameStmt.get(actorUserId)?.name || '', coach_display_name: coach.display_name, start_at: startFmt } });
       }
     }
 
@@ -210,7 +257,8 @@ export function cancelBookingFromGcal(bookingId) {
     db.prepare('UPDATE bookings SET gcal_event_id = NULL WHERE id = ?').run(bookingId);
     const memberRow = getUserNameStmt.get(b.member_id);
     return { ok: true, coachName: coach?.display_name || '', memberName: memberRow?.name || '',
-             startAt: b.start_at, refunded: !!b.package_id };
+             startAt: b.start_at, refunded: !!b.package_id,
+             companionName: b.member2_id ? (getUserNameStmt.get(b.member2_id)?.name || '') : null };
   });
 }
 
@@ -220,15 +268,21 @@ export function cancelBookingAnon({ bookingId, phone, name }) {
     if (!b) throw new ApiError(404, 'booking_not_found');
     if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
     const user = getUserByPhoneAndName({ phone, name });
-    if (!user || user.id !== b.member_id) throw new ApiError(403, 'forbidden');
+    const isPrimary = !!user && user.id === b.member_id;
+    const isCompanion = !!user && b.member2_id != null && user.id === b.member2_id;
+    if (!isPrimary && !isCompanion) throw new ApiError(403, 'forbidden');
     cancelBookingStmt.run(nowLocal(), user.id, null, bookingId);
     refundPackageForBooking(b);
     releaseRedemption({ kind: 'booking', refId: bookingId });
     const coach = getCoachStmt.get(b.coach_id);
-    const memberRow = getUserNameStmt.get(b.member_id);
-    if (coach && memberRow) {
+    if (coach) {
+      const startFmt = fmtDateForLine(b.start_at);
       notify({ userId: coach.user_id, sessionId: null, type: 'booking_cancelled_by_member',
-        vars: { member_name: memberRow.name, start_at: fmtDateForLine(b.start_at) } });
+        vars: { member_name: user.name, start_at: startFmt } });
+      // 一對二：另一位客人要知道共用的這堂課被取消了
+      const otherId = isPrimary ? b.member2_id : b.member_id;
+      if (otherId) notify({ userId: otherId, sessionId: null, type: 'booking_cancelled_by_companion',
+        vars: { other_name: user.name, coach_display_name: coach.display_name, start_at: startFmt } });
     }
     return { ok: true };
   });
@@ -248,13 +302,13 @@ export function cancelBookingAdmin({ bookingId, actorId, reason = null }) {
     const memberRow = getUserNameStmt.get(b.member_id);
     if (coach && memberRow) {
       const startFmt = fmtDateForLine(b.start_at);
-      notify({ userId: b.member_id, sessionId: null, type: 'booking_cancelled_by_shop',
-        vars: { coach_display_name: coach.display_name, start_at: startFmt,
-                reason_suffix: reason ? `（原因：${reason}）` : '' } });
+      notifyCustomers(b, 'booking_cancelled_by_shop',
+        { coach_display_name: coach.display_name, start_at: startFmt,
+          reason_suffix: reason ? `（原因：${reason}）` : '' });
       // 不通知取消操作者本人（admin 可能同時就是該教練）
       if (coach.user_id !== actorId) {
         notify({ userId: coach.user_id, sessionId: null, type: 'booking_cancelled_by_shop_coach',
-          vars: { member_name: memberRow.name, start_at: startFmt } });
+          vars: { member_name: partyLabel(b), start_at: startFmt } });
       }
     }
     return { ok: true };
@@ -313,6 +367,7 @@ export function listPendingPaymentBookings() {
         member_name: b.member_name, member_phone: b.member_phone,
         coach_display_name: b.coach_display_name, session_type: b.session_type,
         sessions: [], total_amount: 0, discount_code: b.discount_code,
+        companion_name: b.companion_name,
       };
       groups.set(b.recurring_group_id, g);
       out.push(g);
@@ -346,11 +401,13 @@ export function confirmBookingPayment({ bookingId, actorId }) {
 export function listConfirmedPayments() {
   const bookingRows = db.prepare(`
     SELECT 'booking' AS type, b.id, b.recurring_group_id, u.name AS customer_name, u.phone AS customer_phone,
+           u2.name AS companion_name,
            CASE WHEN b.original_amount IS NULL THEN NULL
                 ELSE b.original_amount - COALESCE(b.discount_amount, 0) END AS amount,
            b.start_at AS detail, b.session_type, b.paid_at, b.refunded_at, pu.name AS paid_by_name
     FROM bookings b
     JOIN users u ON u.id = b.member_id
+    LEFT JOIN users u2 ON u2.id = b.member2_id
     LEFT JOIN users pu ON pu.id = b.paid_by
     WHERE b.paid_at IS NOT NULL
     ORDER BY b.paid_at DESC LIMIT 200
@@ -365,7 +422,8 @@ export function listConfirmedPayments() {
       g = { type: 'booking_group', id: r.recurring_group_id, customer_name: r.customer_name,
             customer_phone: r.customer_phone, amount: 0, session_type: r.session_type,
             count: 0, refunded_count: 0, first_at: r.detail, detail: '',
-            paid_at: r.paid_at, paid_by_name: r.paid_by_name, refunded_at: null };
+            paid_at: r.paid_at, paid_by_name: r.paid_by_name, refunded_at: null,
+            companion_name: r.companion_name };
       bGroups.set(r.recurring_group_id, g);
       bookings.push(g);
     }
@@ -562,13 +620,14 @@ export function previewCoachRegister({ coachId, memberId, packageId, startAt, re
 }
 
 /** 建立登錄預約（單筆/循環，皆走方案）。tx 內：驗方案 → 逐場（衝突跳過、扣堂建立、用罄即停）→ 串 group。 */
-export function createCoachRegister({ coachId, memberId, packageId, startAt, recurrence = null, actorId }) {
+export function createCoachRegister({ coachId, memberId, packageId, startAt, recurrence = null, actorId, companionId = null }) {
   const coach = getCoachStmt.get(coachId);
   if (!coach) throw new ApiError(404, 'coach_not_found');
   const isRecurring = !!recurrence;
   return tx(() => {
     const p = getValidPackageForRegister(packageId, memberId);
     const sessionType = p.session_type;
+    const mate = resolveCompanionById({ companionId, memberId, sessionType });
     const unitPrice = p.amount != null ? Math.round(p.amount / p.total_sessions) : null;
     const occ = _registerOccurrences({ startAt, recurrence });
     const created = [];
@@ -577,7 +636,7 @@ export function createCoachRegister({ coachId, memberId, packageId, startAt, rec
       if (o.reason === 'no_date') { skipped.push({ startAt: o.startAt, reason: 'no_date' }); continue; }
       if (hasConfirmedClash.get(coachId, o.startAt)) { skipped.push({ startAt: o.startAt, reason: 'conflict' }); continue; }
       if (!pkgDeductOne(packageId)) break; // 用罄即停
-      const r = createBookingCore({ coach, memberId, startAt: o.startAt, note: null, sessionType, silent: isRecurring, enforceAvailability: false });
+      const r = createBookingCore({ coach, memberId, startAt: o.startAt, note: null, sessionType, silent: isRecurring, enforceAvailability: false, member2Id: mate ? mate.id : null });
       db.prepare('UPDATE bookings SET package_id=?, paid_at=?, paid_by=?, original_amount=? WHERE id=?')
         .run(packageId, nowLocal(), actorId, unitPrice, r.id);
       created.push({ id: r.id, startAt: o.startAt });
@@ -593,8 +652,8 @@ export function createCoachRegister({ coachId, memberId, packageId, startAt, rec
       }
       // 循環摘要通知（不逐堂轟炸）；created.length>=1 一律發，避免「循環只成 1 筆 → 零通知」。
       const summaryVars = { count: created.length, coach_display_name: coach.display_name,
-        member_name: getUserNameStmt.get(memberId)?.name || '', freq_text: '登錄', first_at: fmtDateForLine(created[0].startAt) };
-      notify({ userId: memberId, sessionId: null, type: 'booking_recurring_created', vars: summaryVars });
+        member_name: partyLabel({ member_id: memberId, member2_id: mate ? mate.id : null }), freq_text: '登錄', first_at: fmtDateForLine(created[0].startAt) };
+      notifyCustomers({ member_id: memberId, member2_id: mate ? mate.id : null }, 'booking_recurring_created', summaryVars);
       if (coach.user_id !== actorId) notify({ userId: coach.user_id, sessionId: null, type: 'booking_recurring_created_coach', vars: summaryVars });
     }
     return { created, skipped, groupId, deducted: created.length, remainingAfter: pkgGetPackage(packageId).remaining_sessions };
@@ -623,10 +682,10 @@ export function rescheduleBooking({ bookingId, newStartAt, actorUserId, isAdmin 
       if (String(e.message).includes('UNIQUE')) throw new ApiError(409, 'slot_taken');
       throw e;
     }
-    if (coach) notify({ userId: b.member_id, sessionId: null, type: 'booking_rescheduled',
-      vars: { coach_display_name: coach.display_name, start_at: fmtDateForLine(newStartAt) } });
+    if (coach) notifyCustomers(b, 'booking_rescheduled',
+      { coach_display_name: coach.display_name, start_at: fmtDateForLine(newStartAt) });
     if (coach && coach.user_id !== actorUserId) {  // 教練版：排除操作者本人（gcal 拖拉 actorUserId=null → 恆發）
-      const memberName = getUserNameStmt.get(b.member_id)?.name || '';
+      const memberName = partyLabel(b);
       notify({ userId: coach.user_id, sessionId: null, type: 'booking_rescheduled_coach',
         vars: { member_name: memberName, old_start_at: fmtDateForLine(oldStartAt), start_at: fmtDateForLine(newStartAt) } });
     }
@@ -651,12 +710,38 @@ export function reassignBooking({ bookingId, newMemberId, newPackageId, actorUse
     if (b.package_id) refundPackageOne(b.package_id);          // 退舊方案（+1；refundOne 封頂、best-effort）
     if (!pkgDeductOne(newPackageId)) throw new ApiError(409, 'package_depleted'); // 防禦（單執行緒下用罄方案 is_valid=false 已先擋為 package_invalid）；失敗 → tx rollback 還原退舊
     const unitPrice = p.amount != null ? Math.round(p.amount / p.total_sessions) : null;
+    // 新方案 1對1 或新主客人＝原同行 → 同行位清空；否則保留原同行
+    const keepMate = p.session_type === '1on2' && b.member2_id != null && b.member2_id !== memberId ? b.member2_id : null;
     db.prepare(`UPDATE bookings SET member_id = ?, package_id = ?, session_type = ?, original_amount = ?,
-                discount_code = NULL, discount_amount = NULL, paid_at = ?, paid_by = ? WHERE id = ?`)
-      .run(memberId, newPackageId, p.session_type, unitPrice, nowLocal(), actorUserId, bookingId);
+                discount_code = NULL, discount_amount = NULL, member2_id = ?, paid_at = ?, paid_by = ? WHERE id = ?`)
+      .run(memberId, newPackageId, p.session_type, unitPrice, keepMate, nowLocal(), actorUserId, bookingId);
     if (coach) notify({ userId: memberId, sessionId: null, type: 'booking_confirmed',
       vars: { coach_display_name: coach.display_name, start_at: fmtDateForLine(b.start_at) } });
     return { ok: true, bookingId };
+  });
+}
+
+/** 設定／清除一對二的同行客人（教練本人或管理者）。換人：舊同行收店家取消通知、新同行收預約成功。 */
+export function setBookingCompanion({ bookingId, companionId, actorUserId, isAdmin = false }) {
+  return tx(() => {
+    const b = getBookingStmt.get(bookingId);
+    if (!b) throw new ApiError(404, 'booking_not_found');
+    if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
+    const coach = getCoachStmt.get(b.coach_id);
+    if (!isAdmin && (!coach || coach.user_id !== actorUserId)) throw new ApiError(403, 'forbidden');
+    if (b.session_type !== '1on2') throw new ApiError(400, 'companion_not_allowed');
+    const next = resolveCompanionById({ companionId, memberId: b.member_id, sessionType: b.session_type });
+    const nextId = next ? next.id : null;
+    if ((b.member2_id ?? null) === nextId) return { ok: true, bookingId, companionId: nextId, companionName: next ? next.name : null };
+    db.prepare('UPDATE bookings SET member2_id = ? WHERE id = ?').run(nextId, bookingId);
+    if (coach) {
+      const startFmt = fmtDateForLine(b.start_at);
+      if (b.member2_id) notify({ userId: b.member2_id, sessionId: null, type: 'booking_cancelled_by_shop',
+        vars: { coach_display_name: coach.display_name, start_at: startFmt, reason_suffix: '（同行名單變更）' } });
+      if (nextId) notify({ userId: nextId, sessionId: null, type: 'booking_confirmed',
+        vars: { coach_display_name: coach.display_name, start_at: startFmt } });
+    }
+    return { ok: true, bookingId, companionId: nextId, companionName: next ? next.name : null };
   });
 }
 
@@ -705,11 +790,11 @@ export function cancelCoachGroup({ bookingId, actorUserId, isAdmin = false, reas
     const memberRow = getUserNameStmt.get(rows[0].member_id);
     if (coach && memberRow) {
       const startFmt = `${fmtDateForLine(rows[0].start_at)} 起共 ${rows.length} 堂`;
-      notify({ userId: rows[0].member_id, sessionId: null, type: 'booking_cancelled_by_shop',
-        vars: { coach_display_name: coach.display_name, start_at: startFmt, reason_suffix: '' } });
+      notifyCustomers(rows[0], 'booking_cancelled_by_shop',
+        { coach_display_name: coach.display_name, start_at: startFmt, reason_suffix: '' });
       if (coach.user_id !== actorUserId) {
         notify({ userId: coach.user_id, sessionId: null, type: 'booking_cancelled_by_shop_coach',
-          vars: { member_name: memberRow.name, start_at: startFmt } });
+          vars: { member_name: partyLabel(rows[0]), start_at: startFmt } });
       }
     }
     return { ok: true, cancelled: rows.map((r) => r.id) };
@@ -731,12 +816,12 @@ export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
     const memberRow = getUserNameStmt.get(rows[0].member_id);
     if (coach && memberRow) {
       const startFmt = `${fmtDateForLine(rows[0].start_at)} 起共 ${rows.length} 堂`;
-      notify({ userId: rows[0].member_id, sessionId: null, type: 'booking_cancelled_by_shop',
-        vars: { coach_display_name: coach.display_name, start_at: startFmt,
-                reason_suffix: reason ? `（原因：${reason}）` : '' } });
+      notifyCustomers(rows[0], 'booking_cancelled_by_shop',
+        { coach_display_name: coach.display_name, start_at: startFmt,
+          reason_suffix: reason ? `（原因：${reason}）` : '' });
       if (coach.user_id !== actorId) {
         notify({ userId: coach.user_id, sessionId: null, type: 'booking_cancelled_by_shop_coach',
-          vars: { member_name: memberRow.name, start_at: startFmt } });
+          vars: { member_name: partyLabel(rows[0]), start_at: startFmt } });
       }
     }
     return { ok: true, cancelled: rows.map(r => r.id) };

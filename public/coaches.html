@@ -117,6 +117,16 @@
         <span id="modal-phone-err" class="text-xs text-red-500 mt-1 block"></span>
       </label>
 
+      <div id="modal-companion" class="mb-3 hidden">
+        <span class="text-sm font-medium text-slate-700 block">同行客人（選填）</span>
+        <span class="text-xs text-slate-500 block mb-1">留白也可以；填了兩位都能在「我的課表」查到這堂課</span>
+        <div class="grid grid-cols-2 gap-2">
+          <input id="modal-companion-name" type="text" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="同行姓名">
+          <input id="modal-companion-phone" type="tel" inputmode="numeric" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="同行電話">
+        </div>
+        <span id="modal-companion-err" class="text-xs text-red-500 mt-1 block"></span>
+      </div>
+
       <label class="block mb-3">
         <span class="text-sm font-medium text-slate-700">Email（選填，填寫將寄送預約確認信）</span>
         <input id="modal-email" type="email" inputmode="email" class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" placeholder="example@email.com">

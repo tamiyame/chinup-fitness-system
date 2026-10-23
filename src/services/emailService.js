@@ -6,8 +6,9 @@ import { isGmailConfigured } from './googleAuth.js';
 import { getBankInfo, getLineOfficialUrl } from './discountService.js';
 
 const getBookingFull = db.prepare(`
-  SELECT b.*, c.display_name AS coach_name, u.name AS member_name
+  SELECT b.*, c.display_name AS coach_name, u.name AS member_name, u2.name AS companion_name
   FROM bookings b JOIN coaches c ON c.id = b.coach_id JOIN users u ON u.id = b.member_id
+  LEFT JOIN users u2 ON u2.id = b.member2_id
   WHERE b.id = ?
 `);
 const insertNotif = db.prepare(`
@@ -32,6 +33,7 @@ export function _buildConfirmationHtml(bookingId) {
     ['教練', b.coach_name],
     ['時間', `${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}（週${dow}）${time.slice(0, 5)}–${b.end_at.split('T')[1].slice(0, 5)}`],
     ['方案', label],
+    b.companion_name ? ['同行客人', b.companion_name] : null,
     final != null ? ['現場應付', `$${final.toLocaleString()}${b.discount_code ? `（已套用折扣碼 ${esc(b.discount_code)}）` : ''}`] : null,
     ['匯款資訊', getBankInfo()],
   ].filter(Boolean);

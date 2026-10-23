@@ -72,5 +72,24 @@ expect('preview：標 ok/conflict/depleted，回 willCreate/willDeduct', () => {
   assert.equal(pv.occurrences[1].status, 'depleted'); // 方案只剩 1
   assert.equal(pv.willCreate, 1); assert.equal(pv.willDeduct, 1);
 });
+
+// ── 一對二同行客人 ──
+const mate = Number(db.prepare("INSERT INTO users (name,email,role,phone) VALUES ('reg同行','reg-mate@x.com','user','0971000002')").run().lastInsertRowid);
+expect('1on2 方案帶 companionId：循環每筆 member2_id 相同、同行收循環摘要一則', () => {
+  const p = createPackage({ memberId: mid, sessionType:'1on2', totalSessions:3 });
+  const r = createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T16:00:00`, recurrence:{ frequency:'daily', interval:1, end:{ type:'count', count:2 } }, actorId: admin, companionId: mate });
+  assert.equal(r.created.length, 2);
+  for (const c of r.created) assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(c.id).member2_id, mate);
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_recurring_created'").get(mate).c, 1);
+});
+expect('1on1 方案帶 companionId → 400 companion_not_allowed', () => {
+  const p = createPackage({ memberId: mid, sessionType:'1on1', totalSessions:3 });
+  assert.throws(() => createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T18:00:00`, recurrence:null, actorId: admin, companionId: mate }), /companion_not_allowed/);
+});
+expect('companionId＝主客人 → 400 companion_same_person；不存在 → 404 companion_not_found', () => {
+  const p = createPackage({ memberId: mid, sessionType:'1on2', totalSessions:3 });
+  assert.throws(() => createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T19:00:00`, recurrence:null, actorId: admin, companionId: mid }), /companion_same_person/);
+  assert.throws(() => createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T19:00:00`, recurrence:null, actorId: admin, companionId: 999999 }), /companion_not_found/);
+});
 db.exec("DELETE FROM notifications; DELETE FROM bookings; DELETE FROM customer_packages; DELETE FROM coaches WHERE display_name LIKE 'reg-%'; DELETE FROM users WHERE email LIKE 'reg-%'");
 console.log('[coach-register test] done');

@@ -44,6 +44,7 @@ expect('group_orders has discount_code', ()=>assert(goCols.includes('discount_co
 expect('group_orders has original_amount', ()=>assert(goCols.includes('original_amount')));
 const bkCols = db.prepare('PRAGMA table_info(bookings)').all().map(c=>c.name);
 expect('bookings has discount_amount', ()=>assert(bkCols.includes('discount_amount')));
+expect('bookings has member2_id (同行客人)', ()=>assert(bkCols.includes('member2_id')));
 expect('discount_codes table exists', ()=>assert(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='discount_codes'").get()));
 expect('discount_redemptions exists', ()=>assert(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='discount_redemptions'").get()));
 expect('app_settings seeded 1500', ()=>assert.equal(db.prepare("SELECT value FROM app_settings WHERE key='one_on_one_price'").get().value,'1500'));

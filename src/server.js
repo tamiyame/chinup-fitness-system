@@ -30,6 +30,7 @@ import {
   cancelBooking as svcCancelBooking,
   createBookingAnon as svcCreateBookingAnon,
   cancelBookingAnon as svcCancelBookingAnon,
+  setBookingCompanion as svcSetBookingCompanion,
   listPendingPaymentBookings as svcListPendingPaymentBookings,
   confirmBookingPayment as svcConfirmBookingPayment,
   listConfirmedPayments as svcListConfirmedPayments,
@@ -949,8 +950,8 @@ app.post('/api/coach/register/preview', requireCoach, asyncHandler((req, res) =>
 
 app.post('/api/coach/register', requireCoach, asyncHandler((req, res) => {
   const coach = resolveCoach(req, res); if (!coach) return;
-  const { memberId, packageId, startAt, recurrence } = req.body || {};
-  const r = svcCreateRegister({ coachId: coach.id, memberId: Number(memberId), packageId: Number(packageId), startAt, recurrence: recurrence || null, actorId: req.user.id });
+  const { memberId, packageId, startAt, recurrence, companionId } = req.body || {};
+  const r = svcCreateRegister({ coachId: coach.id, memberId: Number(memberId), packageId: Number(packageId), startAt, recurrence: recurrence || null, actorId: req.user.id, companionId: companionId == null || companionId === '' ? null : Number(companionId) });
   for (const c of r.created) syncBookingCreate(c.id); // commit 後副作用
   res.status(201).json(r);
 }));
@@ -966,6 +967,14 @@ app.patch('/api/coach/bookings/:id/reassign', requireCoach, asyncHandler((req, r
   const { memberId, packageId } = req.body || {};
   const r = svcReassignBooking({ bookingId: Number(req.params.id), newMemberId: Number(memberId), newPackageId: Number(packageId), actorUserId: req.user.id, isAdmin: !!req.user.is_admin });
   syncBookingUpdate(r.bookingId); // 原子刷新（PUT），避免刪→建窗口被反向同步誤判
+  res.json(r);
+}));
+
+// 一對二同行客人：設定／清除（教練本人或管理者；service 內守門）。gcal 標題含同行名 → 刷新事件。
+app.patch('/api/coach/bookings/:id/companion', requireCoach, asyncHandler((req, res) => {
+  const { companionId } = req.body || {};
+  const r = svcSetBookingCompanion({ bookingId: Number(req.params.id), companionId: companionId == null || companionId === '' ? null : Number(companionId), actorUserId: req.user.id, isAdmin: !!req.user.is_admin });
+  syncBookingUpdate(r.bookingId);
   res.json(r);
 }));
 
@@ -1032,7 +1041,7 @@ app.post('/api/public/discounts/validate', asyncHandler((req, res) => {
 }));
 
 app.post('/api/public/bookings', bookingLimiter, asyncHandler(async (req, res) => {
-  const { coachId, startAt, name, phone, note, discountCode, sessionType, email } = req.body || {};
+  const { coachId, startAt, name, phone, note, discountCode, sessionType, email, companionName, companionPhone } = req.body || {};
   const type = sessionType || '1on1';
   // 檢查順序維持既有契約：coach(404/409) → phone(400) → 時段(409) → service
   const coach = svcGetCoach(Number(coachId));
@@ -1041,6 +1050,13 @@ app.post('/api/public/bookings', bookingLimiter, asyncHandler(async (req, res) =
   // phone 不做正規化：與 service 的 findOrCreateUserByPhone 同一套驗證（驗原始字串），
   // route 過 ⇔ service 過，不會出現「route 過、service 擋」的不一致。
   if (!isValidPhone(phone)) return res.status(400).json({ error: 'invalid_phone', detail: '電話需為 8-15 碼數字' });
+  // 一對二同行客人（選填）：姓名／電話要一起填；電話格式同主客人；非 1對2 不可帶
+  const cName = typeof companionName === 'string' ? companionName.trim() : '';
+  const cPhone = typeof companionPhone === 'string' ? companionPhone.trim() : '';
+  if ((cName && !cPhone) || (!cName && cPhone)) return res.status(400).json({ error: 'invalid_companion' });
+  if (cPhone && !isValidPhone(cPhone)) return res.status(400).json({ error: 'invalid_companion' });
+  if (cName && type !== '1on2') return res.status(400).json({ error: 'companion_not_allowed' });
+  const companion = cName ? { name: cName, phone: cPhone } : null;
   if (typeof startAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00$/.test(startAt)) {
     return res.status(400).json({ error: 'invalid_start_at' });
   }
@@ -1056,7 +1072,7 @@ app.post('/api/public/bookings', bookingLimiter, asyncHandler(async (req, res) =
   const hit = slots.find(s => s.start === startAt);
   if (!hit || hit.remain < units) return res.status(409).json({ error: 'slot_unavailable' });
 
-  const r = svcCreateBookingAnon({ coachId: coach.id, startAt, name, phone, note: note || null, discountCode: discountCode || null, sessionType: type, email: email || null });
+  const r = svcCreateBookingAnon({ coachId: coach.id, startAt, name, phone, note: note || null, discountCode: discountCode || null, sessionType: type, email: email || null, companion });
   // commit 後副作用（不 await、不持鎖；比照 notify() 慣例）
   syncBookingCreate(r.id);
   if (email) sendBookingConfirmation(r.id);

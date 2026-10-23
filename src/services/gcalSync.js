@@ -19,9 +19,10 @@ export function eventIdForBooking(bookingId) {
 
 const getBookingFull = db.prepare(`
   SELECT b.*, c.display_name AS coach_name, u.name AS member_name, u.phone AS member_phone,
-         cu.is_admin AS coach_is_admin
+         cu.is_admin AS coach_is_admin, u2.name AS companion_name, u2.phone AS companion_phone
   FROM bookings b JOIN coaches c ON c.id = b.coach_id
   JOIN users u ON u.id = b.member_id
+  LEFT JOIN users u2 ON u2.id = b.member2_id
   JOIN users cu ON cu.id = c.user_id
   WHERE b.id = ?
 `);
@@ -38,6 +39,7 @@ export function buildEventBody(bookingId) {
     : null;
   const lines = [
     `電話：${b.member_phone || '-'}`,
+    b.companion_name ? `同行：${b.companion_name}（${b.companion_phone || '-'}）` : null,
     `方案：${label}`,
     amount != null ? `金額：$${amount}${b.discount_code ? `（折扣碼 ${b.discount_code}）` : ''}` : null,
     `預約編號：#${b.id}`,
@@ -45,7 +47,7 @@ export function buildEventBody(bookingId) {
   ].filter(Boolean);
   return {
     id: eventIdForBooking(b.id),
-    summary: `${label}教練課 ${b.coach_name}×${b.member_name}`,
+    summary: `${label}教練課 ${b.coach_name}×${b.member_name}${b.companion_name ? '＋' + b.companion_name : ''}`,
     description: lines.join('\n'),
     start: { dateTime: `${b.start_at}+08:00`, timeZone: 'Asia/Taipei' },
     end: { dateTime: `${b.end_at}+08:00`, timeZone: 'Asia/Taipei' },
