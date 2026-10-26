@@ -547,9 +547,19 @@ function regWeekRange(offset) {
   const dates = []; for (let i = 0; i < 7; i++) { const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i); dates.push(fk(d)); }
   return { start: fk(start), dates };
 }
+// 週範圍文字：整週都在今年 → 10/26 – 11/01；有一天不在今年才帶年份（同年 2027/02/22 – 02/28，跨年 2025/12/29 – 2026/01/04）
+function regRangeLabel(dates) {
+  const a = dates[0], b = dates[6], thisYear = String(new Date().getFullYear());
+  const md = (s) => s.slice(5).replace('-', '/');
+  const ya = a.slice(0, 4), yb = b.slice(0, 4);
+  if (ya === thisYear && yb === thisYear) return `${md(a)} – ${md(b)}`;
+  if (ya === yb) return `${ya}/${md(a)} – ${md(b)}`;
+  return `${ya}/${md(a)} – ${yb}/${md(b)}`;
+}
 
 async function renderRegister() {
   regDragCleanup(); // 重繪前清掉任何進行中的拖曳狀態，避免卡死
+  wpClose(false);   // 跳週選擇器若開著（例如切換教練觸發重繪）一併收掉
   const panel = $('tab-register');
   const { start, dates } = regWeekRange(regWeekOffset);
   // 工具列（管理者多一個「全部教練」選擇器）
@@ -563,13 +573,14 @@ async function renderRegister() {
       <button id="reg-today" class="btn-secondary reg-navbtn">本週</button>
       <button id="reg-next" class="btn-secondary reg-navbtn">下一週 →</button>
       ${pickerHtml}
-      <span id="reg-range" class="reg-range"></span>
+      <button id="reg-range" class="reg-range" type="button" aria-haspopup="dialog" title="選擇日期，跳到該週"></button>
     </div>
     <div id="reg-grid" class="reg-grid-wrap"><p class="subtle">載入中…</p></div>`;
   $('reg-prev').onclick = () => { regWeekOffset--; renderRegister(); };
   $('reg-next').onclick = () => { regWeekOffset++; renderRegister(); };
   $('reg-today').onclick = () => { regWeekOffset = 0; renderRegister(); };
-  $('reg-range').textContent = `${dates[0].slice(5).replace('-', '/')} – ${dates[6].slice(5).replace('-', '/')}`;
+  $('reg-range').textContent = regRangeLabel(dates);
+  $('reg-range').onclick = () => wpOpen($('reg-range'), start);
 
   // 管理者：填充教練選擇器（全部教練 + 各 active coach）；首次渲染預設「登入者自己」（教練身份為主），
   // 自己無教練檔案或未啟用（不在選項內）→ 回退「全部教練」。
@@ -662,6 +673,150 @@ async function renderRegister() {
     const booking = data.bookings.find(b => b.id === Number(c.dataset.bk));
     if (booking) bindBookingDrag(c, booking);
   });
+}
+
+// ===== 登錄週曆：點週範圍 → 滾輪式年/月/日選擇器，跳到所選日期所在的那一週 =====
+const WP_ITEM_H = 36;   // 每列高度；滾輪可視 5 列，中間那列＝選取（上下各留 2 列空白）
+let wp = null;          // 開著時：{ layer, y, m, d, years, cols: { y, m, d } }
+
+const wpDaysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+// (y, m, d) 所在週相對本週的週數 → 直接當 regWeekOffset（用 UTC 日期運算，避開時區／夏令時間誤差）
+function wpWeekOffset(y, m, d) {
+  const [ty, tm, td] = regWeekRange(0).start.split('-').map(Number);
+  const sel = Date.UTC(y, m - 1, d);
+  const selMon = sel - ((new Date(sel).getUTCDay() + 6) % 7) * 86400000;
+  return Math.round((selMon - Date.UTC(ty, tm - 1, td)) / (7 * 86400000));
+}
+function wpValues(k) {
+  if (k === 'y') return wp.years;
+  if (k === 'm') return Array.from({ length: 12 }, (_, i) => i + 1);
+  return Array.from({ length: wpDaysIn(wp.y, wp.m) }, (_, i) => i + 1);
+}
+
+function wpOpen(anchor, startStr) {
+  wpClose(false);
+  const [y, m, d] = startStr.split('-').map(Number);
+  const thisYear = new Date().getFullYear();
+  const years = [];
+  for (let v = Math.min(thisYear - 2, y); v <= Math.max(thisYear + 2, y); v++) years.push(v);
+  const layer = document.createElement('div');
+  layer.className = 'wp-layer';
+  layer.innerHTML = `
+    <div class="wp-pop" role="dialog" aria-label="選擇日期，跳到該週">
+      <div class="wp-cols">
+        ${[['y', '年'], ['m', '月'], ['d', '日']].map(([k, lbl]) => `
+          <div class="wp-col"><div class="wp-lbl">${lbl}</div>
+            <div class="wp-box"><div class="wp-wheel" data-k="${k}" tabindex="0" role="listbox" aria-label="${lbl}"><div class="wp-list"></div></div></div>
+          </div>`).join('')}
+      </div>
+      <div class="wp-foot">
+        <button type="button" class="wp-cancel">取消</button>
+        <button type="button" class="wp-ok"></button>
+      </div>
+    </div>`;
+  document.body.appendChild(layer);
+  wp = { layer, y, m, d, years, cols: {} };
+  for (const w of layer.querySelectorAll('.wp-wheel')) {
+    const k = w.dataset.k;
+    wp.cols[k] = { el: w, list: w.querySelector('.wp-list'), timer: null, acc: 0, target: null };
+    wpFill(k);
+    w.addEventListener('scroll', () => wpOnScroll(k));
+    w.addEventListener('wheel', (e) => {                // 滑鼠滾輪／觸控板：一格（累積 30px）走一列，比原生捲動好控制
+      e.preventDefault();
+      const c = wp.cols[k];
+      c.acc += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      if (Math.abs(c.acc) >= 30) { wpStep(k, Math.sign(c.acc)); c.acc = 0; }
+    }, { passive: false });
+    w.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); wpStep(k, e.key === 'ArrowUp' ? -1 : 1); }
+      else if (e.key === 'Enter') { e.preventDefault(); wpConfirm(); }
+    });
+    w.addEventListener('click', (e) => {                // 點上下的數字 → 捲到那一列
+      const it = e.target.closest('.wp-it');
+      if (it) wpScrollTo(k, Number(it.dataset.i));
+    });
+  }
+  layer.querySelector('.wp-cancel').onclick = () => wpClose(true);
+  layer.querySelector('.wp-ok').onclick = wpConfirm;
+  layer.addEventListener('pointerdown', (e) => { if (e.target === layer) wpClose(true); });   // 點選擇器外面＝取消
+  layer.addEventListener('wheel', (e) => { if (e.target === layer) e.preventDefault(); }, { passive: false }); // 開著時頁面不捲動，免得跟按鈕錯位
+  document.addEventListener('keydown', wpOnKey);
+  wpUpdateOk();
+  // 定位：貼在週範圍按鈕下方，左右不超出畫面；下方放不下就改放上方
+  const pop = layer.querySelector('.wp-pop');
+  const r = anchor.getBoundingClientRect();
+  const W = pop.offsetWidth, H = pop.offsetHeight;
+  pop.style.left = `${Math.max(16, Math.min(r.left, innerWidth - W - 16))}px`;
+  pop.style.top = `${r.bottom + 6 + H > innerHeight - 16 ? Math.max(16, r.top - 6 - H) : r.bottom + 6}px`;
+  wp.cols.d.el.focus({ preventScroll: true });
+}
+
+function wpFill(k) {
+  const c = wp.cols[k], vals = wpValues(k);
+  const idx = Math.max(0, vals.indexOf(wp[k]));
+  c.list.innerHTML = vals.map((v, i) => `<div class="wp-it${i === idx ? ' is-sel' : ''}" data-i="${i}" role="option">${v}</div>`).join('');
+  c.el.scrollTop = idx * WP_ITEM_H;
+  c.target = idx;
+}
+
+function wpOnScroll(k) {
+  const c = wp.cols[k], vals = wpValues(k);
+  const idx = Math.max(0, Math.min(vals.length - 1, Math.round(c.el.scrollTop / WP_ITEM_H)));
+  c.list.querySelectorAll('.wp-it').forEach((it, i) => it.classList.toggle('is-sel', i === idx));
+  clearTimeout(c.timer);
+  c.timer = setTimeout(() => {                          // 停止捲動後才落定數值
+    if (!wp) return;
+    c.target = idx;
+    if (wp[k] === vals[idx]) return;
+    wp[k] = vals[idx];
+    if (k !== 'd') {                                    // 年、月變了 → 日數可能變（2 月、小月），超出就夾到月底並重建「日」
+      const max = wpDaysIn(wp.y, wp.m);
+      if (wp.d > max) wp.d = max;
+      if (wp.cols.d.list.children.length !== max) wpFill('d');
+    }
+    wpUpdateOk();
+  }, 120);
+}
+
+function wpStep(k, dir) {
+  const c = wp.cols[k];
+  const from = c.target ?? Math.round(c.el.scrollTop / WP_ITEM_H);
+  wpScrollTo(k, from + dir);
+}
+function wpScrollTo(k, i) {
+  const c = wp.cols[k];
+  const idx = Math.max(0, Math.min(wpValues(k).length - 1, i));
+  c.target = idx;
+  c.el.scrollTo({ top: idx * WP_ITEM_H, behavior: 'smooth' });
+}
+
+function wpUpdateOk() {
+  const { dates } = regWeekRange(wpWeekOffset(wp.y, wp.m, wp.d));
+  wp.layer.querySelector('.wp-ok').textContent = `跳到 ${regRangeLabel(dates)}`;
+}
+
+function wpOnKey(e) { if (e.key === 'Escape') wpClose(true); }
+
+function wpClose(refocus) {
+  if (!wp) return;
+  for (const c of Object.values(wp.cols)) clearTimeout(c.timer);
+  wp.layer.remove();
+  wp = null;
+  document.removeEventListener('keydown', wpOnKey);
+  if (refocus) $('reg-range')?.focus();
+}
+
+function wpConfirm() {
+  if (!wp) return;
+  // 以畫面上停在中間的那列為準（避免剛滑完、120ms 落定前就按確定）
+  for (const k of ['y', 'm', 'd']) {
+    const c = wp.cols[k], vals = wpValues(k);
+    wp[k] = vals[Math.max(0, Math.min(vals.length - 1, Math.round(c.el.scrollTop / WP_ITEM_H)))];
+    if (k !== 'd' && wp.d > wpDaysIn(wp.y, wp.m)) wp.d = wpDaysIn(wp.y, wp.m);
+  }
+  regWeekOffset = wpWeekOffset(wp.y, wp.m, wp.d);
+  wpClose(false);
+  renderRegister().then(() => $('reg-range')?.focus());
 }
 
 // ===== 登錄週曆：拖拉改時段（Pointer Events，桌機滑鼠＋手機觸控）=====
