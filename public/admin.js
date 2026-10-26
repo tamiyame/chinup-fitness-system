@@ -737,17 +737,14 @@ function openBackfillPanel(sid) {
 
 document.getElementById('close-drawer').addEventListener('click', () => document.getElementById('drawer').style.display = 'none');
 
-// #drawer（場次名單、報價單新增／編輯共用）：點左側玻璃遮罩＝關閉（同右上 ✕）。
-// 按下與放開都要在遮罩上才算（從面板內拖選文字拖到遮罩放開不會關）。
-{
-  const drawerEl = document.getElementById('drawer');
+// 點玻璃遮罩＝關閉：按下與放開都要在遮罩本身才算（從面板內拖選文字拖到遮罩放開不會關）。
+function closeOnBackdrop(el, close) {
   let downOnBackdrop = false;
-  drawerEl.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === drawerEl; });
-  drawerEl.addEventListener('click', (e) => {
-    if (e.target !== drawerEl || !downOnBackdrop) return;
-    drawerEl.style.display = 'none';
-  });
+  el.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === el; });
+  el.addEventListener('click', (e) => { if (e.target === el && downOnBackdrop) close(); });
 }
+// #drawer（場次名單、報價單新增／編輯共用）：點左側遮罩同右上 ✕
+closeOnBackdrop(document.getElementById('drawer'), () => { document.getElementById('drawer').style.display = 'none'; });
 
 // 切換單一場次開放/關閉（事件委派，掛一次即可；按鈕在 <summary> 內，需阻止展開）
 document.getElementById('drawer-content').addEventListener('click', async (e) => {
@@ -2995,7 +2992,7 @@ function renderQuotes() {
 async function onQuoteAction(act, id) {
   const q = quotesCache.find((x) => x.id === id);
   if (!q) return;
-  if (act === 'preview') { window.open(`/q/${q.token}`, '_blank'); return; }
+  if (act === 'preview') { openQuotePreview(q); return; }
   if (act === 'copylink') {
     const url = `${location.origin}/q/${q.token}`;
     try { await navigator.clipboard.writeText(url); toast('連結已複製', 'success'); }
@@ -3022,6 +3019,32 @@ async function onQuoteAction(act, id) {
     catch (e) { toast(`標記失敗：${e.message}`, 'error'); }
   }
 }
+
+// 報價單預覽：手機（窄螢幕，或橫放的矮螢幕）照舊開新分頁；平板／電腦開懸浮視窗（玻璃遮罩，點遮罩／Esc／✕ 關閉）
+const QP_NEW_TAB_MQ = '(max-width: 767px), (max-height: 500px)';
+function openQuotePreview(q) {
+  const url = `/q/${q.token}`;
+  if (matchMedia(QP_NEW_TAB_MQ).matches) { window.open(url, '_blank'); return; }
+  const frame = document.getElementById('qp-frame');
+  document.getElementById('qp-title').textContent = `報價單預覽 · ${q.quote_no}`;
+  frame.title = `報價單 ${q.quote_no} 預覽`;
+  frame.src = url;
+  document.getElementById('quote-preview').style.display = 'grid';
+  document.addEventListener('keydown', qpOnKey);
+  document.getElementById('qp-close').focus();
+}
+function closeQuotePreview() {
+  document.getElementById('quote-preview').style.display = 'none';
+  document.getElementById('qp-frame').src = 'about:blank';   // 停止載入、釋放內容
+  document.removeEventListener('keydown', qpOnKey);
+}
+function qpOnKey(e) { if (e.key === 'Escape') closeQuotePreview(); }
+document.getElementById('qp-close').addEventListener('click', closeQuotePreview);
+closeOnBackdrop(document.getElementById('quote-preview'), closeQuotePreview);
+// 焦點在 iframe 內時按鍵不會冒泡到後台頁 → 同源頁載入後也掛 Esc
+document.getElementById('qp-frame').addEventListener('load', (e) => {
+  try { e.target.contentWindow.addEventListener('keydown', qpOnKey); } catch {}
+});
 
 // 建單/編輯 drawer：mode 'create'（可帶入來源單＝複製新單，日期重設）| 'edit'（帶原單含日期）
 function openQuoteDrawer(mode, quote) {
