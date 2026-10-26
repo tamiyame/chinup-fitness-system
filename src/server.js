@@ -58,6 +58,8 @@ import {
   refundGroupOrder as svcRefundGroupOrder,
   adminBackfillRegistration as svcAdminBackfillReg,
   adminCancelRegistration as svcAdminCancelReg,
+  getRenewalInfo as svcGetRenewalInfo,
+  adminRenewNextPeriod as svcAdminRenewNextPeriod,
 } from './services/groupOrderService.js';
 import { listActiveCoaches as svcListActive, saveAvatar as svcSaveAvatar } from './services/coachService.js';
 import {
@@ -503,6 +505,15 @@ app.post('/api/admin/sessions/:id/registrations', requireAdmin, asyncHandler((re
     actorId: req.user.id,
     price: price != null ? Number(price) : null,
   }));
+}));
+
+// admin 續報下期：期末最後一堂名單的「續報下期」按鈕（GET 決定要不要顯示，POST 一鍵建待付款單）
+app.get('/api/admin/sessions/:id/renewal', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcGetRenewalInfo(Number(req.params.id)));
+}));
+app.post('/api/admin/sessions/:id/renewal', requireAdmin, asyncHandler((req, res) => {
+  const { userId } = req.body || {};
+  res.status(201).json(svcAdminRenewNextPeriod({ sessionId: Number(req.params.id), userId: Number(userId) }));
 }));
 
 // admin 取消單筆報名（已收款訂單 → 記部分退款，可帶 refundAmount 調整）

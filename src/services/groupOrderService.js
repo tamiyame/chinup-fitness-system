@@ -5,10 +5,16 @@ import { notify, notifyCourseCoach, notifyAdmins } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getBankInfo, getLineOfficialUrl, getGroupOrderExpiryHours, quoteDiscount } from './discountService.js';
 import { listScheduleViewPackages } from './packageService.js';
-import { weekStartMonday } from './period.js';
+import { weekStartMonday, periodOf, nextPeriod, periodLabel } from './period.js';
 
 // 一般 pending 訂單的付款期限改由 app_settings 的 group_order_expiry_hours 控制（預設 72h，後台可調）。
 const PROMOTED_TTL_MS = 24 * 60 * 60 * 1000;     // 候補遞補後 24h（固定：遞補名額要快速流轉）
+
+// 遞補／補報的「併單」只併進一般壽命的待付款單（期限 ≤ now＋max(一般期限, 遞補 24h)）。
+// 續報下期的單期限可長達數週（到下期第一堂截止）；若被併入，新名額會被長期保留、也不發遞補通知。
+function mergeableOrderCutoff() {
+  return offsetLocal(Math.max(getGroupOrderExpiryHours() * 3600_000, PROMOTED_TTL_MS));
+}
 
 const getSession = db.prepare('SELECT * FROM course_sessions WHERE id = ?');
 const getTemplate = db.prepare('SELECT * FROM course_templates WHERE id = ?');
@@ -51,7 +57,7 @@ const insertReg = db.prepare(
   'INSERT INTO registrations (session_id, user_id, status, order_id, amount_due) VALUES (?, ?, ?, ?, ?)'
 );
 const reactivateReg = db.prepare(
-  "UPDATE registrations SET status=?, order_id=?, amount_due=?, position=NULL, registered_at=datetime('now') WHERE id=?"
+  "UPDATE registrations SET status=?, order_id=?, amount_due=?, position=NULL, on_leave=0, registered_at=datetime('now') WHERE id=?"
 );
 
 function validateSelectable(sessionId) {
@@ -377,8 +383,8 @@ export function promoteWaitlist(sessionId) {
     // 連續遞補不會一場一卡）。金額累加、期限延長到至少 now+24h 保障付款時間。
     // 無既有訂單才開新 24h 單。
     const existing = db.prepare(
-      "SELECT id FROM group_orders WHERE member_id=? AND status='pending' AND expires_at >= ? ORDER BY id DESC LIMIT 1"
-    ).get(next.user_id, nowLocal());
+      "SELECT id FROM group_orders WHERE member_id=? AND status='pending' AND expires_at >= ? AND expires_at <= ? ORDER BY id DESC LIMIT 1"
+    ).get(next.user_id, nowLocal(), mergeableOrderCutoff());
     let orderId;
     const isNewOrder = !existing;
     if (existing) {
@@ -492,8 +498,8 @@ export function adminBackfillRegistration({ sessionId, userId = null, name = nul
       regStatus = 'confirmed';
     } else {
       const existing = db.prepare(
-        "SELECT id FROM group_orders WHERE member_id=? AND status='pending' AND expires_at >= ? ORDER BY id DESC LIMIT 1"
-      ).get(user.id, now);
+        "SELECT id FROM group_orders WHERE member_id=? AND status='pending' AND expires_at >= ? AND expires_at <= ? ORDER BY id DESC LIMIT 1"
+      ).get(user.id, now, mergeableOrderCutoff());
       const expiry = offsetLocal(getGroupOrderExpiryHours() * 3600_000);
       if (existing) {
         orderId = existing.id;
@@ -528,6 +534,120 @@ export function adminBackfillRegistration({ sessionId, userId = null, name = nul
     notifyCourseCoach({ coachId: s.coach_id, sessionId, type: 'course_registered_coach',
       vars: { member_name: user.name, course_name: tpl.name, start_at: fmtMD(s.start_at) } });
     return { ok: true, registrationId: Number(regId), orderId, status: regStatus };
+  });
+}
+
+// ── 續報下期：期末最後一堂的舊生，一鍵報進同範本下一期 ──────────────
+// 「最後一堂」＝該期（固定雙月）內 start_at 最晚、且非未開課（cancelled）的場次。
+const periodLastSessionStmt = db.prepare(`
+  SELECT id FROM course_sessions
+  WHERE template_id = ? AND session_date BETWEEN ? AND ? AND status != 'cancelled'
+  ORDER BY start_at DESC, id DESC LIMIT 1
+`);
+// 下一期可續報：未開始、未開課／未結束、未暫停；open 場次還要未過報名截止
+// （已過截止的 open 場次即將被 processDeadlines 判定，只計 confirmed，待付款列可能被拒而訂單金額不變）
+const renewableSessionsStmt = db.prepare(`
+  SELECT * FROM course_sessions
+  WHERE template_id = @tid AND session_date BETWEEN @from AND @to
+    AND is_open = 1 AND start_at > @now
+    AND (status = 'confirmed' OR (status = 'open' AND registration_deadline > @now))
+  ORDER BY start_at ASC, id ASC
+`);
+// 下一期（同範本、任何場次）已有有效報名＝已續報。
+// 候補列只在沒掛單或訂單未取消時算：續報單逾期／取消後殘留的候補列不擋再次續報。
+const renewedUsersStmt = db.prepare(`
+  SELECT DISTINCT r.user_id FROM registrations r
+  JOIN course_sessions s ON s.id = r.session_id
+  LEFT JOIN group_orders o ON o.id = r.order_id
+  WHERE s.template_id = ? AND s.session_date BETWEEN ? AND ?
+    AND (r.status IN ('pending', 'confirmed')
+         OR (r.status = 'waitlisted' AND (o.id IS NULL OR o.status != 'cancelled')))
+  ORDER BY r.user_id
+`);
+
+// 續報單付款期限：第一堂付款場次的報名截止；不足一般期限則取一般期限
+function renewalExpiry(firstPaySession) {
+  const normal = offsetLocal(getGroupOrderExpiryHours() * 3600_000);
+  return firstPaySession.registration_deadline > normal ? firstPaySession.registration_deadline : normal;
+}
+
+/** 該場若是期內最後一堂 → { next, sessions }（下一期期別與可續報場次）；否則 null。 */
+function renewalContext(s) {
+  const period = periodOf(s.session_date);
+  const last = periodLastSessionStmt.get(s.template_id, period.start, period.end);
+  if (!last || last.id !== s.id) return null;
+  const next = nextPeriod(period);
+  return { next, sessions: renewableSessionsStmt.all({ tid: s.template_id, from: next.start, to: next.end, now: nowLocal() }) };
+}
+
+/** admin drawer：此場名單要不要顯示「續報下期」，以及確認框需要的數字。 */
+export function getRenewalInfo(sessionId) {
+  const s = getSession.get(sessionId);
+  if (!s) throw new ApiError(404, 'session_not_found');
+  const ctx = renewalContext(s);
+  if (!ctx || ctx.sessions.length === 0) return { eligible: false };
+  const tpl = getTemplate.get(s.template_id);
+  const pay = ctx.sessions.filter((ns) => !sessionIsFull(ns.id));
+  return {
+    eligible: true,
+    periodLabel: periodLabel(ctx.next),
+    sessionCount: ctx.sessions.length,
+    fullCount: ctx.sessions.length - pay.length,
+    pricePerSession: tpl.price_per_session,
+    expiresAt: pay.length ? renewalExpiry(pay[0]) : null,
+    renewedUserIds: renewedUsersStmt.all(s.template_id, ctx.next.start, ctx.next.end).map((r) => r.user_id),
+  };
+}
+
+/** admin 續報下期：把期末最後一堂的正取／待付款客人報進同範本下一期所有可續報場次。
+ *  未滿 → pending（範本單價、不套折扣），全部掛一張新待付款單；額滿 → 候補（不收費，有單就掛同一張）；
+ *  全滿不建單。付款期限＝max(本單第一堂付款場次的報名截止, now＋一般訂單期限)，逾期由 expirePendingOrders 釋出。
+ *  建單當下不通知客人與教練（核對收款時沿用 confirmGroupOrder 通知）；候補照公開報名通知該場教練。 */
+export function adminRenewNextPeriod({ sessionId, userId }) {
+  return tx(() => {
+    const s = getSession.get(sessionId);
+    if (!s) throw new ApiError(404, 'session_not_found');
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!user) throw new ApiError(404, 'user_not_found');
+    const ctx = renewalContext(s);
+    if (!ctx) throw new ApiError(409, 'not_period_last');
+    if (ctx.sessions.length === 0) throw new ApiError(409, 'no_next_sessions');
+    const cur = getAnyReg.get(sessionId, user.id);
+    if (!cur || !['pending', 'confirmed'].includes(cur.status)) throw new ApiError(409, 'not_registered');
+    const renewed = renewedUsersStmt.all(s.template_id, ctx.next.start, ctx.next.end).some((r) => r.user_id === user.id);
+    if (renewed) throw new ApiError(409, 'already_renewed');
+
+    const tpl = getTemplate.get(s.template_id);
+    const price = tpl.price_per_session;
+    const pay = [], wait = [];
+    for (const ns of ctx.sessions) {
+      // 仍在候補的場次（例如前一張續報單逾期後殘留）維持原排隊順位，不重報
+      if (getAnyReg.get(ns.id, user.id)?.status === 'waitlisted') continue;
+      (sessionIsFull(ns.id) ? wait : pay).push(ns);
+    }
+    if (pay.length === 0 && wait.length === 0) throw new ApiError(409, 'already_renewed');
+
+    let orderId = null, expiresAt = null;
+    const total = pay.length * price;
+    if (pay.length) {
+      expiresAt = renewalExpiry(pay[0]);
+      orderId = Number(insertOrder.run(user.id, user.name, user.phone || '', total, expiresAt).lastInsertRowid);
+      db.prepare('UPDATE group_orders SET original_amount = ? WHERE id = ?').run(total, orderId);
+      for (const ns of pay) {
+        const dup = getAnyReg.get(ns.id, user.id);
+        if (dup) reactivateReg.run('pending', orderId, price, dup.id);
+        else insertReg.run(ns.id, user.id, 'pending', orderId, price);
+      }
+    }
+    for (const ns of wait) {
+      const dup = getAnyReg.get(ns.id, user.id);
+      if (dup) reactivateReg.run('waitlisted', orderId, null, dup.id);
+      else insertReg.run(ns.id, user.id, 'waitlisted', orderId, null);
+      notifyCourseCoach({ coachId: ns.coach_id, sessionId: ns.id, type: 'course_waitlisted_coach',
+        vars: { member_name: user.name, course_name: tpl.name, start_at: ns.start_at } });
+    }
+    return { ok: true, orderId, total, expiresAt, periodLabel: periodLabel(ctx.next),
+      payCount: pay.length, waitlistCount: wait.length };
   });
 }
 
