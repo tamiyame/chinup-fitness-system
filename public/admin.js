@@ -402,6 +402,7 @@ async function openDrawer(templateId) {
   const d = document.getElementById('drawer');
   const c = document.getElementById('drawer-content');
   document.getElementById('drawer-sub').style.display = '';
+  d.dataset.mode = 'sessions';
   d.style.display = 'block';
   c.innerHTML = '<div class="subtle">載入中…</div>';
   try {
@@ -736,6 +737,19 @@ function openBackfillPanel(sid) {
 }
 
 document.getElementById('close-drawer').addEventListener('click', () => document.getElementById('drawer').style.display = 'none');
+
+// 場次名單 drawer：點左側玻璃遮罩＝關閉（同右上 ✕）。
+// #drawer 也承載報價單表單（mode='quote'），填寫中的表單不吃遮罩點擊，免得誤觸丟資料。
+// 按下與放開都要在遮罩上才算（從面板內拖選文字拖到遮罩放開不會關）。
+{
+  const drawerEl = document.getElementById('drawer');
+  let downOnBackdrop = false;
+  drawerEl.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === drawerEl; });
+  drawerEl.addEventListener('click', (e) => {
+    if (e.target !== drawerEl || !downOnBackdrop || drawerEl.dataset.mode !== 'sessions') return;
+    drawerEl.style.display = 'none';
+  });
+}
 
 // 切換單一場次開放/關閉（事件委派，掛一次即可；按鈕在 <summary> 內，需阻止展開）
 document.getElementById('drawer-content').addEventListener('click', async (e) => {
@@ -3116,6 +3130,7 @@ function openQuoteDrawer(mode, quote) {
   });
 
   document.getElementById('drawer-sub').style.display = 'none';
+  document.getElementById('drawer').dataset.mode = 'quote';
   document.getElementById('drawer').style.display = 'block';
 }
 
