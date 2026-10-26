@@ -300,6 +300,18 @@ body { visibility: hidden; }
 .session-toggle.badge-open{ color:var(--ok-fg); border-color:var(--ok-line) !important; }
 .session-toggle.badge-closed{ color:var(--ink-mute); }
 .session-toggle:hover{ filter:none; background:var(--brand-50) !important; box-shadow:none; }
+/* 名單列「續報下期」：與場次開關同語彙的細框鈕，天藍框標示這是動作不是狀態 */
+.reg-renew{
+  border:1px solid var(--brand-500) !important;
+  border-radius:0;
+  padding:4px 10px !important;
+  background:var(--surface) !important;
+  white-space:nowrap;
+}
+.reg-renew::before{ display:none; } /* 圓點是狀態語彙（Dot rule），動作鈕不帶 */
+.reg-renew:hover{ filter:none; background:var(--brand-50) !important; box-shadow:none; }
+.reg-renew:focus-visible{ outline:none; box-shadow:var(--ring-focus); }
+.reg-renew:disabled{ opacity:.5; cursor:default; }
 
 /* ---------- LINE 管理：通知開關 + 本月額度血條（方角、One-Sky） ---------- */
 .ln-switch{
@@ -396,6 +408,9 @@ details.session-row[open]{ box-shadow:none; border-color:var(--ink-mute); }
 details.session-row summary .font-semibold{
   font-family:"Noto Sans TC",sans-serif; font-weight:900;
 }
+/* 手機窄寬：電話與右側按鈕群之間留白；再窄時右側群組換行，不撐出水平捲動 */
+.reg-row{ gap:10px; }
+.reg-row > :last-child{ flex-wrap:wrap; justify-content:flex-end; row-gap:6px; }
 .reg-row .font-medium{ font-weight:700; }
 
 /* drawer 年→期 兩層收合外殼（沿用 session-row 髮絲線語彙） */

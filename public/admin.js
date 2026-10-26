@@ -390,6 +390,7 @@ async function deleteTemplate(id) {
 let drawerTemplateId = null;
 let drawerPricePerSession = 0; // 補報名單價層的預設值（開 drawer 時記下範本單堂價）
 const drawerSessions = new Map(); // sid → { start_at, occupied, max, status }
+const drawerRenewal = new Map(); // sid → 續報下期資訊（GET /renewal；只有期內最後一堂 eligible）
 
 function localNowStr() {
   const p = (n) => String(n).padStart(2, '0');
@@ -398,7 +399,7 @@ function localNowStr() {
 }
 
 async function openDrawer(templateId) {
-  drawerTemplateId = templateId; drawerSessions.clear();
+  drawerTemplateId = templateId; drawerSessions.clear(); drawerRenewal.clear();
   const d = document.getElementById('drawer');
   const c = document.getElementById('drawer-content');
   document.getElementById('drawer-sub').style.display = '';
@@ -493,8 +494,7 @@ async function openDrawer(templateId) {
         if (inner.dataset.loaded === '1') return;
         const sid = Number(inner.dataset.sessionId);
         try {
-          const list = await api(`/api/admin/sessions/${sid}/registrations`);
-          renderRoster(inner, list);
+          await reloadRoster(sid);
         } catch (e) {
           inner.innerHTML = `<div class="text-red-500 py-2">名單載入失敗：${escapeHtml(e.message)}</div>`;
         }
@@ -505,12 +505,18 @@ async function openDrawer(templateId) {
   }
 }
 
-function renderRoster(inner, list) {
+function renderRoster(inner, list, renewal = null) {
   if (!list.length) { inner.innerHTML = '<div class="subtle py-2">尚無人報名</div>'; inner.dataset.loaded = '1'; return; }
   inner.innerHTML = list.map(r => {
     const inactive = r.status === 'cancelled' || r.status === 'rejected';
     const cancellable = ['pending', 'confirmed', 'waitlisted'].includes(r.status);
     const needsRefund = r.status === 'confirmed' && r.order_paid_at && !r.order_refunded_at;
+    // 期內最後一堂：正取／待付款的舊生可一鍵續報下一期
+    const renewable = renewal?.eligible && ['confirmed', 'pending'].includes(r.status);
+    const renewHtml = !renewable ? ''
+      : renewal.renewedUserIds.includes(r.user_id)
+        ? '<span class="badge badge-open">已續報</span>'
+        : `<button type="button" class="badge badge-confirmed reg-renew" data-user-id="${r.user_id}" data-user-name="${escapeHtml(r.user_name)}" title="報名 ${renewal.periodLabel} 共 ${renewal.sessionCount} 場">續報下期</button>`;
     return `
     <div class="reg-row"${inactive ? ' style="opacity:.45"' : ''}>
       <div>
@@ -518,6 +524,7 @@ function renderRoster(inner, list) {
         <div class="subtle text-xs">${escapeHtml(r.email || r.phone || '')}</div>
       </div>
       <div class="flex items-center gap-2">
+        ${renewHtml}
         <span class="badge badge-${r.status}">${REG_STATUS_LABEL[r.status] || r.status}</span>
         ${r.position ? `<span class="subtle text-xs">#${r.position}</span>` : ''}
         ${cancellable ? `<button type="button" class="badge badge-cancelled reg-cancel" data-reg-id="${r.id}" data-user-name="${escapeHtml(r.user_name)}" data-needs-refund="${needsRefund ? '1' : '0'}" data-amount-due="${r.amount_due ?? ''}" data-order-discount="${r.order_discount_amount > 0 ? '1' : '0'}">取消</button>` : ''}
@@ -530,8 +537,24 @@ function renderRoster(inner, list) {
 async function reloadRoster(sid) {
   const inner = document.querySelector(`#drawer-content .session-roster[data-session-id="${sid}"]`);
   if (!inner) return;
-  const list = await api(`/api/admin/sessions/${sid}/registrations`);
-  renderRoster(inner, list);
+  const [list, renewal] = await Promise.all([
+    api(`/api/admin/sessions/${sid}/registrations`),
+    api(`/api/admin/sessions/${sid}/renewal`).catch(() => null), // 續報資訊失敗不擋名單
+  ]);
+  if (renewal) drawerRenewal.set(sid, renewal); else drawerRenewal.delete(sid);
+  renderRoster(inner, list, renewal);
+}
+
+// 續報會動到下一期所有場次 → 一次抓範本刷新 drawer 內每場的人數摘要
+async function refreshAllSessionSummaries() {
+  try {
+    const t = await api(`/api/admin/templates/${drawerTemplateId}`);
+    for (const s of t.sessions) {
+      drawerSessions.set(s.id, { start_at: s.start_at, occupied: s.occupied, max: t.max_capacity, status: s.status });
+      const el = document.querySelector(`#drawer-content .session-counts[data-session-id="${s.id}"]`);
+      if (el) el.textContent = `正取 ${s.confirmed_count}/${t.max_capacity} · 候補 ${s.waitlist_count}`;
+    }
+  } catch { /* 摘要刷新失敗不阻斷主流程 */ }
 }
 
 async function refreshSessionSummary(sid) {
@@ -781,6 +804,40 @@ document.getElementById('drawer-content').addEventListener('click', async (e) =>
   if (bfBtn) {
     e.preventDefault(); e.stopPropagation();
     openBackfillPanel(Number(bfBtn.dataset.sessionId));
+    return;
+  }
+  const rnBtn = e.target.closest('.reg-renew');
+  if (rnBtn) {
+    e.preventDefault(); e.stopPropagation();
+    if (rnBtn.disabled) return;
+    const sid = Number(rnBtn.closest('.session-roster').dataset.sessionId);
+    const info = drawerRenewal.get(sid);
+    if (!info?.eligible) return;
+    const name = rnBtn.dataset.userName;
+    const payN = info.sessionCount - info.fullCount;
+    const nt = (n) => `NT$${Number(n).toLocaleString('zh-TW')}`;
+    const lines = [`將「${name}」續報 ${info.periodLabel}：`];
+    if (payN > 0) lines.push(`${payN} 場 × ${nt(info.pricePerSession)} ＝ ${nt(payN * info.pricePerSession)}（待付款）`);
+    if (info.fullCount) lines.push(payN > 0 ? `另 ${info.fullCount} 場已額滿，改排候補（不收費）` : `${info.fullCount} 場都已額滿，只排候補（不建訂單）`);
+    if (payN > 0) lines.push('', '名額保留到下期第一堂報名截止；到「報名作業」核對收款即完成報名。');
+    if (!confirm(lines.join('\n'))) return;
+    rnBtn.disabled = true;
+    try {
+      const r = await api(`/api/admin/sessions/${sid}/renewal`, { method: 'POST', body: { userId: Number(rnBtn.dataset.userId) } });
+      toast(r.orderId
+        ? `已續報 ${r.periodLabel} ${r.payCount} 場，待核對 ${nt(r.total)}${r.waitlistCount ? `（另 ${r.waitlistCount} 場候補）` : ''}`
+        : `已排 ${r.periodLabel} 候補 ${r.waitlistCount} 場（皆已額滿）`, 'success');
+      try {
+        await reloadRoster(sid);
+        refreshAllSessionSummaries();
+        loadPendingOrders();
+      } catch { /* 續報已落庫；刷新失敗重開 drawer 即自癒 */ }
+    } catch (err) {
+      const msgs = { already_renewed: '此客人下一期已有報名', not_registered: '此客人不在本堂名單', not_period_last: '只有每期最後一堂可續報', no_next_sessions: '下一期沒有可報名的場次', user_not_found: '找不到此客人' };
+      toast(msgs[err.data?.error] || `續報失敗：${escapeHtml(err.message)}`, 'error');
+      rnBtn.disabled = false;
+      if (err.data?.error === 'already_renewed') reloadRoster(sid).catch(() => {});
+    }
     return;
   }
   const cbtn = e.target.closest('.reg-cancel');
