@@ -1173,6 +1173,11 @@ details.session-row summary:hover { background: #f8faf9; }
 .reg-bk-colored{color:#fff;}
 .reg-bk-colored .reg-sub{color:rgba(255,255,255,.85);}
 .reg-bk-colored:hover{filter:brightness(.92);}
+/* 同格多筆：左右並排、後一塊略疊前一塊（參考 Google 日曆），每塊固定兩行（姓名／類型·教練）超出截斷，格高不再被撐開 */
+.reg-side{flex-direction:row;gap:0;}
+.reg-side>.reg-bk,.reg-side>.reg-gp{flex:1 1 0;min-width:0;width:auto;overflow:hidden;white-space:nowrap;}
+.reg-side>*+*{margin-left:-3px;box-shadow:-1px 0 0 var(--surface);}
+.reg-side .reg-nm{display:block;overflow:hidden;}
 
 /* 拖拉改時段 */
 .reg-bk{touch-action:none;cursor:grab;}
