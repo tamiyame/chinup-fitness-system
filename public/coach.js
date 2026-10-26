@@ -639,10 +639,11 @@ async function renderRegister() {
           const coachLbl = isAll ? `<span class="reg-sub">· ${escapeHtml(b.coach_name || '')}</span>` : '';
           const colored = isAll && b.coach_color;
           const style = colored ? ` style="background:${escapeHtml(b.coach_color)};"` : '';
-          return `<div class="reg-bk${colored ? ' reg-bk-colored' : ''}" data-bk="${b.id}"${style}>${escapeHtml(b.member_name)}${b.companion_name ? '＋' + escapeHtml(b.companion_name) : ''} <span class="reg-sub">${tag}</span>${coachLbl}</div>`;
+          return `<div class="reg-bk${colored ? ' reg-bk-colored' : ''}" data-bk="${b.id}"${style}><span class="reg-nm">${escapeHtml(b.member_name)}${b.companion_name ? '＋' + escapeHtml(b.companion_name) : ''}</span> <span class="reg-sub">${tag}</span>${coachLbl}</div>`;
         }).join('');
-        inner += gps.map(g => `<div class="reg-gp">${escapeHtml(g.name)} <span class="reg-sub">團課${isAll ? '· ' + escapeHtml(g.coach_name || '') : ''}</span></div>`).join('');
-        rows += `<div class="reg-cell reg-multi">${inner}</div>`;
+        inner += gps.map(g => `<div class="reg-gp"><span class="reg-nm">${escapeHtml(g.name)}</span> <span class="reg-sub">團課${isAll ? '· ' + escapeHtml(g.coach_name || '') : ''}</span></div>`).join('');
+        // 同格兩筆以上 → 左右並排（reg-side），格高維持單筆高度
+        rows += `<div class="reg-cell reg-multi${bks.length + gps.length > 1 ? ' reg-side' : ''}">${inner}</div>`;
       } else {
         const cls = (canRegister && avail.has(key)) ? 'reg-open reg-avail' : 'reg-open';
         rows += `<div class="reg-cell ${cls}" data-slot="${iso}">＋</div>`;
