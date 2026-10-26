@@ -432,7 +432,7 @@ async function openDrawer(templateId) {
       </details>`;
     };
 
-    // 年→期（固定雙月 1–2…11–12）兩層收合：年降冪、期降冪、期內場次升冪（API 已依 start_at 升冪）。
+    // 年→期（固定雙月 1–2…11–12）兩層收合：年降冪、期降冪、期內場次也降冪（API 依 start_at 升冪，渲染時反轉）。
     // 只展開「今天所在的年與期」；若範本沒有今天所在的期（全是歷史或全是未來），展開最新的一組。
     // 只分組既有場次，不預先產生任何前台沒有的場次。
     const periodIdx = (ymd) => Math.floor((Number(ymd.slice(5, 7)) - 1) / 2);
@@ -470,7 +470,7 @@ async function openDrawer(templateId) {
             <span class="pg-title">${periodLabel(p)}</span>
             <span class="subtle text-sm">${list.length} 場 · ${statusSummary(list)}</span>
           </summary>
-          <div class="pg-body">${list.map(renderSessionRow).join('')}</div>
+          <div class="pg-body">${[...list].reverse().map(renderSessionRow).join('')}</div>
         </details>`;
       }).join('');
       return `
