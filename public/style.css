@@ -1153,7 +1153,32 @@ details.session-row summary:hover { background: #f8faf9; }
 /* 登錄預約 週曆 */
 .reg-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
 .reg-navbtn{padding:4px 10px;font-size:13px;}
-.reg-range{font-weight:600;color:#0f172a;margin-left:4px;}
+.reg-range{font:inherit;font-weight:600;color:var(--ink);margin-left:4px;background:none;border:1px solid transparent;border-radius:0;padding:4px 8px;cursor:pointer;}
+.reg-range::after{content:"▾";margin-left:6px;font-size:11px;color:var(--ink-mute);}
+.reg-range:hover{background:var(--brand-50);border-color:var(--line);}
+.reg-range:focus-visible{outline:none;border-color:var(--brand-500);box-shadow:var(--ring-focus);}
+
+/* 週範圍 → 滾輪式年/月/日跳週（懸浮層：方角、髮絲線、floating 陰影；中間帶＝選取列） */
+.wp-layer{position:fixed;inset:0;z-index:70;touch-action:none;}
+.wp-pop{position:fixed;width:264px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow-lg);touch-action:auto;}
+.wp-cols{display:grid;grid-template-columns:1.3fr 1fr 1fr;padding:10px 10px 0;}
+.wp-lbl{font-family:"Archivo","Noto Sans TC",sans-serif;font-size:11px;font-weight:700;letter-spacing:.2em;text-indent:.2em;color:var(--ink-mute);text-align:center;padding-bottom:6px;}
+.wp-col:focus-within .wp-lbl{color:var(--brand-700);}
+.wp-box{position:relative;}
+.wp-box::before{content:"";position:absolute;left:0;right:0;top:72px;height:36px;background:var(--brand-50);border-top:1px solid var(--brand-100);border-bottom:1px solid var(--brand-100);pointer-events:none;}
+.wp-wheel{position:relative;height:180px;overflow-y:auto;scroll-snap-type:y mandatory;overscroll-behavior:contain;scrollbar-width:none;outline:none;
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 30%,#000 70%,transparent);mask-image:linear-gradient(to bottom,transparent,#000 30%,#000 70%,transparent);}
+.wp-wheel::-webkit-scrollbar{display:none;}
+.wp-list{padding:72px 0;}
+.wp-it{height:36px;line-height:36px;text-align:center;scroll-snap-align:center;font-family:"Archivo","Noto Sans TC",sans-serif;font-weight:600;font-size:14px;font-variant-numeric:tabular-nums;color:var(--ink-mute);cursor:pointer;user-select:none;-webkit-user-select:none;}
+.wp-it.is-sel{color:var(--ink);font-weight:800;font-size:17px;}
+.wp-foot{display:flex;gap:8px;padding:10px;margin-top:10px;border-top:1px solid var(--line);}
+.wp-foot button{height:40px;border-radius:0;font-family:"Archivo","Noto Sans TC",sans-serif;font-weight:700;font-size:14px;font-variant-numeric:tabular-nums;cursor:pointer;transition:background-color .16s ease;}
+.wp-cancel{flex:0 0 72px;background:var(--surface);color:var(--ink-soft);border:1px solid var(--line);}
+.wp-cancel:hover{background:var(--canvas);}
+.wp-ok{flex:1;background:var(--brand-600);color:var(--fg-on-brand);border:0;}
+.wp-ok:hover{background:var(--brand-700);}
+.wp-foot button:focus-visible{outline:none;box-shadow:var(--ring-focus);}
 .reg-grid-wrap{overflow:auto;max-height:70vh;}
 .reg-grid{display:grid;grid-template-columns:56px repeat(7,minmax(64px,1fr));gap:2px;min-width:640px;}
 .reg-cell{font-size:12px;border-radius:6px;padding:4px;min-height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
