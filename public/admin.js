@@ -2959,13 +2959,13 @@ function renderQuotes() {
     <article class="a-row">
       <div class="a-row-main">
         <div class="a-row-title">
-          <h3 class="card-title" style="font-family:'Archivo','Noto Sans TC',sans-serif;">${escapeHtml(q.quote_no)}</h3>
+          <h3 class="card-title">${escapeHtml(q.customer_title)}</h3>
           <span class="badge badge-${st.badge}">${st.label}</span>
           ${q.deal_status ? `<span class="badge badge-${q.deal_status === 'won' ? 'confirmed' : 'cancelled'}">${QUOTE_DEAL_LABEL[q.deal_status]}</span>` : ''}
         </div>
         <div class="a-row-sub">
           <div class="meta">
-            <span class="meta-item">${escapeHtml(q.customer_title)}</span>
+            <span class="meta-item tnum" style="font-family:'Archivo','Noto Sans TC',sans-serif;">${escapeHtml(q.quote_no)}</span>
             <span class="meta-item">${ICO.cash} NT$ ${Number(q.total).toLocaleString()}</span>
             <span class="meta-item">${ICO.calendar} ${escapeHtml(q.quote_date)}</span>
             <span class="meta-item">效期至 ${escapeHtml(q.valid_until)}</span>
