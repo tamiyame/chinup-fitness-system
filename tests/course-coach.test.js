@@ -88,4 +88,19 @@ expect('createTemplate auto_renew=0 → 0', () => assert.equal(getTemplate(arOff
 editTemplate(arOff.templateId, { ...getTemplate(arOff.templateId), auto_renew: 1 });
 expect('editTemplate 可翻回 1', () => assert.equal(getTemplate(arOff.templateId).auto_renew, 1));
 
+// ── 後台範本列表排序：週一→週日（週日排最後），同一天依開始時間 ──────────
+// 故意亂序建立（建立時間順序 ≠ 星期順序），確認不再依建立時間排。
+const sortIds = {};
+for (const [key, dow, time] of [['五', 5, '18:30'], ['日', 0, '10:00'], ['二', 2, '19:00'], ['三晚', 3, '19:00'], ['一', 1, '19:00'], ['三早', 3, '09:00']]) {
+  sortIds[key] = createTemplate({
+    name: `CoachTest 排序${key}`, min_capacity: 1, max_capacity: 6, day_of_week: dow, start_time: time,
+    recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(30), price_per_session: 0,
+  }).templateId;
+}
+expect('listTemplates 依星期（週一起）＋開始時間升冪', () => {
+  const wanted = new Set(Object.values(sortIds).map(Number));
+  const order = listTemplates().filter(t => wanted.has(Number(t.id))).map(t => t.name.replace('CoachTest 排序', ''));
+  assert.deepEqual(order, ['一', '二', '三早', '三晚', '五', '日']);
+});
+
 console.log('[course-coach test] done');
