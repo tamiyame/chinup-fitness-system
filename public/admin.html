@@ -86,6 +86,11 @@ body { visibility: hidden; }
   font-variant-numeric:tabular-nums; letter-spacing:-.02em;
   font-size:32px; line-height:1; margin-top:8px;
 }
+/* 可點的 stat 卡（候補人次 → 候補名單）：外觀同其他卡，hover／focus 才露天藍 */
+.stat-link{ width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer; }
+.stat-link:hover{ border-color:var(--brand-500); }
+.stat-link:focus-visible{ outline:none; border-color:var(--brand-500); box-shadow:var(--ring-focus); }
+.stat-link .stat-link-go{ color:var(--brand-600); letter-spacing:.08em; white-space:nowrap; }
 
 /* ---------- 後台表格 .data-table → 細線 + 大寫小標 + tabular + 列 hover ---------- */
 .data-table th{
@@ -579,7 +584,7 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
     <div class="card"><div class="subtle">課程範本</div><div class="text-3xl font-bold mt-1" id="stat-templates">—</div></div>
     <div class="card"><div class="subtle">總場次</div><div class="text-3xl font-bold mt-1" id="stat-sessions">—</div></div>
     <div class="card"><div class="subtle">報名總人次</div><div class="text-3xl font-bold mt-1" id="stat-regs">—</div></div>
-    <div class="card"><div class="subtle">候補人次</div><div class="text-3xl font-bold mt-1" id="stat-waitlist" style="color:#a16207">—</div></div>
+    <button type="button" id="stat-waitlist-card" class="card stat-link"><div class="subtle flex items-center justify-between gap-2">候補人次<span class="stat-link-go">查看名單 ›</span></div><div class="text-3xl font-bold mt-1" id="stat-waitlist" style="color:#a16207">—</div></button>
   </section>
 
   <!-- ops: backup status bar -->

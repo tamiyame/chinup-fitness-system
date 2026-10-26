@@ -4,7 +4,7 @@ import { dirname, resolve, basename } from 'node:path';
 import { db, nowLocal, tx } from './db/connection.js';
 import {
   createTemplate, editTemplate, listTemplates, getTemplate,
-  listOpenSessions, listRegistrationsBySession, setSessionOpen,
+  listOpenSessions, listRegistrationsBySession, listWaitlistedRegistrations, setSessionOpen,
   processDeadlines,
 } from './services/courseService.js';
 import { ApiError } from './services/registration.js';
@@ -477,6 +477,11 @@ app.delete('/api/admin/templates/:id', requireAdmin, asyncHandler((req, res) => 
 
 app.get('/api/admin/sessions/:id/registrations', requireAdmin, asyncHandler((req, res) => {
   res.json(listRegistrationsBySession(Number(req.params.id)));
+}));
+
+// 後台「候補人次」卡片點開的名單：所有場次（含已過）仍為候補的報名
+app.get('/api/admin/waitlist', requireAdmin, asyncHandler((req, res) => {
+  res.json(listWaitlistedRegistrations());
 }));
 
 // 手動開放/關閉單一場次（is_open）。關閉 → 報名頁隱藏且不可報名，現有報名不動。
