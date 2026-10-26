@@ -112,8 +112,8 @@ const listTemplatesStmt = db.prepare(`
   SELECT t.*, c.display_name AS coach_name
   FROM course_templates t
   LEFT JOIN coaches c ON c.id = t.coach_id
-  ORDER BY t.created_at DESC
-`);
+  ORDER BY (t.day_of_week + 6) % 7, t.start_time, t.id
+`);   // 後台範本列表：週一→週日（day_of_week 0=週日排最後），同一天依開始時間——與課程分類的星期順序一致
 const listSessionsForTemplate = db.prepare('SELECT * FROM course_sessions WHERE template_id = ? ORDER BY start_at ASC');
 // 即時計算用：confirmed_count/waitlist_count 快取欄位未被團課訂單流程維護（只剩舊 register() 流程在更新），
 // 後台顯示一律改用即時計數。正取排除請假(on_leave)。
