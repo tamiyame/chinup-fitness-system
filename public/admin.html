@@ -367,10 +367,15 @@ body { visibility: hidden; }
 /* ---------- Modal / Drawer / dialog → Nike 俐落面板 ---------- */
 .modal-panel{ border-radius:12px; box-shadow:var(--shadow-lg); }
 .drawer-panel{ box-shadow:var(--shadow-lg); }
-#modal-title, #drawer-title{
+#modal-title, #drawer-title, #qp-title{
   font-family:"Archivo","Noto Sans TC",sans-serif;
   font-weight:900; letter-spacing:-.01em; font-size:18px;
 }
+/* 報價單預覽懸浮視窗：卡片圓角 token、floating 陰影，內嵌公開報價單頁 */
+.qp-panel{ display:flex; flex-direction:column; width:min(880px, calc(100vw - 48px)); height:calc(100vh - 48px);
+  background:var(--surface); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow-lg); animation:zoomIn 200ms ease; }
+.qp-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 20px; border-bottom:1px solid var(--line); }
+.qp-frame{ flex:1; width:100%; border:0; background:var(--canvas); }
 #backup-modal{
   border-radius:12px;
   box-shadow:var(--shadow-lg);
@@ -1168,6 +1173,17 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
       <button id="close-drawer" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
     </div>
     <div id="drawer-content"></div>
+  </div>
+</div>
+
+<!-- 報價單預覽（平板／電腦）：懸浮視窗＋玻璃遮罩；手機仍開新分頁（見 admin.js openQuotePreview） -->
+<div id="quote-preview" class="overlay" style="display:none;">
+  <div class="qp-panel" role="dialog" aria-modal="true" aria-labelledby="qp-title">
+    <div class="qp-head">
+      <h3 id="qp-title" class="section-title">報價單預覽</h3>
+      <button id="qp-close" type="button" class="text-slate-400 hover:text-slate-700 text-xl" aria-label="關閉預覽">✕</button>
+    </div>
+    <iframe id="qp-frame" class="qp-frame" title="報價單預覽"></iframe>
   </div>
 </div>
 
