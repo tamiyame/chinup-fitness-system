@@ -547,6 +547,15 @@ function regWeekRange(offset) {
   const dates = []; for (let i = 0; i < 7; i++) { const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i); dates.push(fk(d)); }
   return { start: fk(start), dates };
 }
+// 週範圍文字：整週都在今年 → 10/26 – 11/01；有一天不在今年才帶年份（同年 2027/02/22 – 02/28，跨年 2025/12/29 – 2026/01/04）
+function regRangeLabel(dates) {
+  const a = dates[0], b = dates[6], thisYear = String(new Date().getFullYear());
+  const md = (s) => s.slice(5).replace('-', '/');
+  const ya = a.slice(0, 4), yb = b.slice(0, 4);
+  if (ya === thisYear && yb === thisYear) return `${md(a)} – ${md(b)}`;
+  if (ya === yb) return `${ya}/${md(a)} – ${md(b)}`;
+  return `${ya}/${md(a)} – ${yb}/${md(b)}`;
+}
 
 async function renderRegister() {
   regDragCleanup(); // 重繪前清掉任何進行中的拖曳狀態，避免卡死
@@ -570,7 +579,7 @@ async function renderRegister() {
   $('reg-prev').onclick = () => { regWeekOffset--; renderRegister(); };
   $('reg-next').onclick = () => { regWeekOffset++; renderRegister(); };
   $('reg-today').onclick = () => { regWeekOffset = 0; renderRegister(); };
-  $('reg-range').textContent = `${dates[0].slice(5).replace('-', '/')} – ${dates[6].slice(5).replace('-', '/')}`;
+  $('reg-range').textContent = regRangeLabel(dates);
   $('reg-range').onclick = () => wpOpen($('reg-range'), start);
 
   // 管理者：填充教練選擇器（全部教練 + 各 active coach）；首次渲染預設「登入者自己」（教練身份為主），
@@ -783,7 +792,7 @@ function wpScrollTo(k, i) {
 
 function wpUpdateOk() {
   const { dates } = regWeekRange(wpWeekOffset(wp.y, wp.m, wp.d));
-  wp.layer.querySelector('.wp-ok').textContent = `跳到 ${dates[0].slice(5).replace('-', '/')} – ${dates[6].slice(5).replace('-', '/')}`;
+  wp.layer.querySelector('.wp-ok').textContent = `跳到 ${regRangeLabel(dates)}`;
 }
 
 function wpOnKey(e) { if (e.key === 'Escape') wpClose(true); }
