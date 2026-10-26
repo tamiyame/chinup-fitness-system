@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { db, nowLocal, offsetLocal } from '../src/db/connection.js';
 import { createTemplate } from '../src/services/courseService.js';
 import {
-  createGroupOrder, confirmGroupOrder, expirePendingOrders, listPendingOrders,
-  getRenewalInfo, adminRenewNextPeriod,
+  createGroupOrder, confirmGroupOrder, expirePendingOrders, listPendingOrders, cancelGroupOrder,
+  getRenewalInfo, adminRenewNextPeriod, adminBackfillRegistration,
 } from '../src/services/groupOrderService.js';
 import { periodOf, nextPeriod, periodLabel } from '../src/services/period.js';
 
@@ -255,6 +255,93 @@ const regsOf = (userId, sessionIds) => db.prepare(
     const regs = regsOf(userA, p2.map((s) => s.id));
     assert.equal(regs.length, p2.length);
     assert.ok(regs.every((x) => x.status === 'pending' && x.order_id === r2.orderId));
+  });
+}
+
+// ── §7 info 的 expiresAt 預覽＝實際建單期限；已過截止的 open 場次不報 ─────
+{
+  const { p2, last } = setup();
+  const userA = enrolLast(last, 'RNW-甲', '0984000001');
+  db.prepare('UPDATE course_sessions SET registration_deadline=? WHERE id=?').run(offsetLocal(-3600_000), p2[0].id);
+  const info = getRenewalInfo(last.id);
+  expect('已過截止、尚未判定的 open 場次不算入', () => assert.equal(info.sessionCount, p2.length - 1));
+  const r = adminRenewNextPeriod({ sessionId: last.id, userId: userA });
+  expect('續報略過該場；期限＝下一個付款場次截止，與 info 預覽一致', () => {
+    assert.equal(r.payCount, p2.length - 1);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM registrations WHERE user_id=? AND session_id=?').get(userA, p2[0].id).c, 0);
+    assert.equal(r.expiresAt, p2[1].registration_deadline);
+    assert.equal(info.expiresAt, r.expiresAt);
+  });
+}
+
+// ── §8 續報單（期限長）不被遞補／補報併單 ─────────────────────────
+{
+  const { p2, last } = setup();
+  const userA = enrolLast(last, 'RNW-甲', '0984000001');
+  // 另一門課：甲在候補，之後有人取消→遞補
+  const { templateId: otherTpl } = createTemplate({
+    name: 'RNW-別班', min_capacity: 1, max_capacity: 1, day_of_week: 4, start_time: '19:00', recurrence: 'weekly',
+    cycle_start_date: P1.start, cycle_end_date: P1.end, registration_deadline_hours: 2, price_per_session: 300,
+  });
+  const os = db.prepare('SELECT id FROM course_sessions WHERE template_id=? ORDER BY start_at').all(otherTpl);
+  const holder = createGroupOrder({ name: 'RNW-佔位', phone: '0984000008', paySessionIds: [os[0].id] });
+  createGroupOrder({ name: 'RNW-甲', phone: '0984000001', waitlistSessionIds: [os[0].id] });
+  const r = adminRenewNextPeriod({ sessionId: last.id, userId: userA });
+  cancelGroupOrder({ orderId: holder.orderId, phone: '0984000008', name: 'RNW-佔位' }); // 釋名額 → 遞補甲
+  expect('遞補開新 24h 單，續報單金額與期限不變', () => {
+    const reg = db.prepare('SELECT * FROM registrations WHERE user_id=? AND session_id=?').get(userA, os[0].id);
+    assert.equal(reg.status, 'pending');
+    assert.notEqual(reg.order_id, r.orderId);
+    const o = db.prepare('SELECT * FROM group_orders WHERE id=?').get(r.orderId);
+    assert.equal(o.total_amount, r.total);
+    assert.equal(o.expires_at, r.expiresAt);
+  });
+  const bf = adminBackfillRegistration({ sessionId: os[1].id, userId: userA, paid: false, actorId: userA });
+  expect('後台補報（未付）也開新單，不併進續報單', () => {
+    assert.notEqual(bf.orderId, r.orderId);
+    assert.equal(db.prepare('SELECT total_amount FROM group_orders WHERE id=?').get(r.orderId).total_amount, r.total);
+  });
+  // 一般單仍照舊併單：同客人再補一場，併進剛剛那張補報單
+  const bf2 = adminBackfillRegistration({ sessionId: os[2].id, userId: userA, paid: false, actorId: userA });
+  expect('一般待付款單照舊併單', () => assert.equal(bf2.orderId, bf.orderId));
+}
+
+// ── §9 續報單逾期後殘留的候補列：不算已續報、可再續報、候補順位不動 ─────
+{
+  const { p2, last } = setup({ max: 1 });
+  const userA = enrolLast(last, 'RNW-甲', '0984000001');
+  createGroupOrder({ name: 'RNW-網客', phone: '0984000009', paySessionIds: [p2[0].id] }); // 第一堂額滿
+  const r = adminRenewNextPeriod({ sessionId: last.id, userId: userA });
+  const wBefore = db.prepare('SELECT * FROM registrations WHERE user_id=? AND session_id=?').get(userA, p2[0].id);
+  db.prepare('UPDATE group_orders SET expires_at=? WHERE id=?').run(offsetLocal(-60_000), r.orderId);
+  expirePendingOrders();
+  expect('逾期後候補列仍在，但不算已續報', () => {
+    assert.equal(db.prepare('SELECT status FROM registrations WHERE id=?').get(wBefore.id).status, 'waitlisted');
+    assert.ok(!getRenewalInfo(last.id).renewedUserIds.includes(userA)); // 佔滿第一堂的網客本來就在名單內
+  });
+  const r2 = adminRenewNextPeriod({ sessionId: last.id, userId: userA });
+  expect('再續報：付款場次重建、候補列不重報（順位不動）', () => {
+    assert.equal(r2.payCount, p2.length - 1);
+    assert.equal(r2.waitlistCount, 0);
+    const w = db.prepare('SELECT * FROM registrations WHERE id=?').get(wBefore.id);
+    assert.equal(w.status, 'waitlisted');
+    assert.equal(w.registered_at, wBefore.registered_at);
+  });
+}
+
+// ── §10 復原舊列時重置請假（reactivateReg） ───────────────────────
+{
+  const { p2, last } = setup();
+  const userA = enrolLast(last, 'RNW-甲', '0984000001');
+  const r = adminRenewNextPeriod({ sessionId: last.id, userId: userA });
+  db.prepare('UPDATE registrations SET on_leave=1 WHERE user_id=? AND session_id=?').run(userA, p2[3].id);
+  db.prepare('UPDATE group_orders SET expires_at=? WHERE id=?').run(offsetLocal(-60_000), r.orderId);
+  expirePendingOrders();
+  adminRenewNextPeriod({ sessionId: last.id, userId: userA });
+  expect('復原的報名列 on_leave 歸零（佔名額、不顯示請假）', () => {
+    const reg = db.prepare('SELECT * FROM registrations WHERE user_id=? AND session_id=?').get(userA, p2[3].id);
+    assert.equal(reg.status, 'pending');
+    assert.equal(reg.on_leave, 0);
   });
 }
 
