@@ -737,6 +737,18 @@ function openBackfillPanel(sid) {
 
 document.getElementById('close-drawer').addEventListener('click', () => document.getElementById('drawer').style.display = 'none');
 
+// #drawer（場次名單、報價單新增／編輯共用）：點左側玻璃遮罩＝關閉（同右上 ✕）。
+// 按下與放開都要在遮罩上才算（從面板內拖選文字拖到遮罩放開不會關）。
+{
+  const drawerEl = document.getElementById('drawer');
+  let downOnBackdrop = false;
+  drawerEl.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === drawerEl; });
+  drawerEl.addEventListener('click', (e) => {
+    if (e.target !== drawerEl || !downOnBackdrop) return;
+    drawerEl.style.display = 'none';
+  });
+}
+
 // 切換單一場次開放/關閉（事件委派，掛一次即可；按鈕在 <summary> 內，需阻止展開）
 document.getElementById('drawer-content').addEventListener('click', async (e) => {
   const bfBtn = e.target.closest('.session-backfill');
