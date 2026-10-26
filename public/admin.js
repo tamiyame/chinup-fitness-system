@@ -743,8 +743,37 @@ function closeOnBackdrop(el, close) {
   el.addEventListener('pointerdown', (e) => { downOnBackdrop = e.target === el; });
   el.addEventListener('click', (e) => { if (e.target === el && downOnBackdrop) close(); });
 }
-// #drawer（場次名單、報價單新增／編輯共用）：點左側遮罩同右上 ✕
+// #drawer（場次名單、候補名單、報價單新增／編輯共用）：點左側遮罩同右上 ✕
 closeOnBackdrop(document.getElementById('drawer'), () => { document.getElementById('drawer').style.display = 'none'; });
+
+// 「候補人次」卡片 → 側欄列出所有仍為候補的報名（含已過場次，與卡片數字同口徑）
+async function openWaitlistDrawer() {
+  const c = document.getElementById('drawer-content');
+  document.getElementById('drawer-title').textContent = '候補名單';
+  document.getElementById('drawer-sub').style.display = 'none';
+  c.innerHTML = '<div class="subtle">載入中…</div>';
+  document.getElementById('drawer').style.display = 'block';
+  try {
+    const list = await api('/api/admin/waitlist');
+    if (!list.length) { c.innerHTML = '<div class="subtle">目前沒有候補</div>'; return; }
+    c.innerHTML = `<p class="subtle text-sm mb-2">未來場次在前；場次已過的候補不會再遞補。</p>` + list.map((r) => `
+      <div class="reg-row"${r.session_past ? ' style="opacity:.55"' : ''}>
+        <div class="min-w-0">
+          <div class="font-medium">${escapeHtml(r.user_name || '（會員已刪除）')}</div>
+          <div class="subtle text-xs">${escapeHtml(r.phone || r.email || '')}</div>
+          <div class="text-xs mt-1" style="color:var(--ink)">${escapeHtml(r.template_name)} · ${fmtDate(r.start_at)}</div>
+          <div class="subtle text-xs">登記於 ${fmtDate(`${r.registered_at.replace(' ', 'T')}Z`)}</div>
+        </div>
+        <div class="flex items-center gap-2">
+          ${r.session_past ? '<span class="badge badge-closed">場次已過</span>' : ''}
+          <span class="badge badge-waitlisted">候補 #${r.queue_no}</span>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    c.innerHTML = `<div class="text-red-500">${escapeHtml(e.message)}</div>`;
+  }
+}
+document.getElementById('stat-waitlist-card').addEventListener('click', openWaitlistDrawer);
 
 // 切換單一場次開放/關閉（事件委派，掛一次即可；按鈕在 <summary> 內，需阻止展開）
 document.getElementById('drawer-content').addEventListener('click', async (e) => {

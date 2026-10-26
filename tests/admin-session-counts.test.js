@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { db } from '../src/db/connection.js';
 import { hashPassword } from '../src/services/auth.js';
-import { createTemplate, getTemplate } from '../src/services/courseService.js';
+import { createTemplate, getTemplate, listWaitlistedRegistrations } from '../src/services/courseService.js';
 import { createGroupOrder, confirmGroupOrder, takeLeavePublic } from '../src/services/groupOrderService.js';
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
@@ -66,6 +66,34 @@ expect('即時正取=1、候補=1', () => {
   const s = countOf(T2.templateId, sT2.id);
   assert.equal(s.confirmed_count, 1);
   assert.equal(s.waitlist_count, 1);
+});
+
+// ── 候補名單（後台「候補人次」卡片）：與統計同口徑、順位、未來在前已過在後 ──
+createGroupOrder({ name: '戊', phone: '0977000005', waitlistSessionIds: [sT2.id] });
+const T3 = createTemplate({ name: 'ASC 已過', min_capacity: 1, max_capacity: 1, day_of_week: 3, start_time: '19:00', recurrence: 'weekly', cycle_start_date: dstr(2), cycle_end_date: dstr(40) });
+const sT3 = sessionOf(T3.templateId);
+confirmMember('己', '0977000006', sT3.id);
+createGroupOrder({ name: '庚', phone: '0977000007', waitlistSessionIds: [sT3.id] });
+db.prepare('UPDATE course_sessions SET start_at=? WHERE id=?').run(`${dstr(-3)}T19:00:00`, sT3.id);
+const ascWaitlist = () => listWaitlistedRegistrations().filter((r) => r.template_name.startsWith('ASC'));
+
+expect('名單列出所有候補：課程、場次、姓名、電話、順位', () => {
+  const rows = ascWaitlist();
+  assert.deepEqual(rows.map((r) => [r.template_name, r.user_name, r.phone, r.queue_no, r.session_past]), [
+    ['ASC 小班', '丁', '0977000004', 1, 0],
+    ['ASC 小班', '戊', '0977000005', 2, 0],
+    ['ASC 已過', '庚', '0977000007', 1, 1],
+  ]);
+  assert.equal(rows[0].session_id, sT2.id);
+  assert.ok(rows[0].start_at && rows[0].registered_at);
+});
+expect('名單筆數＝各場次 waitlist_count 加總（與卡片數字一致）', () => {
+  const total = [T, T2, T3].reduce((n, t) => n + getTemplate(t.templateId).sessions.reduce((m, s) => m + s.waitlist_count, 0), 0);
+  assert.equal(ascWaitlist().length, total);
+});
+db.prepare("UPDATE registrations SET status='cancelled' WHERE user_id=(SELECT id FROM users WHERE phone='0977000004') AND session_id=?").run(sT2.id);
+expect('取消的候補不列出，其後順位往前補', () => {
+  assert.deepEqual(ascWaitlist().map((r) => [r.user_name, r.queue_no]), [['戊', 1], ['庚', 1]]);
 });
 
 console.log('[admin-session-counts test] done');

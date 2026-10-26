@@ -148,6 +148,26 @@ export function getTemplate(id) {
   return t;
 }
 
+// 後台「候補人次」卡片的名單：與統計同口徑（所有範本、所有場次含已過的 status='waitlisted'）。
+// queue_no＝該場次候補順位，與遞補順序一致（registered_at、id 升冪）；未來場次在前（近→遠），已過場次在後（近→遠）。
+const listWaitlistStmt = db.prepare(`
+  SELECT r.id, r.session_id, r.registered_at, r.order_id,
+         u.name AS user_name, u.phone, u.email,
+         s.start_at, s.status AS session_status, t.id AS template_id, t.name AS template_name,
+         ROW_NUMBER() OVER (PARTITION BY r.session_id ORDER BY r.registered_at, r.id) AS queue_no,
+         CASE WHEN s.start_at <= @now THEN 1 ELSE 0 END AS session_past
+  FROM registrations r
+  JOIN course_sessions s ON s.id = r.session_id
+  JOIN course_templates t ON t.id = s.template_id
+  LEFT JOIN users u ON u.id = r.user_id
+  WHERE r.status = 'waitlisted'
+  ORDER BY session_past, CASE WHEN s.start_at > @now THEN s.start_at END, s.start_at DESC, queue_no
+`);
+
+export function listWaitlistedRegistrations() {
+  return listWaitlistStmt.all({ now: nowLocal() });
+}
+
 /**
  * 手動開放/關閉「單一場次」的報名（is_open）。
  * 關閉（is_open=0）→ 該場次從報名頁隱藏、不可報名；現有報名不受影響，可隨時切回開放。
