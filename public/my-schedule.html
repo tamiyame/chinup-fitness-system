@@ -84,7 +84,7 @@
   .sn-row .cancel-btn { grid-column: 3; grid-row: 1 / 3; }
   .sn-ymd { font-family: "Archivo", sans-serif; font-weight: 800; font-size: 12px; letter-spacing: .02em; color: var(--ink); font-variant-numeric: tabular-nums; display: block; line-height: 1.2; white-space: nowrap; }
   .sn-row.is-next .sn-ymd { color: var(--brand-700); }
-  .sn-dow { font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 600; font-size: 12px; letter-spacing: .06em; color: var(--ink-mute); display: block; line-height: 1.2; }
+  .sn-dow { font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 600; font-size: 12px; letter-spacing: .06em; color: var(--ink-mute); display: block; line-height: 1.2; white-space: nowrap; }
   .sn-l1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .sn-kind { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 9.5px; letter-spacing: .1em; color: var(--brand-700); border: 1px solid var(--brand-100); background: var(--brand-50); padding: 2px 6px 1px; line-height: 1; white-space: nowrap; }
   .sn-next { font-family: "Archivo", sans-serif; font-weight: 800; font-size: 8.5px; letter-spacing: .18em; text-transform: uppercase; color: #fff; background: var(--brand-600); padding: 2px 5px 1px; line-height: 1; }
@@ -94,6 +94,7 @@
   .sn-l2 { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
   .sn-time { font-family: "Archivo", sans-serif; font-weight: 600; font-size: 12.5px; letter-spacing: .02em; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
   .sn-clock { font-weight: 800; color: var(--ink); }
+  .sn-dow .sn-time { margin-left: 6px; }   /* 時間併入日期欄第二行：週五 13:00 */
   .sn-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; }
   .sn-dot { width: 6px; height: 6px; flex: none; }
   .sn-status.ok { color: var(--ok-fg); } .sn-status.ok .sn-dot { background: var(--ok-fg); }
