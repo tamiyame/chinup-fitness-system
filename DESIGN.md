@@ -196,7 +196,8 @@ components:
 - **Sheet 白紙卡**：`#fff`、直角、無邊框無陰影，浮在天藍場地上——課程手風琴、表單卡、FAQ、入口卡皆是 sheet。sheet 內部回到工具層規則（髮絲線、token 色）。
 - **Tray 收尾帶**：深藍 `#0c4a6e` 帶狀（sticky 選課列、頁尾），白字＋亮藍 `#38bdf8` CTA（深藍字）；tray 總額 Archivo 900 tabular。
 - **Poster hero**：kicker（Archivo 800 大寫 .26em）＋900 大標＋純白 sub copy＋右上巨型浮水印；一屏一主張。
-- **首頁手機首屏**（<640px）：nav 下方剛好一屏放 hero＋兩張入口卡（`min-height: calc(100svh − 65px)`），FAQ 留在折線下、往下滑才出現（業主 2026-10 指定）。hero 主標 Headline 28px 單行、入口卡「圖示＋標題同一行」；**卡片不拉長**——螢幕越高（620→900px）字級、圖示、間距等比放大，剩餘高度給 hero：文字貼卡片上方、CHIN UP 浮水印放大填上方（業主看過「卡片拉長」版嫌醜）。矮螢幕（<620px 高）收掉與 nav 重複的 kicker、縮內距。桌機／平板兩欄不變。
+- **首頁主標**「開始你的訓練之旅」所有裝置都一行、不加句點（業主 2026-10 指定）。
+- **首頁手機首屏**（<640px）：nav 下方剛好一屏放 hero＋兩張入口卡（`min-height: calc(100svh − 65px)`），FAQ 留在折線下、往下滑才出現（業主 2026-10 指定）。hero 主標 Headline 28px、入口卡「圖示＋標題同一行」；**卡片不拉長**——螢幕越高（620→900px）字級、圖示、間距等比放大，剩餘高度給 hero：文字貼卡片上方、CHIN UP 浮水印放大填上方（業主看過「卡片拉長」版嫌醜）。矮螢幕（<620px 高）收掉與 nav 重複的 kicker、縮內距。桌機／平板兩欄不變。
 
 ### 行語法（Signature Component）
 清單的標準列：`grid [Archivo 錨點欄 46–56px] [內容] [狀態]`，列間 1px 髮絲線。狀態＝6px 方點＋11.5px 700 標籤（ok 綠／open 藍／warn 琥珀且旋轉 45°／mute 灰）。「下一個／進行中」的那一列加 3px 競速天藍左緣條。my-schedule、checkin、admin 週課表皆此語法。
