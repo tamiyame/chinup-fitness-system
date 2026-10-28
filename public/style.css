@@ -1062,7 +1062,6 @@ details.session-row summary:hover { background: #f8faf9; }
 .entry-card.solo  .entry-watermark { color: #c05a73; opacity: .13; }
 
 /* ============ 入口頁 FAQ accordion ============ */
-.entry-col { display: flex; flex-direction: column; }
 .faq { margin-top: 14px; }
 .faq-item {
   background: var(--surface);
