@@ -325,7 +325,7 @@ function cardHtml(item, isNext = false) {
     : escapeHtml(item.course_name || '團課');
 
   const { label, cls } = resolveStatus(item);
-  const tone = statusTone(cls);
+  const tone = item.is_past && cls === 'badge-confirmed' ? 'done' : statusTone(cls);   // 已完課＝深灰
   const cancel = cancelButton(item);
 
   const dt = new Date(item.start_at);
@@ -341,11 +341,11 @@ function cardHtml(item, isNext = false) {
         <div class="sn-l1">
           <span class="sn-kind">${kindLabel}</span>
           ${markNext ? '<span class="sn-next">Next</span>' : ''}
-          <span class="sn-title">${title}</span>
+          <span class="sn-status ${tone}"><span class="sn-dot"></span>${escapeHtml(label)}</span>
         </div>
         <div class="sn-l2">
           <span class="sn-time"><span class="sn-clock">${time}</span></span>
-          <span class="sn-status ${tone}"><span class="sn-dot"></span>${escapeHtml(label)}</span>
+          <span class="sn-title${isBooking ? ' sn-coach' : ''}">${title}</span>
           ${isBooking && item.companion_name ? `<span class="sn-mate">${item.is_companion ? `與 ${escapeHtml(item.companion_name)} 同行` : `同行：${escapeHtml(item.companion_name)}`}</span>` : ''}
         </div>
         ${paymentLine(item)}
