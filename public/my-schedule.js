@@ -196,10 +196,11 @@ function dateBlock(start_at) {
   const dt = new Date(start_at);
   const p = (n) => String(n).padStart(2, '0');
   const ymd = `${dt.getFullYear()}/${p(dt.getMonth() + 1)}/${p(dt.getDate())}`;
+  const time = `${p(dt.getHours())}:${p(dt.getMinutes())}`;
   return `
     <div class="sn-date">
       <span class="sn-ymd">${ymd}</span>
-      <span class="sn-dow">週${DOW_ZH[dt.getDay()]}</span>
+      <span class="sn-dow">週${DOW_ZH[dt.getDay()]}<span class="sn-time"><span class="sn-clock">${time}</span></span></span>
     </div>
   `;
 }
@@ -325,11 +326,9 @@ function cardHtml(item, isNext = false) {
     : escapeHtml(item.course_name || '團課');
 
   const { label, cls } = resolveStatus(item);
-  const tone = statusTone(cls);
+  const tone = item.is_past && cls === 'badge-confirmed' ? 'done' : statusTone(cls);   // 已完課＝深灰
   const cancel = cancelButton(item);
 
-  const dt = new Date(item.start_at);
-  const time = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
   const markNext = isNext && !item.is_past;
 
   const rowCls = 'sn-row' + (item.is_past ? ' is-past' : '') + (markNext ? ' is-next' : '');
@@ -341,11 +340,10 @@ function cardHtml(item, isNext = false) {
         <div class="sn-l1">
           <span class="sn-kind">${kindLabel}</span>
           ${markNext ? '<span class="sn-next">Next</span>' : ''}
-          <span class="sn-title">${title}</span>
+          <span class="sn-status ${tone}"><span class="sn-dot"></span>${escapeHtml(label)}</span>
         </div>
         <div class="sn-l2">
-          <span class="sn-time"><span class="sn-clock">${time}</span></span>
-          <span class="sn-status ${tone}"><span class="sn-dot"></span>${escapeHtml(label)}</span>
+          <span class="sn-title${isBooking ? ' sn-coach' : ''}">${title}</span>
           ${isBooking && item.companion_name ? `<span class="sn-mate">${item.is_companion ? `與 ${escapeHtml(item.companion_name)} 同行` : `同行：${escapeHtml(item.companion_name)}`}</span>` : ''}
         </div>
         ${paymentLine(item)}
@@ -447,7 +445,6 @@ function render() {
     pastWrap.style.display = 'block';
     pastCount.textContent = past.length;
     pastCaret.textContent = state.pastOpen ? '▼' : '▶';
-    document.getElementById('past-toggle').classList.toggle('is-collapsed', !state.pastOpen);   // 收合＝酒紅、展開＝天藍（色在 CSS）
     if (state.pastOpen) {
       pastList.style.display = 'block';
       pastList.innerHTML = past.map(it => cardHtml(it, false)).join('');
