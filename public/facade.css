@@ -55,8 +55,9 @@ body { background: var(--brand-700); color: #fff; }
 
 /* ---------- 深藍收尾帶／sticky tray ---------- */
 .fa-tray { background: var(--brand-900); color: #fff; }
-.fa-tray .fa-tray-cta { border: 0; background: var(--brand-500); color: var(--brand-900); font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 900; font-size: 13.5px; letter-spacing: .18em; text-indent: .18em; padding: 13px 22px; cursor: pointer; white-space: nowrap; }
+.fa-tray .fa-tray-cta { border: 0; background: var(--brand-500); color: var(--brand-900); font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 900; font-size: 17px; letter-spacing: .18em; text-indent: .18em; padding: 13px 22px; cursor: pointer; white-space: nowrap; }
 .fa-tray .fa-tray-cta:disabled { opacity: .45; cursor: default; }
+@media (max-width: 374px) { .fa-tray .fa-tray-cta { padding: 13px 16px; letter-spacing: .1em; text-indent: .1em; } }
 
 /* ---------- 空狀態／skeleton on sky ---------- */
 .skeleton { background: rgba(255,255,255,.22); }
