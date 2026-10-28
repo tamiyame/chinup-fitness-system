@@ -15,13 +15,41 @@
 body { visibility: hidden; }
 /* 入口卡 sheet 化＋FAQ on sky */
 .entry-card { border-radius: 0; border: 0; box-shadow: none; }
-/* 兩欄等高：欄位撐滿格高、卡片吸收高度差（entry-cta 既有 margin-top:auto 會自動貼底同高） */
-.entry-col { display: flex; flex-direction: column; }
-.entry-col .entry-card { flex: 1; }
 .entry-card:hover { transform: none; box-shadow: 0 12px 32px -8px rgba(12,74,110,.45); }
 .faq-item { background: #fff; border: 0; border-radius: 0; border-top: 1px solid var(--line); }
 .faq-item:first-child { border-top: 0; }
-.faq { background: #fff; border-radius: 0; border: 0; margin-top: 12px; }
+.faq { background: #fff; border-radius: 0; border: 0; margin-top: 0; }
+/* 卡片一列、FAQ 一列：兩欄卡片由 grid 列自動等高，FAQ 各自落在對應卡片正下方 */
+.entry-faqs { margin-top: 12px; }
+
+/* 手機首屏：nav（65px）下方剛好放 hero＋兩張入口卡，FAQ 留在折線下、往下滑才出現。
+   svh＝網址列展開時的可視高（不支援時退回 vh）；內容比一屏高時照常自然撐開。 */
+@media (max-width: 639px) {
+  .first-screen { display: flex; flex-direction: column; min-height: calc(100vh - 65px); min-height: calc(100svh - 65px); padding-bottom: 20px; }
+  .first-screen .fa-hero { padding: 22px 0 18px; }
+  .first-screen .fa-hero h1 { font-size: 28px; margin-top: 6px; }
+  .first-screen .fa-hero h1 br { display: none; }
+  .first-screen .fa-hero p { margin-top: 8px; font-size: 14px; line-height: 1.55; }
+  .first-screen .entry-cards { flex: 1; grid-auto-rows: 1fr; gap: 12px; }
+  /* 圖示與標題同一行，說明與 CTA 接在下方；卡片被撐高時 CTA 貼底 */
+  .entry-cards .entry-card { display: grid; grid-template-columns: 40px 1fr; grid-template-rows: auto auto 1fr; column-gap: 12px; min-height: 0; padding: 18px; }
+  .entry-cards .entry-badge { width: 40px; height: 40px; border-radius: 10px; margin: 0; }
+  .entry-cards .entry-title { align-self: center; font-size: 17px; line-height: 1.35; }
+  .entry-cards .entry-desc { grid-column: 1 / -1; margin-top: 10px; font-size: 14px; line-height: 1.55; }
+  .entry-cards .entry-cta { grid-column: 1 / -1; align-self: end; padding-top: 12px; }
+  .entry-cards .entry-watermark { width: 96px; height: 96px; }
+}
+/* 矮螢幕（如 iPhone SE 的 Safari 約 548px 高）：收掉與 nav 重複的 kicker、縮內距，卡片回自然高度 */
+@media (max-width: 639px) and (max-height: 619px) {
+  .first-screen { padding-bottom: 12px; }
+  .first-screen .fa-hero { padding: 12px 0; }
+  .first-screen .fa-hero-kicker { display: none; }
+  .first-screen .fa-hero h1 { margin-top: 0; }
+  .first-screen .entry-cards { grid-auto-rows: auto; gap: 8px; }
+  .entry-cards .entry-card { padding: 14px 16px; }
+  .entry-cards .entry-desc { margin-top: 6px; }
+  .entry-cards .entry-cta { padding-top: 8px; }
+}
 </style>
 </head>
 <body>
@@ -66,48 +94,44 @@ body { visibility: hidden; }
 
 <main class="max-w-6xl mx-auto px-6">
 
-  <section class="fa-hero">
-    <div class="fa-hero-wm" aria-hidden="true">CHIN UP</div>
-    <div class="fa-hero-kicker">CHINUP Performance</div>
-    <h1>開始你的<br>訓練之旅。</h1>
-    <p>選擇適合你的課程類型——團體課程線上報名，或預約一對一教練。免註冊、免下載，電話就是你的身分。</p>
-  </section>
+  <!-- 首屏：hero＋兩張入口卡（手機剛好一屏），FAQ 另起一列在下方 -->
+  <div class="first-screen">
+    <section class="fa-hero">
+      <div class="fa-hero-wm" aria-hidden="true">CHIN UP</div>
+      <div class="fa-hero-kicker">CHINUP Performance</div>
+      <h1>開始你的<br>訓練之旅。</h1>
+      <p>選擇適合你的課程類型——團體課程線上報名，或預約一對一教練。免註冊、免下載，電話就是你的身分。</p>
+    </section>
 
-  <section class="entry pb-16">
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 items-stretch">
+    <section class="entry-cards grid grid-cols-1 sm:grid-cols-2 gap-5">
+      <a href="/group.html" class="entry-card group no-underline">
+        <svg class="entry-watermark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#ic-group"/></svg>
+        <div class="entry-badge"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#ic-group"/></svg></div>
+        <div class="entry-title">團體課程（Group Class）</div>
+        <p class="entry-desc">通常包含多名學員，適合想透過同儕互動維持熱度、或探索新運動類型的初學者。</p>
+        <span class="entry-cta">查看課程 <span class="arr" aria-hidden="true">→</span></span>
+      </a>
+      <a href="/coaches.html" class="entry-card solo no-underline">
+        <svg class="entry-watermark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#ic-target"/></svg>
+        <div class="entry-badge"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#ic-target"/></svg></div>
+        <div class="entry-title">個別指導（1 on 1/2 Private Class）</div>
+        <p class="entry-desc">能提供最多的客製化指導，適合有特定目標（如：有傷痛在身、運動表現）或極度注重動作細節的學員。</p>
+        <span class="entry-cta">預約教練 <span class="arr" aria-hidden="true">→</span></span>
+      </a>
+    </section>
+  </div>
 
-      <!-- 團體課程：入口卡 + 團體課 FAQ -->
-      <div class="entry-col">
-        <a href="/group.html" class="entry-card group no-underline">
-          <svg class="entry-watermark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#ic-group"/></svg>
-          <div class="entry-badge"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#ic-group"/></svg></div>
-          <div class="entry-title">團體課程（Group Class）</div>
-          <p class="entry-desc">通常包含多名學員，適合想透過同儕互動維持熱度、或探索新運動類型的初學者。</p>
-          <span class="entry-cta">查看課程 <span class="arr" aria-hidden="true">→</span></span>
-        </a>
-        <div class="faq">
-          <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>如何挑選適合自己的團體課階級？</summary><div class="faq-a">先評估自身程度，挑選適合的階級（如：基礎、進階），避免跟不上進度或強度過高。</div></details>
-          <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>上團體課時要遵守哪些團體規範？</summary><div class="faq-a">準時上課不打擾他人，尊重教練的課程編排，不過度追求動作完整性而影響整體節奏。</div></details>
-          <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>一對多時無法時刻被照顧到怎麼辦？</summary><div class="faq-a">主動尋求協助。下課後或課間空檔主動詢問教練動作細節，彌補一對多無法時刻被照顧到的情況。</div></details>
-        </div>
-      </div>
-
-      <!-- 1對1個別指導：入口卡 + 一對一 FAQ -->
-      <div class="entry-col">
-        <a href="/coaches.html" class="entry-card solo no-underline">
-          <svg class="entry-watermark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#ic-target"/></svg>
-          <div class="entry-badge"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#ic-target"/></svg></div>
-          <div class="entry-title">個別指導（1 on 1/2 Private Class）</div>
-          <p class="entry-desc">能提供最多的客製化指導，適合有特定目標（如：有傷痛在身、運動表現）或極度注重動作細節的學員。</p>
-          <span class="entry-cta">預約教練 <span class="arr" aria-hidden="true">→</span></span>
-        </a>
-        <div class="faq">
-          <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>上課前需要先做什麼準備？</summary><div class="faq-a">設定明確目標。課前與教練溝通具體需求與身體狀況（如：受傷史、舊疾），確保課程內容精準有效。</div></details>
-          <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>上課過程中應該如何與教練互動？</summary><div class="faq-a">勇於發問與反饋。隨時向教練反饋感受度（例如：哪個部位在發力、會不會痛），並適時提問，避免死記硬背。</div></details>
-          <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>下課後要如何維持學習效果？</summary><div class="faq-a">課後複習與紀錄。花時間消化、記錄筆記或錄影，並維持高頻率的自主練習，否則學習效果容易打折。</div></details>
-        </div>
-      </div>
-
+  <!-- FAQ：桌機兩欄各自落在對應卡片正下方；手機接在兩張卡之後 -->
+  <section class="entry-faqs grid grid-cols-1 sm:grid-cols-2 gap-5 items-start pb-16">
+    <div class="faq">
+      <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>如何挑選適合自己的團體課階級？</summary><div class="faq-a">先評估自身程度，挑選適合的階級（如：基礎、進階），避免跟不上進度或強度過高。</div></details>
+      <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>上團體課時要遵守哪些團體規範？</summary><div class="faq-a">準時上課不打擾他人，尊重教練的課程編排，不過度追求動作完整性而影響整體節奏。</div></details>
+      <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>一對多時無法時刻被照顧到怎麼辦？</summary><div class="faq-a">主動尋求協助。下課後或課間空檔主動詢問教練動作細節，彌補一對多無法時刻被照顧到的情況。</div></details>
+    </div>
+    <div class="faq">
+      <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>上課前需要先做什麼準備？</summary><div class="faq-a">設定明確目標。課前與教練溝通具體需求與身體狀況（如：受傷史、舊疾），確保課程內容精準有效。</div></details>
+      <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>上課過程中應該如何與教練互動？</summary><div class="faq-a">勇於發問與反饋。隨時向教練反饋感受度（例如：哪個部位在發力、會不會痛），並適時提問，避免死記硬背。</div></details>
+      <details class="faq-item"><summary><span class="faq-tog" aria-hidden="true"></span>下課後要如何維持學習效果？</summary><div class="faq-a">課後複習與紀錄。花時間消化、記錄筆記或錄影，並維持高頻率的自主練習，否則學習效果容易打折。</div></details>
     </div>
   </section>
 </main>
