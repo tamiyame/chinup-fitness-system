@@ -27,7 +27,8 @@ body { visibility: hidden; }
 }
 #price-bar.hidden { display: none; }
 #price-bar .pb-label { font-size: 12px; font-weight: 700; color: #fff; }
-#price-bar .pb-total { font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 900; font-size: 21px; color: #fff; font-variant-numeric: tabular-nums; }
+#price-bar .pb-total { font-family: "Archivo", "Noto Sans TC", sans-serif; font-weight: 900; font-size: 28px; line-height: 1.15; color: #fff; font-variant-numeric: tabular-nums; }
+@media (max-width: 339px) { #price-bar .pb-total { font-size: 24px; } }
 
 /* ── session row（sheet 內的可選列）── */
 .sess-row {
@@ -241,7 +242,7 @@ body { visibility: hidden; }
 <!-- Sticky 選課列 -->
 <div id="price-bar" class="fa-tray hidden">
   <div>
-    <div class="pb-label">已選付款場次</div>
+    <div class="pb-label">已選場次總額：</div>
     <div id="price-bar-total" class="pb-total">NT$0</div>
   </div>
   <button id="price-bar-go" class="fa-tray-cta" disabled>填寫資料 →</button>
