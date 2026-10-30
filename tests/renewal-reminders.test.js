@@ -10,13 +10,11 @@ function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){con
 console.log('[renewal-reminders test] start');
 
 const NOW = '2033-01-10T12:00:00'; // 固定測試時鐘（資料鎖 2033/2020，避開其他測試）
-const RECHECK_FLAG = 'renewal_recheck_10_done';
 const masterBefore = getLineNotifyState().master;
 
 // ── 清理（冪等）──
 const clean = () => db.exec(`
   DELETE FROM renewal_reminders;
-  DELETE FROM app_settings WHERE key = 'renewal_recheck_10_done';
   DELETE FROM notifications WHERE type IN ('package_low_sessions', 'package_low_recheck', 'group_last_session');
   DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'rr-%');
   DELETE FROM registrations WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'rr-%');
@@ -111,8 +109,8 @@ expect('過期但仍有未來預約（尚餘=1）→ 發', () => assert.equal(ab
 // ── 收件教練 ──
 const m5 = uid('RR五', 'rr-m5@x.com');   // 換過教練
 const pSwitch = mkPkg(m5, { remaining: 1 });
-mkBk(m5, pSwitch, '2020-05-02T10:00:00');                                     // 舊教練
-mkBk(m5, pSwitch, '2020-05-09T10:00:00', { coach: coachB.id });               // 最後一筆 confirmed
+mkBk(m5, pSwitch, '2020-05-09T10:00:00', { coach: coachB.id });               // 最後一堂
+mkBk(m5, pSwitch, '2020-05-02T10:00:00');                                     // 舊教練的課，後來才補登（id 較大）
 mkBk(m5, pSwitch, '2020-05-16T10:00:00', { coach: coachAdmin.id, status: 'cancelled' });  // 已取消不算
 run();
 expect('換過教練 → 只發最後一筆 confirmed 預約的教練', () => {
@@ -134,6 +132,14 @@ run();
 expect('教練已停用 → 不發給他，管理者照收', () => {
   assert.equal(aboutCount(coachGone.userId, 'RR七'), 0);
   assert.equal(aboutCount(adminUid, 'RR七'), 1);
+});
+
+const adminMember = Number(db.prepare("INSERT INTO users (name,email,role,is_admin) VALUES ('RR管理者會員','rr-am@x.com','coach',1)").run().lastInsertRowid);
+mkPkg(adminMember, { remaining: 1 });
+run();
+expect('管理者自己的方案 → 不發給本人，其他管理者照收', () => {
+  assert.equal(aboutCount(adminMember, 'RR管理者會員'), 0);
+  assert.equal(aboutCount(adminUid, 'RR管理者會員'), 1);
 });
 
 const m8 = uid('RR八', 'rr-m8@x.com');   // 會員已封存
@@ -188,19 +194,24 @@ expect('marker 表（kind, member, ref）語意', () => {
 
 // ── 一次性重新檢查（10 堂方案）──
 const recheckBodies = (userId) => db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='package_low_recheck'").all(userId).map((r) => r.body);
+const lineRows = (status) => db.prepare("SELECT COUNT(*) c FROM notifications WHERE type='package_low_recheck' AND channel='line' AND status=?").get(status).c;
+const forgetRecheck = () => db.exec("DELETE FROM notifications WHERE type = 'package_low_recheck'");
 const recheck = () => recheckTenSessionPackagesOnce(NOW);
-const flagSet = () => !!db.prepare('SELECT 1 FROM app_settings WHERE key = ?').get(RECHECK_FLAG);
+const tick = () => new Promise((r) => setImmediate(r));   // 等 notify 的 LINE 非同步送完、寫入紀錄
 
-// 共用 DB 可能有其他測試留下的方案：先全部作廢讓名單可精確斷言，最後還原
+// 共用 DB 可能有其他測試留下的方案與已綁 LINE 的管理者：先清開讓結果可精確斷言，最後還原
 const otherPkgs = db.prepare('SELECT id FROM customer_packages WHERE archived_at IS NULL').all().map((r) => r.id);
 db.prepare('UPDATE customer_packages SET archived_at = ? WHERE archived_at IS NULL').run(NOW);
+const boundAdmins = db.prepare('SELECT id, line_user_id FROM users WHERE is_admin = 1 AND line_user_id IS NOT NULL').all();
+db.exec('UPDATE users SET line_user_id = NULL WHERE is_admin = 1');
 
 const r1 = uid('RR重一', 'rr-r1@x.com');   // 10 堂、未登錄 1
 const r2 = uid('RR重二', 'rr-r2@x.com');   // 10 堂、僅剩未來預約 1
 mkPkg(r1, { remaining: 1 });
 mkBk(r2, mkPkg(r2, { remaining: 0, type: '1on2' }), '2033-02-01T10:00:00');
 mkPkg(uid('RR多堂', 'rr-r3@x.com'), { remaining: 2 });                    // 剩 2 堂
-mkPkg(uid('RR五堂', 'rr-r4@x.com'), { remaining: 1, total: 5 });          // 不是 10 堂
+mkPkg(uid('RR五堂', 'rr-r4@x.com'), { remaining: 1, total: 5 });          // 少於 10 堂
+mkPkg(uid('RR二十堂', 'rr-r8@x.com'), { remaining: 1, total: 20 });       // 多於 10 堂
 mkPkg(uid('RR作廢', 'rr-r5@x.com'), { remaining: 1, archived: true });    // 作廢
 mkPkg(uid('RR上完', 'rr-r6@x.com'), { remaining: 0 });                    // 全上完
 const rGone = uid('RR封存', 'rr-r7@x.com');
@@ -209,15 +220,17 @@ db.prepare('UPDATE users SET archived_at = ? WHERE id = ?').run(NOW, rGone);
 run();   // 先跑每日掃描：RR重一、RR重二 已有 marker，重新檢查仍要列入
 
 setLineNotifyState({ master: false });
-expect('LINE 關閉 → 不發、不佔旗標（等開啟後再補）', () => {
+expect('LINE 關閉 → 不發，等開啟後再補', () => {
   assert.equal(recheck(), null);
   assert.equal(recheckBodies(adminUid).length, 0);
-  assert.equal(flagSet(), false);
 });
 
 setLineNotifyState({ master: true });
+db.prepare("UPDATE users SET line_user_id = 'Urr-admin' WHERE id = ?").run(adminUid);   // coachAdmin 維持未綁
+const firstRun = recheck();
+await tick();
 expect('LINE 開啟 → 每位管理者一則彙總，已提醒過的方案也列入', () => {
-  assert.deepEqual(recheck(), { count: 2 });
+  assert.deepEqual(firstRun, { count: 2 });
   for (const admin of [adminUid, coachAdmin.userId]) {
     const bodies = recheckBodies(admin);
     assert.equal(bodies.length, 1);
@@ -227,35 +240,65 @@ expect('LINE 開啟 → 每位管理者一則彙總，已提醒過的方案也�
   }
 });
 expect('剩 2 堂／非 10 堂／作廢／全上完／封存會員不列入', () => {
-  for (const name of ['RR多堂', 'RR五堂', 'RR作廢', 'RR上完', 'RR封存']) assert.ok(!recheckBodies(adminUid)[0].includes(name), name);
+  for (const name of ['RR多堂', 'RR五堂', 'RR二十堂', 'RR作廢', 'RR上完', 'RR封存']) assert.ok(!recheckBodies(adminUid)[0].includes(name), name);
 });
 expect('教練與會員不收', () => {
   assert.equal(recheckBodies(coachUid).length, 0);
   assert.equal(recheckBodies(r1).length, 0);
 });
-expect('只發一次：再跑回 null、不重發', () => {
+expect('LINE 送達後不再發', () => {
   assert.equal(recheck(), null);
   assert.equal(recheckBodies(adminUid).length, 1);
 });
 
-mkPkg(r1, { remaining: 1, type: '1on2' });   // 同一人兩筆方案都符合
-db.prepare('DELETE FROM app_settings WHERE key = ?').run(RECHECK_FLAG);
-expect('同一位客人兩筆符合 → 兩筆都列，但只算一位', () => {
-  recheck();
-  const latest = recheckBodies(adminUid).at(-1);
-  assert.match(latest, /目前有 2 位客人/);
-  assert.ok(latest.includes('RR重一（1對1）') && latest.includes('RR重一（1對2）'), latest);
+forgetRecheck();
+process.env.LINE_MOCK = 'fail';   // 例如月額度用完
+const failedRun = recheck();
+await tick();
+expect('LINE 送失敗、還在重試 → 不另外重發', () => {
+  assert.deepEqual(failedRun, { count: 2 });
+  assert.equal(lineRows('failed'), 1);
+  assert.equal(recheck(), null);
+  assert.equal(recheckBodies(adminUid).length, 1);
+});
+db.exec("UPDATE notifications SET status = 'failed_permanent' WHERE type = 'package_low_recheck'");   // 重試用完
+process.env.LINE_MOCK = '1';
+const retryRun = recheck();
+await tick();
+expect('重試用完仍失敗 → 下次排程再發，送達就停', () => {
+  assert.deepEqual(retryRun, { count: 2 });
+  assert.equal(lineRows('sent'), 1);
+  assert.equal(recheck(), null);
 });
 
+forgetRecheck();
+db.prepare('UPDATE users SET line_user_id = NULL WHERE id = ?').run(adminUid);
+recheck();
+expect('管理者都沒綁 LINE → 只留紀錄不算完成，之後還會再發', () => {
+  assert.equal(recheckBodies(adminUid).length, 1);
+  assert.deepEqual(recheck(), { count: 2 });
+});
+
+forgetRecheck();
+mkPkg(r1, { remaining: 1, type: '1on2' });   // 同一人兩筆方案都符合
+recheck();
+expect('同一位客人兩筆符合 → 兩筆都列，但只算一位', () => {
+  const [body] = recheckBodies(adminUid);
+  assert.match(body, /目前有 2 位客人/);
+  assert.ok(body.includes('RR重一（1對1）') && body.includes('RR重一（1對2）'), body);
+});
+
+forgetRecheck();
 db.prepare('UPDATE customer_packages SET archived_at = ? WHERE archived_at IS NULL').run(NOW);
-db.prepare('DELETE FROM app_settings WHERE key = ?').run(RECHECK_FLAG);
 expect('沒有符合的客人 → 仍發一則告知已檢查過', () => {
   assert.deepEqual(recheck(), { count: 0 });
-  assert.match(recheckBodies(adminUid).at(-1), /目前沒有/);
+  assert.match(recheckBodies(adminUid)[0], /目前沒有/);
 });
 
 const restorePkg = db.prepare('UPDATE customer_packages SET archived_at = NULL WHERE id = ?');
 for (const id of otherPkgs) restorePkg.run(id);
+const restoreLine = db.prepare('UPDATE users SET line_user_id = ? WHERE id = ?');
+for (const a of boundAdmins) restoreLine.run(a.line_user_id, a.id);
 setLineNotifyState({ master: masterBefore });
 
 clean(); // 含 DELETE FROM renewal_reminders（整表：本檔可能對共用 DB 殘留資料產生 marker，留著會讓其他測試清 users 撞 FK）

@@ -26,7 +26,7 @@ export function startScheduler() {
     console.error('[scheduler] period rollover error (boot):', e);
   }
 
-  // 一次性 10 堂方案檢查：部署後開機就發；LINE 關閉時等 9 點排程補（只發一次）
+  // 一次性 10 堂方案檢查：部署後開機就發；LINE 關閉或沒送達就等 9 點排程再發，送達就停
   runRenewalRecheck();
 
   // 每小時整點跑截止判定

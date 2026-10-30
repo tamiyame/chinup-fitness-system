@@ -36,7 +36,11 @@ const lastGroupStmt = db.prepare(`
 `);
 const hasMarker = db.prepare('SELECT 1 FROM renewal_reminders WHERE kind = ? AND member_id = ? AND ref_id = ? LIMIT 1');
 const insertMarker = db.prepare('INSERT OR IGNORE INTO renewal_reminders (kind, member_id, ref_id) VALUES (?, ?, ?)');
-const claimRecheck = db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('renewal_recheck_10_done', '1')");
+// 一次性檢查已完成：LINE 送達，或還在重試中（永久失敗與未綁 LINE 的紀錄不算）
+const recheckDone = db.prepare(`
+  SELECT 1 FROM notifications
+  WHERE type = 'package_low_recheck' AND channel = 'line' AND status IN ('sent', 'failed') LIMIT 1
+`);
 
 const sessionLabel = (type) => SESSION_LABELS[type] || type;
 
@@ -69,14 +73,13 @@ export function processRenewalReminders(now = nowLocal()) {
 /**
  * 一次性：續購提醒改發員工時，重新檢查全部 10 堂方案，把尚餘 1 堂的客人列成一則發給管理者。
  * 不看 renewal_reminders（之前已提醒過會員的也要列入）。沒有符合者也發一則，管理者才知道檢查過了。
- * LINE 關閉時不發也不佔旗標，開啟後由開機或 9 點排程補上。回 { count }，沒執行回 null。
+ * LINE 關閉或沒送達（例如月額度用完）都不算完成，由開機或 9 點排程再發，直到有管理者收到。
+ * 回 { count }，沒執行回 null。
  */
 export function recheckTenSessionPackagesOnce(now = nowLocal()) {
-  if (!isLineNotifyEnabled('package_low_recheck')) return null;
+  if (!isLineNotifyEnabled('package_low_recheck') || recheckDone.get()) return null;
   const hits = lowPackagesStmt.all(String(now).slice(0, 10), now)
     .filter((p) => p.total_sessions === 10 && p.still === 1);
-  if (!claimRecheck.run().changes) return null;
-
   const count = new Set(hits.map((p) => p.member_id)).size;
   const summary = hits.length
     ? `目前有 ${count} 位客人的 10 堂方案只剩 1 堂：\n${hits.map((p) => `・${p.member_name}（${sessionLabel(p.session_type)}）`).join('\n')}`
