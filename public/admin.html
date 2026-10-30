@@ -503,6 +503,18 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
 .bf-batch-result .ok { color: #15803d; }
 .bf-batch-result .bad { color: #dc2626; }
 
+/* 編輯會員 · 方案列：左欄購買日期時間、右欄內容與按鈕（比照我的課表卡片） */
+.pkg-row { display: grid; grid-template-columns: 76px 1fr; column-gap: 12px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+.pkg-buy { padding-top: 1px; }
+.pkg-buy-ymd { display: block; font-family: "Archivo", sans-serif; font-weight: 800; font-size: 12px; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.4; }
+.pkg-buy-hm { display: block; font-size: 11px; color: var(--ink-mute); font-variant-numeric: tabular-nums; line-height: 1.5; }
+.pkg-row.is-arch .pkg-buy-ymd { color: var(--ink-mute); }
+.pkg-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.pkg-head strong { font-weight: 800; }
+.pkg-stats { margin-top: 3px; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pkg-meta { margin-top: 2px; font-size: 11px; color: var(--ink-mute); font-variant-numeric: tabular-nums; }
+.pkg-acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+
 /* 後台教練色卡 */
 .coach-color-dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex:none;cursor:pointer;}
 .coach-color-dot.coach-color-none{background:#fff;position:relative;}

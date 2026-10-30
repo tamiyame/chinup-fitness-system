@@ -1446,26 +1446,29 @@ async function renderMemberPackages(memberId, mountEl) {
   try { pkgs = await api(`/api/coach/packages?memberId=${memberId}&includeArchived=1`); }
   catch { mountEl.innerHTML = '<p class="subtle" style="font-size:12px;color:var(--err-fg);">方案載入失敗</p>'; return; }
 
+  pkgs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || b.id - a.id);   // 購買時間新→舊（只在這裡排；教練端下拉沿用後端順序）
   const rowHtml = pkgs.map(p => {
     const arch = !!p.archived_at;
     const badge = arch ? '<span class="badge badge-cancelled" style="font-size:10px;">已作廢</span>'
       : p.is_valid ? '<span class="badge" style="font-size:10px;background:#dcfce7;color:#166534;">有效</span>'
       : '<span class="badge" style="font-size:10px;background:#fef9c3;color:#854d0e;">已失效</span>';
-    const exp = p.expires_at ? `到期 ${escapeHtml(p.expires_at)}` : '永久';
+    const exp = p.expires_at ? `到期 ${escapeHtml(String(p.expires_at).replace(/-/g, '/'))}` : '永久';
     const unit = p.amount != null ? Math.round(p.amount / p.total_sessions) : null;
     const money = unit != null ? `單價 NT$${unit.toLocaleString('zh-TW')}（總額 NT$${Number(p.amount).toLocaleString('zh-TW')}）` : '無單價';
-    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
-      <div style="font-size:13px;">
-        <strong>${PKG_TYPE_LABEL[p.session_type] || escapeHtml(p.session_type)}</strong>
-        已上完 ${p.completed_sessions}・已約 ${p.upcoming_sessions}・未登錄 ${p.remaining_sessions}／共 ${p.total_sessions} 堂 ${badge}
-        <div class="subtle" style="font-size:11px;">${exp} · ${money}</div>
-      </div>
-      <div style="display:flex;gap:4px;flex-shrink:0;">
-        <button class="btn btn-ghost btn-sm" data-act="adjust" data-id="${p.id}" data-total="${escapeHtml(String(p.total_sessions))}" data-remaining="${escapeHtml(String(p.remaining_sessions))}">調整</button>
-        ${arch ? '' : `<button class="btn btn-ghost btn-sm" data-act="unitprice" data-id="${p.id}" data-unit="${unit != null ? unit : ''}">改單價</button>`}
-        ${arch
-          ? `<button class="btn btn-ghost btn-sm" data-act="restore" data-id="${p.id}">還原</button>`
-          : `<button class="btn btn-danger btn-sm" data-act="archive" data-id="${p.id}">作廢</button>`}
+    const buy = String(p.created_at || '');   // 本地時間字串 YYYY-MM-DDTHH:MM:SS，直接切片不轉時區
+    return `<div class="pkg-row${arch ? ' is-arch' : ''}">
+      <div class="pkg-buy"><span class="pkg-buy-ymd">${escapeHtml(buy.slice(0, 10).replace(/-/g, '/'))}</span><span class="pkg-buy-hm">${escapeHtml(buy.slice(11, 16))} 購買</span></div>
+      <div class="pkg-body">
+        <div class="pkg-head"><strong>${PKG_TYPE_LABEL[p.session_type] || escapeHtml(p.session_type)}</strong>${badge}</div>
+        <div class="pkg-stats">已上完 ${p.completed_sessions}・已約 ${p.upcoming_sessions}・未登錄 ${p.remaining_sessions}／共 ${p.total_sessions} 堂</div>
+        <div class="pkg-meta">${exp} · ${money}</div>
+        <div class="pkg-acts">
+          <button class="btn btn-ghost btn-sm" data-act="adjust" data-id="${p.id}" data-total="${escapeHtml(String(p.total_sessions))}" data-remaining="${escapeHtml(String(p.remaining_sessions))}">調整</button>
+          ${arch ? '' : `<button class="btn btn-ghost btn-sm" data-act="unitprice" data-id="${p.id}" data-unit="${unit != null ? unit : ''}">改單價</button>`}
+          ${arch
+            ? `<button class="btn btn-ghost btn-sm" data-act="restore" data-id="${p.id}">還原</button>`
+            : `<button class="btn btn-danger btn-sm" data-act="archive" data-id="${p.id}">作廢</button>`}
+        </div>
       </div>
     </div>`;
   }).join('') || '<p class="subtle" style="font-size:12px;">尚無方案</p>';
