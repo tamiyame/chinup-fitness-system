@@ -1123,7 +1123,7 @@ async function doLineUnbind(id) {
   }
 }
 
-// ── LINE 通知開關（總開關 + 16 項目）──
+// ── LINE 通知開關（總開關 + 17 項目）──
 let lnState = null;
 let lnWired = false;
 const lnAllItemKeys = () => (lnState?.groups || []).flatMap((g) => g.items.map((i) => i.key));

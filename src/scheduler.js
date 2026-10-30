@@ -5,8 +5,17 @@ import { runBackup } from './services/backupService.js';
 import { expirePendingOrders } from './services/groupOrderService.js';
 import { reconcile } from './services/gcalSync.js';
 import { pullChanges } from './services/gcalPull.js';
-import { processRenewalReminders } from './services/renewalReminderService.js';
+import { processRenewalReminders, recheckTenSessionPackagesOnce } from './services/renewalReminderService.js';
 import { rolloverTemplates } from './services/periodService.js';
+
+function runRenewalRecheck() {
+  try {
+    const r = recheckTenSessionPackagesOnce();
+    if (r) console.log('[scheduler] renewal recheck sent:', r);
+  } catch (e) {
+    console.error('[scheduler] renewal recheck error:', e);
+  }
+}
 
 export function startScheduler() {
   // 開機先跑一次期課自動續期（伺服器停機錯過 cron 也能補上；冪等）
@@ -16,6 +25,9 @@ export function startScheduler() {
   } catch (e) {
     console.error('[scheduler] period rollover error (boot):', e);
   }
+
+  // 一次性 10 堂方案檢查：部署後開機就發；LINE 關閉或沒送達就等 9 點排程再發，送達就停
+  runRenewalRecheck();
 
   // 每小時整點跑截止判定
   cron.schedule('0 * * * *', () => {
@@ -39,6 +51,7 @@ export function startScheduler() {
 
   // 每天早上 9 點：堂數即將用完提醒（方案尚餘≤1／團課剩最後1堂；每狀態只提醒一次）
   cron.schedule('0 9 * * *', () => {
+    runRenewalRecheck();
     try {
       const r = processRenewalReminders();
       if (r.packagesSent || r.groupSent) console.log('[scheduler] renewal reminders sent:', r);
