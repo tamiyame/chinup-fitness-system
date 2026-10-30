@@ -1,4 +1,4 @@
-// LINE 推播開關：總開關＋依事件分 3 組 16 項。所有 LINE 推播共用 notify() 一個入口，
+// LINE 推播開關：總開關＋依事件分 3 組 17 項。所有 LINE 推播共用 notify() 一個入口，
 // 本檔只回答「這個 type 現在可不可以推 LINE」（關閉時 notify() 走只記錄路徑）。
 // 設定存 app_settings：line_notify_master（未設定＝OFF）、line_notify_<item>（未設定＝ON）。
 // 不 import discountService.js：它經 registration.js → notifications.js 回頭 import 本檔會循環，
@@ -25,7 +25,8 @@ export const LINE_NOTIFY_GROUPS = [
     { key: 'group_refund', label: '訂單退款', recipients: '會員', types: ['group_order_refunded'] },
   ] },
   { key: 'system', label: '排程與系統', items: [
-    { key: 'renewal_reminder', label: '續購提醒', recipients: '會員', types: ['package_low_sessions', 'group_last_session'] },
+    { key: 'renewal_reminder', label: '續購提醒', recipients: '教練與管理者', types: ['package_low_sessions', 'package_low_recheck'] },
+    { key: 'group_last_session', label: '團課最後一堂提醒', recipients: '會員', types: ['group_last_session'] },
     { key: 'gcal_sync', label: 'Google 日曆同步', recipients: '教練退回＋管理者取消', types: ['gcal_move_rejected', 'gcal_delete_cancelled'] },
     { key: 'period_rollover', label: '期課續期', recipients: '管理者', types: ['period_rollover_admin'] },
   ] },
