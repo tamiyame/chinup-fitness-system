@@ -110,8 +110,8 @@ function renderTemplates() {
         </div>
       </div>
       <div class="a-row-actions">
-        <button data-id="${t.id}" class="edit-btn btn btn-ghost btn-sm">編輯</button>
         <button data-id="${t.id}" class="view-btn btn btn-dark btn-sm">查看場次</button>
+        <button data-id="${t.id}" class="edit-btn btn btn-ghost btn-sm">編輯</button>
         <button data-id="${t.id}" class="del-btn btn btn-danger btn-sm">刪除</button>
       </div>
     </article>
