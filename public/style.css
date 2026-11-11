@@ -1202,6 +1202,12 @@ details.session-row summary:hover { background: #f8faf9; }
 .reg-side>.reg-bk,.reg-side>.reg-gp{flex:1 1 0;min-width:0;width:auto;overflow:hidden;white-space:nowrap;}
 .reg-side>*+*{margin-left:-3px;box-shadow:-1px 0 0 var(--surface);}
 .reg-side .reg-nm{display:block;overflow:hidden;}
+/* 今日標示（十字定位，class 由 coach.js regMarkNow() 掛上）：今天的表頭＝天藍字＋3px 底線；現在這個小時的時間欄＝粗體＋3px 左緣條
+   （Rail Rule「現在」記號，全畫面唯一一條）；兩者交叉的那一格＝2px 框。單一 class 且排在 .reg-drop-hover 之前，拖曳落點的虛線框才蓋得過它。 */
+.reg-is-today{color:var(--brand-700);border-radius:6px 6px 0 0;box-shadow:inset 0 -3px 0 var(--brand-600);}
+.reg-is-today .reg-date{color:var(--brand-700);font-family:"Archivo","Noto Sans TC",sans-serif;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em;}
+.reg-is-nowhour{color:var(--brand-700);font-weight:700;border-radius:0 6px 6px 0;box-shadow:inset 3px 0 0 var(--brand-600);}
+.reg-is-now{outline:2px solid var(--brand-600);outline-offset:-2px;}
 
 /* 拖拉改時段 */
 .reg-bk{touch-action:none;cursor:grab;}
