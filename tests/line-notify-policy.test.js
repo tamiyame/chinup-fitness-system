@@ -4,7 +4,7 @@ process.env.LINE_MOCK = '1';
 import assert from 'node:assert/strict';
 import { db, offsetLocal } from '../src/db/connection.js';
 import { hashPassword } from '../src/services/auth.js';
-import { LINE_NOTIFY_GROUPS, isLineNotifyEnabled, getLineNotifyState, setLineNotifyState } from '../src/services/lineNotifyPolicy.js';
+import { LINE_NOTIFY_GROUPS, isLineNotifyEnabled, getLineNotifyState, setLineNotifyState, inheritSplitItems } from '../src/services/lineNotifyPolicy.js';
 import { notify, processFailedNotifications } from '../src/services/notifications.js';
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
@@ -68,6 +68,45 @@ expect('預設 isLineNotifyEnabled 全 false（含 legacy type）', () => {
   assert.equal(isLineNotifyEnabled('booking_created'), false);
   assert.equal(isLineNotifyEnabled('registered_confirmed'), false);
 });
+
+// ── 拆項沿用：團課最後一堂提醒原本掛在「續購提醒」底下，拆成獨立項後要沿用舊開關存過的值 ──
+// （否則業主關掉的團課提醒，會因新項目「未設定＝ON」在部署後自己打開）
+const rawFlag = (key) => db.prepare('SELECT value FROM app_settings WHERE key = ?').get(`line_notify_${key}`)?.value;
+const putFlag = (key, v) => db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(`line_notify_${key}`, v);
+const itemEnabled = (key) => getLineNotifyState().groups.flatMap((g) => g.items).find((i) => i.key === key).enabled;
+expect('拆項沿用：續購提醒關著 → 團課最後一堂提醒跟著關', () => {
+  clearSettings(); putFlag('master', '1'); putFlag('renewal_reminder', '0');
+  inheritSplitItems();
+  assert.equal(rawFlag('group_last_session'), '0');
+  assert.equal(itemEnabled('group_last_session'), false);
+  assert.equal(isLineNotifyEnabled('group_last_session'), false);
+});
+expect('拆項沿用：之後兩項各自獨立（再開續購提醒，團課提醒不跟著開）', () => {
+  setLineNotifyState({ items: { renewal_reminder: true } });
+  inheritSplitItems();
+  assert.equal(itemEnabled('renewal_reminder'), true);
+  assert.equal(itemEnabled('group_last_session'), false);
+});
+expect('拆項沿用：續購提醒明確開著 → 團課最後一堂提醒存成開', () => {
+  clearSettings(); putFlag('renewal_reminder', '1');
+  inheritSplitItems();
+  assert.equal(rawFlag('group_last_session'), '1');
+});
+expect('拆項沿用：舊開關沒存過 → 新項目不寫入、維持預設開', () => {
+  clearSettings();
+  inheritSplitItems();
+  assert.equal(rawFlag('group_last_session'), undefined);
+  assert.equal(itemEnabled('group_last_session'), true);
+});
+expect('拆項沿用：新項目已經有值 → 不覆蓋', () => {
+  clearSettings(); putFlag('renewal_reminder', '0'); putFlag('group_last_session', '1');
+  inheritSplitItems();
+  assert.equal(rawFlag('group_last_session'), '1');
+  clearSettings(); putFlag('renewal_reminder', '1'); putFlag('group_last_session', '0');
+  inheritSplitItems();
+  assert.equal(rawFlag('group_last_session'), '0');
+});
+clearSettings();
 
 // ── 讀寫 ──
 expect('setLineNotifyState({ master: true }) → 現役與 legacy 皆 true', () => {

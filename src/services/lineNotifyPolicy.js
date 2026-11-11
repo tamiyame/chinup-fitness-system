@@ -54,6 +54,18 @@ function readFlag(key, fallback) {
 const isMasterOn = () => readFlag(MASTER_KEY, false);
 const isItemOn = (itemKey) => readFlag(itemSettingKey(itemKey), true);
 
+// 從既有項目拆出來的新項目：[舊項目, 新項目]。舊開關存過值、新開關還沒有 → 沿用一次，之後各自獨立。
+// 不沿用的話，業主關掉的通知會因新項目「未設定＝ON」在部署後自己打開。
+const SPLIT_ITEMS = [['renewal_reminder', 'group_last_session']];
+/** 開機（本模組載入）時跑一次；冪等，新項目已有值就不動。 */
+export function inheritSplitItems() {
+  for (const [fromKey, toKey] of SPLIT_ITEMS) {
+    const from = getStmt.get(itemSettingKey(fromKey));
+    if (from && !getStmt.get(itemSettingKey(toKey))) setStmt.run(itemSettingKey(toKey), from.value);
+  }
+}
+inheritSplitItems();
+
 /** 該通知 type 現在可否推 LINE。不在目錄的 type（legacy／已停用模板）只受總開關管。 */
 export function isLineNotifyEnabled(type) {
   if (!isMasterOn()) return false;
