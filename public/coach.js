@@ -635,12 +635,13 @@ async function renderRegister() {
   for (const s of data.availableSlots || []) { hMin = Math.min(hMin, hourOf(s.start)); hMax = Math.max(hMax, hourOf(s.start)); }
   const hours = []; for (let h = hMin; h <= hMax; h++) hours.push(h);
 
+  // data-date／data-hour／data-cell 是給 regMarkNow() 定位「今天、現在這個小時」用的
   const head = `<div class="reg-cell reg-head reg-timecol"></div>` +
-    dates.map((d, i) => `<div class="reg-cell reg-head">${REG_DOW[i]}<br><span class="reg-date">${d.slice(5).replace('-', '/')}</span></div>`).join('');
+    dates.map((d, i) => `<div class="reg-cell reg-head" data-date="${d}">${REG_DOW[i]}<br><span class="reg-date">${d.slice(5).replace('-', '/')}</span></div>`).join('');
   let rows = '';
   for (const h of hours) {
     const hh = String(h).padStart(2, '0');
-    rows += `<div class="reg-cell reg-timecol">${hh}:00</div>`;
+    rows += `<div class="reg-cell reg-timecol" data-hour="${hh}">${hh}:00</div>`;
     for (const d of dates) {
       const iso = `${d}T${hh}:00:00`; const key = `${d}T${hh}`;
       const bks = bookByKey.get(key) || []; const gps = grpByKey.get(key) || [];
@@ -654,14 +655,15 @@ async function renderRegister() {
         }).join('');
         inner += gps.map(g => `<div class="reg-gp"><span class="reg-nm">${escapeHtml(g.name)}</span> <span class="reg-sub">團課${isAll ? '· ' + escapeHtml(g.coach_name || '') : ''}</span></div>`).join('');
         // 同格兩筆以上 → 左右並排（reg-side），格高維持單筆高度
-        rows += `<div class="reg-cell reg-multi${bks.length + gps.length > 1 ? ' reg-side' : ''}">${inner}</div>`;
+        rows += `<div class="reg-cell reg-multi${bks.length + gps.length > 1 ? ' reg-side' : ''}" data-cell="${key}">${inner}</div>`;
       } else {
         const cls = (canRegister && avail.has(key)) ? 'reg-open reg-avail' : 'reg-open';
-        rows += `<div class="reg-cell ${cls}" data-slot="${iso}">＋</div>`;
+        rows += `<div class="reg-cell ${cls}" data-slot="${iso}" data-cell="${key}">＋</div>`;
       }
     }
   }
   $('reg-grid').innerHTML = `<div class="reg-grid">${head}${rows}</div>`;
+  regMarkNow();
   // 空格登錄（拖放後吞掉緊接的合成 click，避免改期同時又開登錄彈窗）
   $('reg-grid').querySelectorAll('.reg-open[data-slot]').forEach(c => c.addEventListener('click', () => {
     if (regSuppressClick) { regSuppressClick = false; return; }
@@ -674,6 +676,28 @@ async function renderRegister() {
     if (booking) bindBookingDrag(c, booking);
   });
 }
+
+// ===== 登錄週曆：今日標示（十字定位）=====
+// 今天的表頭（reg-is-today）＋現在這個小時的時間欄（reg-is-nowhour）＋兩者交叉的那一格（reg-is-now）。
+// 只換 class、不重繪也不重撈，所以頁面開著跨小時／跨日時可以放心定時呼叫，不會打斷拖曳或彈窗。
+// 畫面上不是本週 → 找不到今天的表頭，三個都不標；現在的小時不在顯示列內（深夜、清晨）→ 只標表頭。
+const REG_NOW_CLASSES = ['reg-is-today', 'reg-is-nowhour', 'reg-is-now'];
+function regMarkNow() {
+  const grid = document.querySelector('#reg-grid .reg-grid');
+  if (!grid) return;
+  const now = new Date(), pad = (n) => String(n).padStart(2, '0');
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const hh = pad(now.getHours());
+  const head = grid.querySelector(`.reg-head[data-date="${today}"]`);
+  const want = head ? [head, grid.querySelector(`.reg-timecol[data-hour="${hh}"]`), grid.querySelector(`[data-cell="${today}T${hh}"]`)] : [];
+  REG_NOW_CLASSES.forEach((cls, i) => {
+    grid.querySelectorAll(`.${cls}`).forEach(el => { if (el !== want[i]) el.classList.remove(cls); });
+    want[i]?.classList.add(cls);
+  });
+}
+setInterval(regMarkNow, 60 * 1000);
+// 分頁在背景時瀏覽器會凍結計時器（手機尤其），回到前景立刻補一次
+document.addEventListener('visibilitychange', () => { if (!document.hidden) regMarkNow(); });
 
 // ===== 登錄週曆：點週範圍 → 滾輪式年/月/日選擇器，跳到所選日期所在的那一週 =====
 const WP_ITEM_H = 36;   // 每列高度；滾輪可視 5 列，中間那列＝選取（上下各留 2 列空白）
