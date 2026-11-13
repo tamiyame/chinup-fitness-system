@@ -1,4 +1,5 @@
-// 堂數即將用完自動提醒：方案「尚餘」≤1 → 帶課教練＋管理者；團課未來正取合計剩最後 1 堂 → 會員。
+// 堂數即將用完自動提醒：10 堂方案「尚餘」剩 1 堂 → 帶課教練＋管理者；團課未來正取合計剩最後 1 堂 → 會員。
+// 方案只提醒 10 堂的（單堂、其他堂數不提醒）；客人已經買了新方案（較晚買、還有堂數）的舊方案也不提醒。
 // 每日 9 點掃描；renewal_reminders 去重（每狀態一次）。
 // 規格：docs/superpowers/specs/2026-07-04-renewal-reminders-design.md
 import { db, nowLocal } from '../db/connection.js';
@@ -44,13 +45,24 @@ const recheckDone = db.prepare(`
 
 const sessionLabel = (type) => SESSION_LABELS[type] || type;
 
+const REMIND_TOTAL = 10;   // 只提醒 10 堂方案（業主 2026-11 指定：單堂、其他堂數都不用）
+/**
+ * 需要續購提醒的方案：10 堂、尚餘剛好 1 堂，而且客人名下沒有「較晚買、還有堂數」的方案（已續購就不提醒）。
+ * 較晚買＝id 較大（AUTOINCREMENT；created_at 建立後不會改，兩者順序一致）。新方案作廢、上完或過期（尚餘 0）不算已續購。
+ * 每日提醒與一次性名單共用，兩邊口徑才會一致。
+ */
+function dueLowPackages(now) {
+  const rows = lowPackagesStmt.all(String(now).slice(0, 10), now);
+  const newestUsable = new Map();   // member_id → 還有堂數的方案中最大的 id
+  for (const p of rows) if (p.still >= 1 && p.id > (newestUsable.get(p.member_id) ?? 0)) newestUsable.set(p.member_id, p.id);
+  return rows.filter((p) => p.total_sessions === REMIND_TOTAL && p.still === 1 && newestUsable.get(p.member_id) === p.id);
+}
+
 /** 每日掃描（cron 9:00）。回 { packagesSent, groupSent } 供 log。 */
 export function processRenewalReminders(now = nowLocal()) {
-  const today = String(now).slice(0, 10);
   let packagesSent = 0, groupSent = 0;
 
-  for (const p of lowPackagesStmt.all(today, now)) {
-    if (!(p.still > 0 && p.still <= 1)) continue;
+  for (const p of dueLowPackages(now)) {
     if (hasMarker.get('package', p.member_id, p.id)) continue;
     if (!insertMarker.run('package', p.member_id, p.id).changes) continue;
     const vars = { member_name: p.member_name, session_type_label: sessionLabel(p.session_type), total: p.total_sessions, remaining: p.still };
@@ -72,16 +84,16 @@ export function processRenewalReminders(now = nowLocal()) {
 
 /**
  * 一次性：續購提醒改發員工時，重新檢查全部 10 堂方案，把尚餘 1 堂的客人列成一則發給管理者。
- * 不看 renewal_reminders（之前已提醒過會員的也要列入）。沒有符合者也發一則，管理者才知道檢查過了。
+ * 條件與每日提醒相同（dueLowPackages：已買新方案的不列，所以一位客人最多一筆），
+ * 但不看 renewal_reminders（之前已提醒過會員的也要列入）。沒有符合者也發一則，管理者才知道檢查過了。
  * LINE 關閉或沒送達（例如月額度用完）都不算完成，由開機或 9 點排程再發，直到有管理者收到。
  * 回 { count }，沒執行回 null。
  */
 export function recheckTenSessionPackagesOnce(now = nowLocal()) {
   if (!isLineNotifyEnabled('package_low_recheck') || recheckDone.get()) return null;
-  const hits = lowPackagesStmt.all(String(now).slice(0, 10), now)
-    .filter((p) => p.total_sessions === 10 && p.still === 1);
-  const count = new Set(hits.map((p) => p.member_id)).size;
-  const summary = hits.length
+  const hits = dueLowPackages(now);
+  const count = hits.length;
+  const summary = count
     ? `目前有 ${count} 位客人的 10 堂方案只剩 1 堂：\n${hits.map((p) => `・${p.member_name}（${sessionLabel(p.session_type)}）`).join('\n')}`
     : '目前沒有客人的 10 堂方案只剩 1 堂。';
   notifyAdmins({ type: 'package_low_recheck', vars: { summary } });

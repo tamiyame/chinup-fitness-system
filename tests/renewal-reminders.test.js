@@ -148,6 +148,66 @@ db.prepare('UPDATE users SET archived_at = ? WHERE id = ?').run(NOW, m8);
 run();
 expect('會員已封存 → 不提醒', () => assert.equal(aboutCount(adminUid, 'RR八'), 0));
 
+// ── 只提醒 10 堂方案（單堂、其他堂數都不提醒）──
+const markerCount = (pkgId) => db.prepare("SELECT COUNT(*) c FROM renewal_reminders WHERE kind='package' AND ref_id=?").get(pkgId).c;
+const pSingle = mkPkg(uid('RR單堂客', 'rr-t1@x.com'), { remaining: 1, total: 1 });
+const pFive = mkPkg(uid('RR小包客', 'rr-t2@x.com'), { remaining: 1, total: 5 });
+const pTwenty = mkPkg(uid('RR大包客', 'rr-t3@x.com'), { remaining: 1, total: 20 });
+mkBk(db.prepare('SELECT member_id FROM customer_packages WHERE id=?').get(pFive).member_id, pFive, '2020-05-05T10:00:00');   // 有帶課教練也一樣不發
+run();
+expect('單堂／5 堂／20 堂方案剩 1 堂 → 不提醒，也不留 marker', () => {
+  for (const name of ['RR單堂客', 'RR小包客', 'RR大包客']) {
+    assert.equal(aboutCount(adminUid, name), 0, name);
+    assert.equal(aboutCount(coachUid, name), 0, name);
+  }
+  for (const id of [pSingle, pFive, pTwenty]) assert.equal(markerCount(id), 0);
+});
+
+// ── 已經買了新方案（還有堂數）→ 舊方案剩 1 堂不提醒 ──
+const nA = uid('RR續甲', 'rr-n1@x.com');   // 舊 10 堂剩 1，之後又買一筆 10 堂
+const oldA = mkPkg(nA, { remaining: 1 });
+const newA = mkPkg(nA, { remaining: 10 });
+const nB = uid('RR續乙', 'rr-n2@x.com');   // 新買的是別的類型、別的堂數 → 一樣算已買新方案
+mkPkg(nB, { remaining: 1 });
+mkPkg(nB, { remaining: 3, total: 5, type: '1on2' });
+const nC = uid('RR續丙', 'rr-n3@x.com');   // 新方案只剩 1 堂未來預約 → 舊的不提醒、新的那筆（10 堂）自己提醒
+mkPkg(nC, { remaining: 1 });
+mkBk(nC, mkPkg(nC, { remaining: 0, type: '1on2' }), '2033-02-03T10:00:00');
+const nD = uid('RR續丁', 'rr-n4@x.com');   // 新方案已作廢 → 不算
+mkPkg(nD, { remaining: 1 });
+mkPkg(nD, { remaining: 10, archived: true });
+const nE = uid('RR續戊', 'rr-n5@x.com');   // 新方案已全部上完 → 不算
+mkPkg(nE, { remaining: 1 });
+mkPkg(nE, { remaining: 0 });
+const nF = uid('RR續己', 'rr-n6@x.com');   // 新方案已過期且沒有未來預約 → 不算
+mkPkg(nF, { remaining: 1 });
+mkPkg(nF, { remaining: 5, expires: '2020-01-01' });
+const nG = uid('RR續庚', 'rr-n7@x.com');   // 還有堂數的是「較早買」的那筆 → 較晚買的剩 1 堂照提醒
+mkPkg(nG, { remaining: 6 });
+mkPkg(nG, { remaining: 1 });
+run();
+expect('已買新方案（還有堂數）→ 舊方案剩 1 堂不提醒，也不留 marker', () => {
+  assert.equal(aboutCount(adminUid, 'RR續甲'), 0);
+  assert.equal(markerCount(oldA), 0);
+});
+expect('新方案是別的類型／別的堂數 → 一樣不提醒', () => assert.equal(aboutCount(adminUid, 'RR續乙'), 0));
+expect('新方案自己也剩 1 堂 → 只提醒新的那筆', () => {
+  assert.equal(aboutCount(adminUid, 'RR續丙'), 1);
+  const { body } = db.prepare("SELECT body FROM notifications WHERE user_id=? AND type='package_low_sessions' AND body LIKE '%RR續丙%'").get(adminUid);
+  assert.ok(body.includes('1對2'), body);
+});
+expect('新方案已作廢／已上完／已過期 → 不算已續購，舊方案照提醒', () => {
+  for (const name of ['RR續丁', 'RR續戊', 'RR續己']) assert.equal(aboutCount(adminUid, name), 1, name);
+});
+expect('有堂數的是較早買的那筆 → 較晚買的剩 1 堂照提醒', () => assert.equal(aboutCount(adminUid, 'RR續庚'), 1));
+db.prepare('UPDATE customer_packages SET archived_at = ? WHERE id = ?').run(NOW, newA);   // 新方案後來作廢
+run();
+expect('新方案後來作廢 → 舊方案補提醒一次', () => {
+  assert.equal(aboutCount(adminUid, 'RR續甲'), 1);
+  run();
+  assert.equal(aboutCount(adminUid, 'RR續甲'), 1);
+});
+
 // ── 團課 ──
 const tpl = Number(db.prepare(`INSERT INTO course_templates (name, min_capacity, max_capacity, day_of_week, start_time, recurrence,
   cycle_start_date, cycle_end_date, price_per_session, coach_id)
@@ -217,6 +277,9 @@ mkPkg(uid('RR上完', 'rr-r6@x.com'), { remaining: 0 });                    // �
 const rGone = uid('RR封存', 'rr-r7@x.com');
 mkPkg(rGone, { remaining: 1 });
 db.prepare('UPDATE users SET archived_at = ? WHERE id = ?').run(NOW, rGone);
+const rRenewed = uid('RR已續', 'rr-r9@x.com');                             // 舊 10 堂剩 1，但已買新方案
+mkPkg(rRenewed, { remaining: 1 });
+mkPkg(rRenewed, { remaining: 10 });
 run();   // 先跑每日掃描：RR重一、RR重二 已有 marker，重新檢查仍要列入
 
 setLineNotifyState({ master: false });
@@ -239,8 +302,8 @@ expect('LINE 開啟 → 每位管理者一則彙總，已提醒過的方案也�
     assert.ok(bodies[0].includes('RR重二（1對2）'), bodies[0]);
   }
 });
-expect('剩 2 堂／非 10 堂／作廢／全上完／封存會員不列入', () => {
-  for (const name of ['RR多堂', 'RR五堂', 'RR二十堂', 'RR作廢', 'RR上完', 'RR封存']) assert.ok(!recheckBodies(adminUid)[0].includes(name), name);
+expect('剩 2 堂／非 10 堂／作廢／全上完／封存會員／已買新方案不列入', () => {
+  for (const name of ['RR多堂', 'RR五堂', 'RR二十堂', 'RR作廢', 'RR上完', 'RR封存', 'RR已續']) assert.ok(!recheckBodies(adminUid)[0].includes(name), name);
 });
 expect('教練與會員不收', () => {
   assert.equal(recheckBodies(coachUid).length, 0);
@@ -280,12 +343,12 @@ expect('管理者都沒綁 LINE → 只留紀錄不算完成，之後還會再�
 });
 
 forgetRecheck();
-mkPkg(r1, { remaining: 1, type: '1on2' });   // 同一人兩筆方案都符合
+mkPkg(r1, { remaining: 1, type: '1on2' });   // 同一人又買一筆，兩筆都是 10 堂剩 1
 recheck();
-expect('同一位客人兩筆符合 → 兩筆都列，但只算一位', () => {
+expect('同一位客人新舊兩筆都剩 1 堂 → 只列較晚買的那筆', () => {
   const [body] = recheckBodies(adminUid);
   assert.match(body, /目前有 2 位客人/);
-  assert.ok(body.includes('RR重一（1對1）') && body.includes('RR重一（1對2）'), body);
+  assert.ok(body.includes('RR重一（1對2）') && !body.includes('RR重一（1對1）'), body);
 });
 
 forgetRecheck();
