@@ -8,6 +8,8 @@ import { mkdtempSync, mkdirSync, existsSync, writeFileSync, readdirSync } from '
 const dbPath = join(mkdtempSync(join(tmpdir(), 'online-single-backfill-')), 'test.db');
 process.env.DB_PATH = dbPath;
 process.env.LINE_MOCK = '1'; process.env.GMAIL_MOCK = '1'; process.env.GCAL_MOCK = '1';
+// 固定時區（正式站在台灣）：UTC→本地的換算測試才分得出對錯，在 TZ=UTC 的機器上也一樣。
+process.env.TZ = 'Asia/Taipei';
 const { db } = await import('../src/db/connection.js');
 const pkg = await import('../src/services/packageService.js');
 const bk = await import('../src/services/bookingService.js');
@@ -53,15 +55,14 @@ const H = bk.createCoachRegister({ coachId, memberId: m5, packageId: tenPkg.id ?
 const I = raw({ m: m5, paid: true, createdAt: 'garbage' });
 
 expect('時間換算', () => {
-  const d = new Date('2026-03-01T02:30:00Z');
-  assert.equal(utcToLocal('2026-03-01 02:30:00'), `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`);
-  assert.equal(utcToLocal('2026-03-01T10:30:00'), '2026-03-01T10:30:00');
+  assert.equal(utcToLocal('2026-03-01 02:30:00'), '2026-03-01T10:30:00');   // UTC 02:30 ＝ 台灣 10:30
+  assert.equal(utcToLocal('2026-03-01T10:30:00'), '2026-03-01T10:30:00');   // 已是本地格式 → 原樣
   assert.match(utcToLocal('garbage'), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
   assert.match(utcToLocal(null), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
 });
 
 const pkgCount = () => db.prepare('SELECT COUNT(*) AS c FROM customer_packages').get().c;
-const noPkgCount = () => db.prepare('SELECT COUNT(*) AS c FROM bookings WHERE package_id IS NOT NULL').get().c;
+const linkedBookingCount = () => db.prepare('SELECT COUNT(*) AS c FROM bookings WHERE package_id IS NOT NULL').get().c;
 const flag = () => db.prepare("SELECT value FROM app_settings WHERE key = 'online_single_backfill_done'").get()?.value ?? null;
 const summaryRow = () => db.prepare("SELECT value FROM app_settings WHERE key = 'online_single_backfill_summary'").get()?.value ?? null;
 const clean = () => [flag(), summaryRow()];
@@ -84,21 +85,21 @@ const failFor = (memberId, fn) => {
 };
 
 expect('快照失敗 → 不補、不寫旗標；summary 看得到原因', () => {
-  const before = [pkgCount(), noPkgCount()];
+  const before = [pkgCount(), linkedBookingCount()];
   assert.deepEqual(backfillOnlineSingles({ snapshot: () => ({ ok: false, error: 'x' }) }), { ran: false, reason: 'snapshot_failed' });
-  assert.deepEqual([pkgCount(), noPkgCount(), ...clean()], [...before, null, null]);
+  assert.deepEqual([pkgCount(), linkedBookingCount(), ...clean()], [...before, null, null]);
   const e = backfillError();
   assert.deepEqual([e.reason, e.error ?? null, e.snapshotLeft ?? null], ['snapshot_failed', null, null]);
   assert.match(e.at, LOCAL_TS);
 });
 expect('快照函式丟例外 → 不往外丟、不補、不寫旗標；summary 看得到原因', () => {
-  const before = [pkgCount(), noPkgCount()];
+  const before = [pkgCount(), linkedBookingCount()];
   const r = backfillOnlineSingles({ snapshot: () => { throw new Error('boom'); } });
-  assert.deepEqual([r.ran, r.reason, r.error, pkgCount(), noPkgCount(), ...clean()], [false, 'error', 'boom', ...before, null, null]);
+  assert.deepEqual([r.ran, r.reason, r.error, pkgCount(), linkedBookingCount(), ...clean()], [false, 'error', 'boom', ...before, null, null]);
   assert.deepEqual([backfillError().reason, backfillError().error], ['error', 'boom']);
 });
 expect('寫入中途失敗 → 交易整個回滾：沒有新方案、沒有掛上、沒有旗標與摘要', () => {
-  const before = [pkgCount(), noPkgCount()];
+  const before = [pkgCount(), linkedBookingCount()];
   // 摘要與旗標是交易最後才寫；在寫旗標時強制失敗，此時所有方案都已插入，必須全部回滾
   db.exec("CREATE TRIGGER bf_fail BEFORE INSERT ON app_settings WHEN NEW.key = 'online_single_backfill_done' BEGIN SELECT RAISE(ABORT, 'forced'); END");
   try {
@@ -106,16 +107,16 @@ expect('寫入中途失敗 → 交易整個回滾：沒有新方案、沒有掛�
     assert.deepEqual([r.ran, r.reason], [false, 'error']);
     assert.match(r.error, /forced/);
   } finally { db.exec('DROP TRIGGER bf_fail'); }
-  assert.deepEqual([pkgCount(), noPkgCount(), ...clean()], [...before, null, null]);
+  assert.deepEqual([pkgCount(), linkedBookingCount(), ...clean()], [...before, null, null]);
 });
 expect('某一筆寫入失敗 → 錯誤訊息帶預約 id、剛做的快照被刪掉、summary 看得到原因', () => {
   const dir = mkdtempSync(join(tmpdir(), 'os-snap-'));
-  const before = [pkgCount(), noPkgCount()];
+  const before = [pkgCount(), linkedBookingCount()];
   const r = failFor(m2, () => backfillOnlineSingles(snapIn(dir)));   // m2 的第一筆是 C（A、B 已先插入，要一起回滾）
   assert.deepEqual([r.ran, r.reason, 'snapshotLeft' in r], [false, 'error', false]);
   assert.ok(r.error.startsWith(`booking ${C}: `), r.error); assert.match(r.error, /forced row/);
   assert.deepEqual(readdirSync(dir), []);
-  assert.deepEqual([pkgCount(), noPkgCount(), ...clean()], [...before, null, null]);
+  assert.deepEqual([pkgCount(), linkedBookingCount(), ...clean()], [...before, null, null]);
   const e = backfillError();
   assert.deepEqual([e.reason, e.error, e.snapshotLeft ?? null], ['error', r.error, null]);
   assert.match(e.at, LOCAL_TS);
@@ -123,13 +124,13 @@ expect('某一筆寫入失敗 → 錯誤訊息帶預約 id、剛做的快照被�
 expect('刪快照的函式丟例外 → 不往外丟、只回 ran:false 並帶 snapshotLeft；快照留著', () => {
   const dir = mkdtempSync(join(tmpdir(), 'os-snap-'));
   const opts = { ...snapIn(dir), removeSnapshot: () => { throw new Error('rm boom'); } };
-  const before = [pkgCount(), noPkgCount()];
+  const before = [pkgCount(), linkedBookingCount()];
   const r = failFor(m2, () => backfillOnlineSingles(opts));
   assert.deepEqual([r.ran, r.reason], [false, 'error']);
   assert.ok(r.error.startsWith(`booking ${C}: `), r.error);
   assert.match(r.snapshotLeft, /^pre-online-single-\d{8}-\d{6}\.db$/);
   assert.deepEqual(readdirSync(dir), [r.snapshotLeft]);
-  assert.deepEqual([pkgCount(), noPkgCount(), ...clean()], [...before, null, null]);
+  assert.deepEqual([pkgCount(), linkedBookingCount(), ...clean()], [...before, null, null]);
   assert.deepEqual([backfillError().error, backfillError().snapshotLeft], [r.error, r.snapshotLeft]);
 });
 expect('快照資料夾已有兩份殘留 → 不做新快照、不補登，回報殘留檔名', () => {
@@ -137,10 +138,10 @@ expect('快照資料夾已有兩份殘留 → 不做新快照、不補登，回�
   const left = ['pre-online-single-20261101-000000.db', 'pre-online-single-20261102-000000.db'];
   for (const f of left) writeFileSync(join(dir, f), 'x');
   let snaps = 0;
-  const before = [pkgCount(), noPkgCount()];
+  const before = [pkgCount(), linkedBookingCount()];
   const r = backfillOnlineSingles({ ...snapIn(dir), snapshot: () => { snaps++; return runNamedSnapshot(SNAP, dir); } });
   assert.deepEqual(r, { ran: false, reason: 'snapshot_leftover', files: left });
-  assert.deepEqual([snaps, readdirSync(dir).sort(), pkgCount(), noPkgCount(), ...clean()], [0, left, ...before, null, null]);
+  assert.deepEqual([snaps, readdirSync(dir).sort(), pkgCount(), linkedBookingCount(), ...clean()], [0, left, ...before, null, null]);
   assert.equal(backfillError().reason, 'snapshot_leftover');
 });
 expect('刪具名快照：檔名不合不刪、刪掉回 true、本來就不在也算成功、刪不掉回 false 不丟例外', () => {
@@ -205,7 +206,7 @@ expect('再跑一次 → 已完成；旗標遺失重跑 → 建立 0 筆、不�
   assert.equal(errorRow(), '');   // 「已完成」不算失敗，不寫失敗原因
   db.prepare("DELETE FROM app_settings WHERE key = 'online_single_backfill_done'").run();
   const n = pkgCount(); const again = backfillOnlineSingles({ snapshot });
-  assert.deepEqual([again.ran, again.created, again.members, again.snapshot, pkgCount(), calls], [true, 0, 0, null, n, 1]);
+  assert.deepEqual([again.ran, again.created, again.members, again.snapshot, pkgCount(), calls, flag()], [true, 0, 0, null, n, 1, '1']);
 });
 expect('快照檔不會被每週備份的輪替刪掉，也不在備份清單裡', () => {
   const dir = mkdtempSync(join(tmpdir(), 'os-snap-')); const s = runNamedSnapshot('pre-online-single', dir);
@@ -215,6 +216,6 @@ expect('快照檔不會被每週備份的輪替刪掉，也不在備份清單裡
 });
 expect('快照寫不進去（目的地是檔案）→ ok:false、不丟例外', () => {
   const dir = mkdtempSync(join(tmpdir(), 'os-snap-')); const notDir = join(dir, 'file'); writeFileSync(notDir, 'x');
-  const s = runNamedSnapshot('pre-online-single', notDir);
+  const s = quiet(() => runNamedSnapshot('pre-online-single', notDir));   // 預期中的錯誤訊息不印出來
   assert.equal(s.ok, false); assert.ok(s.error);
 });

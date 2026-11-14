@@ -35,8 +35,7 @@ function settleCancelledBooking(b) {
   const release = () => releaseRedemption({ kind: 'booking', refId: b.id });
   if (!b || !b.package_id) { if (b) release(); return { creditKept: false }; }
   const p = pkgGetPackage(b.package_id);
-  let refunded = false;
-  try { refunded = refundPackageOne(b.package_id); } catch { /* 回補失敗不阻斷取消 */ }
+  try { refundPackageOne(b.package_id); } catch { /* 回補失敗不阻斷取消 */ }
   if (p && p.source === 'online') {
     if (!b.paid_at || b.refunded_at) { closeOnlineSinglePackage(b.package_id); return { creditKept: false }; }
     return { creditKept: true };
@@ -173,6 +172,7 @@ function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1
   return { id: bookingId, startAt, endAt };
 }
 
+// 程式裡只有示範資料（seed-demo，另有幾個舊測試）在用：建出來的預約不掛方案（package_id NULL），正式流程不要接它。
 export function createBooking({ coachId, memberId, startAt, note = null }) {
   if (!coachId || !memberId || !startAt) throw new ApiError(400, 'missing_fields');
   if (typeof startAt !== 'string' || !START_AT_RE.test(startAt)) throw new ApiError(400, 'invalid_start_at');
@@ -260,7 +260,8 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
 }
 
 /** gcal 刪除事件 → 自動取消（對客人與教練皆靜默；管理者通知由呼叫端 gcalPull 發）。
- *  回補方案、釋放折扣；cancel_reason 供稽核；事件已不存在故清 gcal_event_id（免 reconcile 再刪）。 */
+ *  方案與折扣碼依 settleCancelledBooking 分流（教練開立的回補 1 堂；線上單堂未付款作廢、已付款保留 1 堂）；
+ *  回傳的 refunded＝取消後是否真的留下可用堂數。cancel_reason 供稽核；事件已不存在故清 gcal_event_id（免 reconcile 再刪）。 */
 export function cancelBookingFromGcal(bookingId) {
   return tx(() => {
     const b = getBookingStmt.get(bookingId);
@@ -302,7 +303,7 @@ export function cancelBookingAnon({ bookingId, phone, name }) {
 }
 
 /** admin 於後台取消教練課預約（待核對匯款卡片的「取消預約」）。
- *  與顧客/教練取消同語意：釋放折扣、時段釋出；通知會員＋該教練。 */
+ *  與顧客/教練取消同語意：時段釋出，方案與折扣碼依 settleCancelledBooking 分流；通知會員＋該教練。 */
 export function cancelBookingAdmin({ bookingId, actorId, reason = null }) {
   return tx(() => {
     const b = getBookingStmt.get(bookingId);
@@ -721,7 +722,9 @@ export function rescheduleBooking({ bookingId, newStartAt, actorUserId, isAdmin 
   });
 }
 
-/** 改客人/方案（同教練同時段）：退舊方案(若有)→驗新方案(屬新客人、有效)→扣新→更新欄位（轉為方案登錄、已核對）。 */
+/** 改客人/方案（同教練同時段）：已付款的線上單堂不能改（paid_online_single）→驗新方案(屬新客人、有效)
+ *  →釋放舊折扣碼用量→退舊方案(若有；未付款的線上單堂退回後立刻作廢)→舊方案先用檢查→扣新
+ *  →更新欄位（轉為方案登錄、已核對、金額＝新方案單價、折扣清空）。任一步失敗整筆回滾。 */
 export function reassignBooking({ bookingId, newMemberId, newPackageId, actorUserId, isAdmin = false }) {
   return tx(() => {
     const b = getBookingStmt.get(bookingId);
@@ -803,9 +806,9 @@ export function confirmBookingPaymentGroup({ groupId, actorId }) {
   });
 }
 
-/** 整批取消（待核對卡片）：只取消「未收款」的預約；已收款的留在已核對卡走退款。 */
 // 取消「全部預約」：取消該筆所屬循環群組、同教練名下、所有 confirmed 預約（含過去）。
-// 每筆回補堂數；整批彙整一則通知。授權：非管理者只能取消自己名下（比照 reschedule/reassign）。
+// 每筆依 settleCancelledBooking 分流（教練開立的回補 1 堂；線上單堂未付款作廢、已付款各留 1 堂）；
+// 整批彙整一則通知。授權：非管理者只能取消自己名下（比照 reschedule/reassign）。
 // 無 recurring_group_id → 退化成只取消這一筆。回 { ok, cancelled:[ids] } 供 route 逐筆刪日曆。
 export function cancelCoachGroup({ bookingId, actorUserId, isAdmin = false, reason = null }) {
   return tx(() => {
@@ -836,6 +839,7 @@ export function cancelCoachGroup({ bookingId, actorUserId, isAdmin = false, reas
   });
 }
 
+/** 整批取消（待核對卡片）：只取消「未收款」的預約（線上單堂各自作廢）；已收款的留在已核對卡走退款。 */
 export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
   return tx(() => {
     const rows = db.prepare(
@@ -862,7 +866,8 @@ export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
   });
 }
 
-/** 整批取消並退款（已核對卡片長按）：group 內已收款未退款者全數退款（必要時取消）。 */
+/** 整批取消並退款（已核對卡片長按）：group 內已收款未退款者退款（必要時取消）；
+ *  已改約／已作廢的線上單堂跳過、列在 skipped，一筆都退不了 → already_refunded。 */
 export function refundBookingGroupAdmin({ groupId, actorId }) {
   return tx(() => {
     const rows = db.prepare(

@@ -259,7 +259,9 @@ const cancelBookingsByPackageStmt = db.prepare(
    WHERE package_id = ? AND status = 'confirmed'`
 );
 
-// 作廢方案 → 連動取消名下所有未取消預約（含過去；靜默、不回補堂數）。
+// 作廢方案：
+//   教練開立的方案 → 連動取消名下所有未取消預約（含過去；靜默、不回補堂數）。
+//   線上單堂 → 名下還有未取消的預約就擋（has_active_booking）；否則只關閉方案（釋放折扣碼用量），不取消任何預約。
 // 回傳含 cancelledBookingIds 供 route 端逐筆刪 Google 日曆事件。天然冪等（再作廢→空陣列）。
 export function archivePackage(packageId, actorId = null) {
   return tx(() => {

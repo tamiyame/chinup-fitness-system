@@ -197,9 +197,10 @@ addColumnIfMissing('course_sessions', 'is_open', 'INTEGER NOT NULL DEFAULT 1');
 // ── 2026-06-02 1對1 / 1對2 課程型態 ──
 // session_type 記錄該預約是 1對1 還是 1對2，供後台對帳與教練辨識。
 // 舊資料一律視為 '1on1'（ALTER ADD COLUMN 的 DEFAULT 會填入既有列）。
-// 注意：SQLite 無法用 ALTER ADD COLUMN 附加 CHECK，故既有 DB 此欄無 DB 層 CHECK
-// （全新 DB 由 schema.js 帶 CHECK in ('1on1','1on2')）。值的正確性由 app 層把關：
-// createBookingAnon 寫入前驗證、createBooking 一律走 '1on1' 預設，無其他寫入路徑。
+// 注意：這個欄位當初用 ALTER ADD COLUMN 加的時候沒有附 CHECK（SQLite 其實可以附，會對既有列檢查，
+// 見下方 customer_packages.source），故既有 DB 此欄無 DB 層 CHECK（全新 DB 由 schema.js 帶 CHECK in ('1on1','1on2')）。
+// 值的正確性由 app 層把關：createBookingAnon 寫入前驗證、createBooking 一律走 '1on1' 預設，
+// 教練登錄與改掛取自方案的 session_type（customer_packages 有 CHECK）。
 addColumnIfMissing('bookings', 'session_type', "TEXT NOT NULL DEFAULT '1on1'");
 
 // ── 2026-06-05 團體課程：授課教練 ──
