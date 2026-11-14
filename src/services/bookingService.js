@@ -324,6 +324,19 @@ export function cancelBookingAdmin({ bookingId, actorId, reason = null }) {
   });
 }
 
+// 線上單堂方案的退款限制（預約沒掛方案或是教練開立的方案則不受限）：回錯誤碼或 null。
+//   方案已作廢 → package_closed；這筆已取消而方案上另有未取消的預約（保留的那堂已改約）→ credit_in_use
+function onlineSingleRefundBlock(b) {
+  if (!b.package_id) return null;
+  const p = pkgGetPackage(b.package_id);
+  if (!p || p.source !== 'online') return null;
+  if (p.archived_at) return 'package_closed';
+  if (b.status === 'cancelled' && db.prepare(
+    "SELECT 1 FROM bookings WHERE package_id = ? AND status = 'confirmed' AND id != ?"
+  ).get(b.package_id, b.id)) return 'credit_in_use';
+  return null;
+}
+
 /** admin 取消「已收款」的教練課預約並退款（已核對匯款卡片長按）。
  *  金流由店家線下退回，系統記錄 refunded_at/by；已取消但已收款者也可單純補退款紀錄。 */
 export function refundBookingAdmin({ bookingId, actorId }) {
@@ -332,12 +345,15 @@ export function refundBookingAdmin({ bookingId, actorId }) {
     if (!b) throw new ApiError(404, 'booking_not_found');
     if (!b.paid_at) throw new ApiError(409, 'not_paid');
     if (b.refunded_at) throw new ApiError(409, 'already_refunded');
+    const blocked = onlineSingleRefundBlock(b);
+    if (blocked) throw new ApiError(409, blocked);
     const wasConfirmed = b.status === 'confirmed';
     if (wasConfirmed) {
       cancelBookingStmt.run(nowLocal(), actorId, '取消並退款', bookingId);
       settleCancelledBooking(b);
     }
     db.prepare('UPDATE bookings SET refunded_at=?, refunded_by=? WHERE id=?').run(nowLocal(), actorId, bookingId);
+    if (b.package_id) closeOnlineSinglePackage(b.package_id); // 退款後線上單堂方案作廢（其他方案無動作）
     const coach = getCoachStmt.get(b.coach_id);
     if (coach) {
       const amount = b.original_amount != null ? b.original_amount - (b.discount_amount || 0) : null;
@@ -847,23 +863,29 @@ export function refundBookingGroupAdmin({ groupId, actorId }) {
     if (!rows.length) throw new ApiError(409, 'already_refunded');
     const now = nowLocal();
     const cancelled = [];
+    const skipped = [];
+    const refundedRows = [];
     let total = 0;
     for (const b of rows) {
+      if (onlineSingleRefundBlock(b)) { skipped.push(b.id); continue; } // 已改約／已作廢的線上單堂不退
       if (b.status === 'confirmed') {
         cancelBookingStmt.run(now, actorId, '取消並退款', b.id);
         settleCancelledBooking(b);
         cancelled.push(b.id);
       }
       db.prepare('UPDATE bookings SET refunded_at=?, refunded_by=? WHERE id=?').run(now, actorId, b.id);
+      if (b.package_id) closeOnlineSinglePackage(b.package_id);
+      refundedRows.push(b);
       if (b.original_amount != null) total += b.original_amount - (b.discount_amount || 0);
     }
-    const coach = getCoachStmt.get(rows[0].coach_id);
+    if (!refundedRows.length) throw new ApiError(409, 'already_refunded');
+    const coach = getCoachStmt.get(refundedRows[0].coach_id);
     if (coach) {
-      notify({ userId: rows[0].member_id, sessionId: null, type: 'booking_refunded',
+      notify({ userId: refundedRows[0].member_id, sessionId: null, type: 'booking_refunded',
         vars: { coach_display_name: coach.display_name,
-                start_at: `${fmtDateForLine(rows[0].start_at)} 起共 ${rows.length} 堂`,
+                start_at: `${fmtDateForLine(refundedRows[0].start_at)} 起共 ${refundedRows.length} 堂`,
                 amount_text: total > 0 ? `（NT$${total}）` : '' } });
     }
-    return { ok: true, refunded: rows.length, cancelled };
+    return { ok: true, refunded: refundedRows.length, cancelled, skipped };
   });
 }

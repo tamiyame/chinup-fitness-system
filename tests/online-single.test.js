@@ -199,3 +199,42 @@ expect('續購提醒：保留的 1 堂也不算已買新方案', () => {
   processRenewalReminders(nowLocal());
   assert.equal(reminded(ten.id), true);
 });
+
+// ── 退款 ──
+const refund = (id) => bk.refundBookingAdmin({ bookingId: id, actorId: admin });
+expect('已付款未取消 → 退款：取消預約、記退款、方案作廢、釋放折扣碼用量', () => {
+  const o = online({ code: 'OS100', paid: true }); const r = refund(o.id);
+  assert.deepEqual([r.cancelled, B(o.id).status, !!B(o.id).refunded_at, !!P(o.packageId).archived_at, uses(o.id)], [true, 'cancelled', true, true, 0]);
+});
+expect('已付款已取消（保留 1 堂）→ 退款：方案作廢', () => {
+  const o = online({ paid: true }); adminCancel(o.id); const r = refund(o.id);
+  assert.deepEqual([r.cancelled, !!B(o.id).refunded_at, !!P(o.packageId).archived_at], [false, true, true]);
+});
+expect('保留的 1 堂已被改約 → 原筆不能退；改約後那筆退款後，原筆也不能再退', () => {
+  const m = member(); const o = online({ memberId: m, paid: true }); adminCancel(o.id);
+  const nid = register(m, o.packageId);
+  throwsCode(() => refund(o.id), 409, 'credit_in_use');
+  refund(nid);
+  throwsCode(() => refund(o.id), 409, 'package_closed');
+  assert.equal(B(o.id).refunded_at, null);
+});
+expect('改約後那筆只取消：兩筆之中退了一筆，另一筆不能再退', () => {
+  const m = member(); const o = online({ memberId: m, paid: true }); adminCancel(o.id);
+  const nid = register(m, o.packageId); adminCancel(nid);
+  refund(o.id);
+  throwsCode(() => refund(nid), 409, 'package_closed');
+});
+expect('未付款不能退；教練開立的方案退款行為不變', () => {
+  throwsCode(() => refund(online().id), 409, 'not_paid');
+  const m = member(); const ten = tenPack(m); refund(register(m, ten.id));
+  assert.deepEqual([P(ten.id).remaining_sessions, P(ten.id).archived_at], [10, null]);
+});
+expect('整批退款（循環散客）：已改約的那堂跳過並回報，其餘照退；都不能退 → already_refunded', () => {
+  const m = member(); const [a, b, c] = [1, 2, 3].map(() => online({ memberId: m, paid: true }));
+  db.prepare('UPDATE bookings SET recurring_group_id = ? WHERE id IN (?, ?, ?)').run(a.id, a.id, b.id, c.id);
+  adminCancel(b.id); register(m, b.packageId);
+  const r = bk.refundBookingGroupAdmin({ groupId: a.id, actorId: admin });
+  assert.deepEqual([r.refunded, r.skipped, [...r.cancelled].sort((x, y) => x - y)], [2, [b.id], [a.id, c.id]]);
+  assert.deepEqual([B(b.id).refunded_at, P(b.packageId).archived_at, !!P(a.packageId).archived_at, !!P(c.packageId).archived_at], [null, null, true, true]);
+  throwsCode(() => bk.refundBookingGroupAdmin({ groupId: a.id, actorId: admin }), 409, 'already_refunded');
+});
