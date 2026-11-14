@@ -4,7 +4,7 @@ import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js
 import { notify, notifyAdmins, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getOneOnOnePriceByType, getLineOfficialUrl } from './discountService.js';
-import { refundOne as refundPackageOne, deductOne as pkgDeductOne, getPackage as pkgGetPackage } from './packageService.js';
+import { refundOne as refundPackageOne, deductOne as pkgDeductOne, getPackage as pkgGetPackage, closeOnlineSinglePackage } from './packageService.js';
 import { assertBookableTx, computeAvailableSlots } from './availabilityService.js';
 import { sendPaymentConfirmedEmail } from './emailService.js';
 
@@ -24,11 +24,24 @@ const cancelBookingStmt = db.prepare(`
   WHERE id = ? AND status = 'confirmed'
 `);
 
-// 取消「confirmed→cancelled」的預約若來自方案 → 回補 1 堂（呼叫端須保證恰在轉移當下呼叫一次）。
-function refundPackageForBooking(b) {
-  if (b && b.package_id) {
-    try { refundPackageOne(b.package_id); } catch { /* 回補失敗不阻斷取消 */ }
+// 預約從 confirmed 轉 cancelled 的當下呼叫一次（呼叫端須保證恰在轉移當下），依方案來源與付款狀態分流：
+//   沒有方案        → 釋放折扣碼用量
+//   教練開立(staff) → 回補 1 堂（失敗不阻斷）＋釋放折扣碼用量
+//   線上單堂未付款  → 回補後整張方案作廢（由關閉一併釋放折扣碼用量）
+//   線上單堂已付款  → 回補、保留 1 堂可改約，折扣碼用量不釋放（錢還在）
+// 回 { creditKept }：取消後是否真的留下一堂可用的方案堂數。
+function settleCancelledBooking(b) {
+  const release = () => releaseRedemption({ kind: 'booking', refId: b.id });
+  if (!b || !b.package_id) { if (b) release(); return { creditKept: false }; }
+  const p = pkgGetPackage(b.package_id);
+  let refunded = false;
+  try { refunded = refundPackageOne(b.package_id); } catch { /* 回補失敗不阻斷取消 */ }
+  if (p && p.source === 'online') {
+    if (!b.paid_at) { closeOnlineSinglePackage(b.package_id); return { creditKept: false }; }
+    return { creditKept: true };
   }
+  release();
+  return { creditKept: true };
 }
 
 const listMemberStmt = db.prepare(`
@@ -215,8 +228,7 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
     }
 
     cancelBookingStmt.run(nowLocal(), actorUserId, reason, bookingId);
-    refundPackageForBooking(b);
-    releaseRedemption({ kind: 'booking', refId: bookingId });
+    settleCancelledBooking(b);
 
     // Phase 3C: notify the OTHER party (the one who didn't cancel)
     const memberRow = getUserNameStmt.get(b.member_id);
@@ -252,12 +264,11 @@ export function cancelBookingFromGcal(bookingId) {
     if (!b || b.status === 'cancelled') return { ok: false };
     const coach = getCoachStmt.get(b.coach_id);
     cancelBookingStmt.run(nowLocal(), null, 'gcal_event_deleted', bookingId);
-    refundPackageForBooking(b);
-    releaseRedemption({ kind: 'booking', refId: bookingId });
+    const { creditKept } = settleCancelledBooking(b);
     db.prepare('UPDATE bookings SET gcal_event_id = NULL WHERE id = ?').run(bookingId);
     const memberRow = getUserNameStmt.get(b.member_id);
     return { ok: true, coachName: coach?.display_name || '', memberName: memberRow?.name || '',
-             startAt: b.start_at, refunded: !!b.package_id,
+             startAt: b.start_at, refunded: creditKept,
              companionName: b.member2_id ? (getUserNameStmt.get(b.member2_id)?.name || '') : null };
   });
 }
@@ -272,8 +283,7 @@ export function cancelBookingAnon({ bookingId, phone, name }) {
     const isCompanion = !!user && b.member2_id != null && user.id === b.member2_id;
     if (!isPrimary && !isCompanion) throw new ApiError(403, 'forbidden');
     cancelBookingStmt.run(nowLocal(), user.id, null, bookingId);
-    refundPackageForBooking(b);
-    releaseRedemption({ kind: 'booking', refId: bookingId });
+    settleCancelledBooking(b);
     const coach = getCoachStmt.get(b.coach_id);
     if (coach) {
       const startFmt = fmtDateForLine(b.start_at);
@@ -296,8 +306,7 @@ export function cancelBookingAdmin({ bookingId, actorId, reason = null }) {
     if (!b) throw new ApiError(404, 'booking_not_found');
     if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
     cancelBookingStmt.run(nowLocal(), actorId, reason, bookingId);
-    refundPackageForBooking(b);
-    releaseRedemption({ kind: 'booking', refId: bookingId });
+    settleCancelledBooking(b);
     const coach = getCoachStmt.get(b.coach_id);
     const memberRow = getUserNameStmt.get(b.member_id);
     if (coach && memberRow) {
@@ -326,8 +335,7 @@ export function refundBookingAdmin({ bookingId, actorId }) {
     const wasConfirmed = b.status === 'confirmed';
     if (wasConfirmed) {
       cancelBookingStmt.run(nowLocal(), actorId, '取消並退款', bookingId);
-      refundPackageForBooking(b);
-      releaseRedemption({ kind: 'booking', refId: bookingId });
+      settleCancelledBooking(b);
     }
     db.prepare('UPDATE bookings SET refunded_at=?, refunded_by=? WHERE id=?').run(nowLocal(), actorId, bookingId);
     const coach = getCoachStmt.get(b.coach_id);
@@ -788,8 +796,7 @@ export function cancelCoachGroup({ bookingId, actorUserId, isAdmin = false, reas
     const now = nowLocal();
     for (const r of rows) {
       cancelBookingStmt.run(now, actorUserId, reason, r.id);
-      refundPackageForBooking(r);                       // 含過去筆也回補（業主拍板）
-      releaseRedemption({ kind: 'booking', refId: r.id });
+      settleCancelledBooking(r);
     }
     const memberRow = getUserNameStmt.get(rows[0].member_id);
     if (coach && memberRow) {
@@ -813,8 +820,7 @@ export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
     if (!rows.length) throw new ApiError(409, 'no_pending_bookings');
     for (const b of rows) {
       cancelBookingStmt.run(nowLocal(), actorId, reason, b.id);
-      refundPackageForBooking(b);
-      releaseRedemption({ kind: 'booking', refId: b.id });
+      settleCancelledBooking(b);
     }
     const coach = getCoachStmt.get(rows[0].coach_id);
     const memberRow = getUserNameStmt.get(rows[0].member_id);
@@ -845,8 +851,7 @@ export function refundBookingGroupAdmin({ groupId, actorId }) {
     for (const b of rows) {
       if (b.status === 'confirmed') {
         cancelBookingStmt.run(now, actorId, '取消並退款', b.id);
-        refundPackageForBooking(b);
-        releaseRedemption({ kind: 'booking', refId: b.id });
+        settleCancelledBooking(b);
         cancelled.push(b.id);
       }
       db.prepare('UPDATE bookings SET refunded_at=?, refunded_by=? WHERE id=?').run(now, actorId, b.id);

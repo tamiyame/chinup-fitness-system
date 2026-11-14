@@ -133,3 +133,69 @@ expect('會員方案清單每筆帶 source', () => {
   const m = member(); online({ memberId: m }); tenPack(m);
   assert.deepEqual(pkg.listPackagesForMember(m).map((p) => p.source).sort(), ['online', 'staff']);
 });
+
+// ── 取消 ──
+const CANCEL = {
+  '客人取消（登入）': (o) => bk.cancelBooking({ bookingId: o.id, actorUserId: o.memberId }),
+  '客人取消（查詢頁）': (o) => bk.cancelBookingAnon({ bookingId: o.id, phone: phoneOf(o.memberId), name: nameOf(o.memberId) }),
+  '教練取消': (o) => bk.cancelBooking({ bookingId: o.id, actorUserId: coachUser, isCoach: true, reason: 'x' }),
+  '管理者取消': (o) => bk.cancelBookingAdmin({ bookingId: o.id, actorId: admin }),
+  'Google 日曆刪除': (o) => bk.cancelBookingFromGcal(o.id),
+  '取消全部預約': (o) => bk.cancelCoachGroup({ bookingId: o.id, actorUserId: admin, isAdmin: true }),
+};
+for (const [name, cancel] of Object.entries(CANCEL)) {
+  expect(`${name}・未付款 → 方案作廢`, () => {
+    const o = online(); cancel(o);
+    assert.ok(P(o.packageId).archived_at); assert.equal(pkg.getPackage(o.packageId).is_valid, false);
+  });
+  expect(`${name}・已付款 → 保留 1 堂`, () => {
+    const o = online({ paid: true }); cancel(o); const p = pkg.getPackage(o.packageId);
+    assert.deepEqual([p.archived_at, p.remaining_sessions, p.is_valid], [null, 1, true]);
+  });
+}
+const adminCancel = (id) => bk.cancelBookingAdmin({ bookingId: id, actorId: admin });
+expect('待核對整批取消（循環散客）：每一堂的方案各自作廢', () => {
+  const m = member(); const a = online({ memberId: m }), b = online({ memberId: m });
+  db.prepare('UPDATE bookings SET recurring_group_id = ? WHERE id IN (?, ?)').run(a.id, a.id, b.id);
+  bk.cancelBookingAdminGroup({ groupId: a.id, actorId: admin });
+  assert.ok(P(a.packageId).archived_at && P(b.packageId).archived_at);
+});
+expect('折扣碼用量：已付款取消仍算已用；未付款取消釋放', () => {
+  const paid = online({ code: 'OS100', paid: true }); adminCancel(paid.id); assert.equal(uses(paid.id), 1);
+  const unpaid = online({ code: 'OS100' }); adminCancel(unpaid.id); assert.equal(uses(unpaid.id), 0);
+});
+expect('教練開立的方案與沒有方案的舊預約：取消行為不變', () => {
+  const m = member(); const ten = tenPack(m); adminCancel(register(m, ten.id));
+  assert.deepEqual([P(ten.id).remaining_sessions, P(ten.id).archived_at], [10, null]);
+  const raw = rawBooking(); adminCancel(raw); assert.equal(B(raw).status, 'cancelled');
+});
+expect('Google 日曆刪除：真的留下可用堂數才回報已回補', () => {
+  assert.equal(bk.cancelBookingFromGcal(online().id).refunded, false);
+  assert.equal(bk.cancelBookingFromGcal(online({ paid: true }).id).refunded, true);
+  const m = member(); assert.equal(bk.cancelBookingFromGcal(register(m, tenPack(m).id)).refunded, true);
+  assert.equal(bk.cancelBookingFromGcal(rawBooking()).refunded, false);
+});
+expect('一對二：同行客人取消未付款的線上預約 → 主客人的單堂方案作廢', () => {
+  const m = member(), mate = member(); const o = online({ memberId: m, type: '1on2', member2Id: mate });
+  bk.cancelBooking({ bookingId: o.id, actorUserId: mate });
+  assert.ok(P(o.packageId).archived_at);
+});
+expect('舊方案先用：保留的 1 堂比之後才買的同類型方案先用；比它早買的排它前面', () => {
+  const m = member(); const o = online({ memberId: m, paid: true }); adminCancel(o.id);
+  assert.equal(pkg.getPackage(tenPack(m).id).use_first_id, o.packageId);
+  const m2 = member(); const earlier = tenPack(m2); const o2 = online({ memberId: m2, paid: true }); adminCancel(o2.id);
+  assert.deepEqual([pkg.getPackage(o2.packageId).use_first_id, pkg.getPackage(earlier.id).use_first_id], [earlier.id, null]);
+});
+expect('保留的 1 堂由教練登錄改約：金額＝當初實付、已核對；再取消仍保留 1 堂', () => {
+  const m = member(); const o = online({ memberId: m, code: 'OS100', paid: true }); adminCancel(o.id);
+  const nid = register(m, o.packageId); const nb = B(nid);
+  assert.deepEqual([nb.package_id, nb.original_amount, !!nb.paid_at, P(o.packageId).remaining_sessions], [o.packageId, 1400, true, 0]);
+  adminCancel(nid);
+  assert.deepEqual([P(o.packageId).remaining_sessions, P(o.packageId).archived_at], [1, null]);
+});
+expect('續購提醒：保留的 1 堂也不算已買新方案', () => {
+  const m = member(); const ten = tenPack(m); pkg.adjustRemaining({ packageId: ten.id, remaining: 1 });
+  adminCancel(online({ memberId: m, paid: true }).id);
+  processRenewalReminders(nowLocal());
+  assert.equal(reminded(ten.id), true);
+});
