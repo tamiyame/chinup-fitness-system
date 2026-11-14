@@ -262,3 +262,40 @@ expect('用保留的 1 堂改約出來的預約也不能改掛', () => {
   const nid = register(m, o.packageId); const m2 = member();
   throwsCode(() => reassign(nid, m2, tenPack(m2).id), 409, 'paid_online_single');
 });
+
+// ── 後台動作限制、改單價 ──
+expect('線上單堂不能調整堂數、不能還原', () => {
+  const o = online();
+  throwsCode(() => pkg.adjustRemaining({ packageId: o.packageId, remaining: 1 }), 409, 'online_single_readonly');
+  adminCancel(o.id);   // 未付款取消 → 已作廢
+  throwsCode(() => pkg.restorePackage(o.packageId), 409, 'online_single_readonly');
+});
+expect('有未取消預約的線上單堂不能直接作廢', () => {
+  const o = online({ paid: true });
+  throwsCode(() => pkg.archivePackage(o.packageId, admin), 409, 'has_active_booking');
+  assert.deepEqual([B(o.id).status, P(o.packageId).archived_at], ['confirmed', null]);
+});
+expect('保留的 1 堂可以作廢：不取消預約、釋放折扣碼用量、之後不能退款', () => {
+  const o = online({ code: 'OS100', paid: true }); adminCancel(o.id);
+  const r = pkg.archivePackage(o.packageId, admin);
+  assert.deepEqual([r.cancelledBookingIds, !!r.archived_at, uses(o.id)], [[], true, 0]);
+  throwsCode(() => refund(o.id), 409, 'package_closed');
+});
+expect('改單價：線上單堂的折扣一併清除並釋放用量，薪資＝新單價', () => {
+  const o = online({ code: 'OS100' });
+  pkg.updateUnitPrice({ packageId: o.packageId, unitPrice: 1200 });
+  const b = B(o.id);
+  assert.deepEqual([b.original_amount, b.discount_amount, b.discount_code, uses(o.id), P(o.packageId).amount, P(o.packageId).discount_code, payDetail(o.startAt, o.id).amount],
+    [1200, null, null, 0, 1200, null, 1200]);
+});
+expect('改單價：保留的 1 堂改價後，改約的那堂用新價', () => {
+  const m = member(); const o = online({ memberId: m, paid: true }); adminCancel(o.id);
+  pkg.updateUnitPrice({ packageId: o.packageId, unitPrice: 1000 });
+  assert.equal(B(register(m, o.packageId)).original_amount, 1000);
+});
+expect('教練開立的方案：調整、作廢連動取消、還原都照舊', () => {
+  const m = member(); const ten = tenPack(m); const rid = register(m, ten.id);
+  assert.equal(pkg.adjustRemaining({ packageId: ten.id, remaining: 5 }).remaining_sessions, 5);
+  assert.deepEqual(pkg.archivePackage(ten.id, admin).cancelledBookingIds, [rid]);
+  assert.equal(pkg.restorePackage(ten.id).archived_at, null);
+});

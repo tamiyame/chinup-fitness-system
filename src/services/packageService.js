@@ -153,6 +153,7 @@ export function adjustRemaining({ packageId, remaining, note = null }) {
   return tx(() => {
     const p = db.prepare('SELECT * FROM customer_packages WHERE id = ?').get(packageId);
     if (!p) throw new ApiError(404, 'package_not_found');
+    if (p.source === 'online') throw new ApiError(409, 'online_single_readonly');
     const r = Number(remaining);
     if (!Number.isInteger(r) || r < 0 || r > p.total_sessions) throw new ApiError(400, 'invalid_remaining');
     const newNote = note && note.trim() ? note.trim() : null;
@@ -172,9 +173,12 @@ export function updateUnitPrice({ packageId, unitPrice }) {
     if (!p) throw new ApiError(404, 'package_not_found');
     const amount = u * p.total_sessions;
     db.prepare('UPDATE customer_packages SET amount = ?, discount_code = NULL WHERE id = ?').run(amount, packageId);
+    // 同一批預約：改定價、折扣欄位清成 NULL，並釋放它們的折扣碼用量（避免折扣被重複套用或用量殘留）。
+    const ids = db.prepare("SELECT id FROM bookings WHERE package_id = ? AND status = 'confirmed'").all(packageId);
     const r = db.prepare(
-      "UPDATE bookings SET original_amount = ? WHERE package_id = ? AND status = 'confirmed'"
+      "UPDATE bookings SET original_amount = ?, discount_amount = NULL, discount_code = NULL WHERE package_id = ? AND status = 'confirmed'"
     ).run(u, packageId);
+    for (const row of ids) releaseRedemption({ kind: 'booking', refId: row.id });
     return { ok: true, amount, unitPrice: u, rewrittenBookings: r.changes };
   });
 }
@@ -192,8 +196,14 @@ const cancelBookingsByPackageStmt = db.prepare(
 // 回傳含 cancelledBookingIds 供 route 端逐筆刪 Google 日曆事件。天然冪等（再作廢→空陣列）。
 export function archivePackage(packageId, actorId = null) {
   return tx(() => {
-    const p = db.prepare('SELECT id FROM customer_packages WHERE id = ?').get(packageId);
+    const p = db.prepare('SELECT id, source FROM customer_packages WHERE id = ?').get(packageId);
     if (!p) throw new ApiError(404, 'package_not_found');
+    if (p.source === 'online') {
+      // 線上單堂：還有未取消的預約要先取消；否則只關閉方案（釋放折扣碼用量），不連動取消。
+      if (listConfirmedBookingsByPackageStmt.all(packageId).length) throw new ApiError(409, 'has_active_booking');
+      closeOnlineSinglePackage(packageId);
+      return { ...getPackage(packageId), cancelledBookingIds: [] };
+    }
     db.prepare('UPDATE customer_packages SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(nowLocal(), packageId);
     const cancelledBookingIds = listConfirmedBookingsByPackageStmt.all(packageId).map((r) => r.id);
     if (cancelledBookingIds.length) {
@@ -204,8 +214,9 @@ export function archivePackage(packageId, actorId = null) {
 }
 
 export function restorePackage(packageId) {
-  const p = db.prepare('SELECT id FROM customer_packages WHERE id = ?').get(packageId);
+  const p = db.prepare('SELECT id, source FROM customer_packages WHERE id = ?').get(packageId);
   if (!p) throw new ApiError(404, 'package_not_found');
+  if (p.source === 'online') throw new ApiError(409, 'online_single_readonly');
   db.prepare('UPDATE customer_packages SET archived_at = NULL WHERE id = ?').run(packageId);
   return getPackage(packageId);
 }
