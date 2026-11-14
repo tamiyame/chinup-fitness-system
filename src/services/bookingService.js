@@ -726,6 +726,10 @@ export function reassignBooking({ bookingId, newMemberId, newPackageId, actorUse
     if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
     const coach = getCoachStmt.get(b.coach_id);
     if (!isAdmin && (!coach || coach.user_id !== actorUserId)) throw new ApiError(403, 'forbidden');
+    // 線上單堂方案：已付款的不能改掛（什麼都不改）；未付款的在回補後作廢
+    const oldPkg = b.package_id ? pkgGetPackage(b.package_id) : null;
+    const fromOnlineSingle = !!oldPkg && oldPkg.source === 'online';
+    if (fromOnlineSingle && b.paid_at) throw new ApiError(409, 'paid_online_single');
     const memberId = Number(newMemberId);
     const p = pkgGetPackage(newPackageId);
     if (!p) throw new ApiError(404, 'package_not_found');
@@ -733,6 +737,7 @@ export function reassignBooking({ bookingId, newMemberId, newPackageId, actorUse
     if (!p.is_valid) throw new ApiError(409, 'package_invalid');
     if (b.discount_code) releaseRedemption({ kind: 'booking', refId: bookingId }); // 釋放舊折扣碼用量（轉方案後不再套折扣；比照 cancelBooking）
     if (b.package_id) refundPackageOne(b.package_id);          // 退舊方案（+1；refundOne 封頂、best-effort）
+    if (fromOnlineSingle) closeOnlineSinglePackage(b.package_id); // 未付款線上單堂：回補後立刻作廢（要在「舊方案先用」判斷之前）
     // 舊方案先用：退回之後再判斷（原方案退回一堂後可能就是該先用的那筆）；丟錯 → tx rollback 還原退舊
     const useFirstId = pkgGetPackage(newPackageId).use_first_id;
     if (useFirstId) throw new ApiError(409, 'older_package_first', { useFirstId });

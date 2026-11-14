@@ -238,3 +238,27 @@ expect('整批退款（循環散客）：已改約的那堂跳過並回報，其
   assert.deepEqual([B(b.id).refunded_at, P(b.packageId).archived_at, !!P(a.packageId).archived_at, !!P(c.packageId).archived_at], [null, null, true, true]);
   throwsCode(() => bk.refundBookingGroupAdmin({ groupId: a.id, actorId: admin }), 409, 'already_refunded');
 });
+
+// ── 改客人／方案 ──
+const reassign = (bookingId, memberId, packageId) => bk.reassignBooking({ bookingId, newMemberId: memberId, newPackageId: packageId, actorUserId: admin, isAdmin: true });
+expect('未付款的線上單堂改掛到別的客人：成功、原單堂方案作廢、折扣碼用量釋放', () => {
+  const o = online({ code: 'OS100' }); const m2 = member(); const ten = tenPack(m2);
+  reassign(o.id, m2, ten.id);
+  assert.deepEqual([B(o.id).package_id, B(o.id).member_id, !!P(o.packageId).archived_at, uses(o.id), P(ten.id).remaining_sessions], [ten.id, m2, true, 0, 9]);
+});
+expect('未付款的線上單堂改掛到同一位客人之後才買的同類型方案：不被「舊方案先用」誤擋', () => {
+  const m = member(); const o = online({ memberId: m }); const ten = tenPack(m);   // 單堂方案的 id 比 10 堂方案小
+  reassign(o.id, m, ten.id);
+  assert.equal(B(o.id).package_id, ten.id); assert.ok(P(o.packageId).archived_at);
+});
+expect('已付款的線上單堂不能改掛（同客人、別的客人、不同類型）', () => {
+  const m = member(); const o = online({ memberId: m, paid: true }); const m2 = member();
+  const targets = [[m, tenPack(m).id], [m2, tenPack(m2).id], [m, tenPack(m, { sessionType: '1on2' }).id]];
+  for (const [mm, pid] of targets) throwsCode(() => reassign(o.id, mm, pid), 409, 'paid_online_single');
+  assert.deepEqual([B(o.id).package_id, P(o.packageId).remaining_sessions, P(o.packageId).archived_at], [o.packageId, 0, null]);
+});
+expect('用保留的 1 堂改約出來的預約也不能改掛', () => {
+  const m = member(); const o = online({ memberId: m, paid: true }); adminCancel(o.id);
+  const nid = register(m, o.packageId); const m2 = member();
+  throwsCode(() => reassign(nid, m2, tenPack(m2).id), 409, 'paid_online_single');
+});
