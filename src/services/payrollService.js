@@ -38,8 +38,9 @@ function intSetting(key, dflt) {
 const coachesStmt = db.prepare('SELECT id, display_name, is_active, hourly_rate FROM coaches ORDER BY created_at ASC, id ASC');
 const bookingsStmt = db.prepare(`
   SELECT b.id, b.coach_id, b.start_at, b.session_type, b.package_id,
-         b.original_amount, b.discount_amount, u.name AS member_name
+         b.original_amount, b.discount_amount, u.name AS member_name, cp.source AS pkg_source
   FROM bookings b JOIN users u ON u.id = b.member_id
+  LEFT JOIN customer_packages cp ON cp.id = b.package_id
   WHERE b.status = 'confirmed' AND b.start_at >= ? AND b.start_at < ?
   ORDER BY b.coach_id ASC, b.start_at ASC
 `);
@@ -102,9 +103,10 @@ export function computePayroll({ period } = {}) {
     c.oneOnOne.revenue += amount;
     if (unpriced) c.oneOnOne.unpriced += 1;
     if (future) c.oneOnOne.future += 1;
+    // 線上單堂方案（source='online'）仍算散客
     c.oneOnOne.details.push({
       bookingId: b.id, startAt: b.start_at, memberName: b.member_name, sessionType: b.session_type,
-      source: b.package_id ? 'package' : 'walkin', amount, unpriced, future,
+      source: b.package_id && b.pkg_source !== 'online' ? 'package' : 'walkin', amount, unpriced, future,
     });
   }
 

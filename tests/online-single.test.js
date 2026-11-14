@@ -97,3 +97,39 @@ expect('關閉：寫作廢時間、釋放折扣碼用量、不取消預約、可
   assert.equal(pkg.closeOnlineSinglePackage(ten.id), false); assert.equal(P(ten.id).archived_at, null);
   bk.cancelBookingAdmin({ bookingId: o.id, actorId: admin });   // 收尾：已作廢的方案名下不留未取消的預約（Task 7 的不變量會檢查）
 });
+
+// ── 連動：讀取端 ──
+const { computePayroll, defaultPeriod } = await import('../src/services/payrollService.js');
+const { processRenewalReminders } = await import('../src/services/renewalReminderService.js');
+const { getCoachWeek } = await import('../src/services/coachCalendarService.js');
+const payDetail = (startAt, bookingId) => computePayroll({ period: defaultPeriod(startAt) }).coaches
+  .find((c) => c.coachId === coachId).oneOnOne.details.find((d) => d.bookingId === bookingId);
+const reminded = (packageId) => !!db.prepare("SELECT 1 FROM renewal_reminders WHERE kind = 'package' AND ref_id = ?").get(packageId);
+
+expect('薪資：線上單堂標散客、金額＝定價−折扣；教練開立的標方案；沒有方案的舊預約標散客', () => {
+  const o = online({ code: 'OS100' });
+  assert.deepEqual([payDetail(o.startAt, o.id).source, payDetail(o.startAt, o.id).amount], ['walkin', 1400]);
+  const m = member(); const s = slot(); assert.equal(payDetail(s, register(m, tenPack(m).id, s)).source, 'package');
+  const s2 = slot(); assert.equal(payDetail(s2, rawBooking({ startAt: s2 })).source, 'walkin');
+});
+expect('續購提醒：10 堂剩 1 堂的客人另有未來的線上單堂 → 照樣提醒', () => {
+  const m = member(); const ten = tenPack(m); pkg.adjustRemaining({ packageId: ten.id, remaining: 1 });
+  online({ memberId: m });
+  processRenewalReminders(nowLocal());
+  assert.equal(reminded(ten.id), true);
+});
+expect('客人端我的方案：不含線上單堂', () => {
+  const m = member(); online({ memberId: m });
+  assert.deepEqual(pkg.listScheduleViewPackages(m, nowLocal()), []);
+  tenPack(m); assert.equal(pkg.listScheduleViewPackages(m, nowLocal()).length, 1);
+});
+expect('週曆預約帶 pkg_source', () => {
+  const wk = (id, s) => getCoachWeek({ coachId, start: s.slice(0, 10) }).bookings.find((x) => x.id === id);
+  const o = online(); assert.equal(wk(o.id, o.startAt).pkg_source, 'online');
+  const m = member(); const s = slot(); assert.equal(wk(register(m, tenPack(m).id, s), s).pkg_source, 'staff');
+  const s2 = slot(); assert.equal(wk(rawBooking({ startAt: s2 }), s2).pkg_source, null);
+});
+expect('會員方案清單每筆帶 source', () => {
+  const m = member(); online({ memberId: m }); tenPack(m);
+  assert.deepEqual(pkg.listPackagesForMember(m).map((p) => p.source).sort(), ['online', 'staff']);
+});

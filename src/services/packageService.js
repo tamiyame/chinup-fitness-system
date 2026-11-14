@@ -120,7 +120,7 @@ export function listScheduleViewPackages(memberId, now) {
   const today = String(now).slice(0, 10);
   const pkgs = db.prepare(
     `SELECT * FROM customer_packages
-      WHERE member_id = ? AND archived_at IS NULL
+      WHERE member_id = ? AND archived_at IS NULL AND source <> 'online'
       ORDER BY (expires_at IS NULL) ASC, expires_at ASC, created_at ASC`
   ).all(memberId);
   if (!pkgs.length) return [];
