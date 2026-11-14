@@ -10,11 +10,22 @@ function todayLocal() { return nowLocal().slice(0, 10); }
 // is_valid：未作廢 + 有剩 + 未過期（? = 今天）
 const VALID_EXPR = `(cp.archived_at IS NULL AND cp.remaining_sessions > 0 AND (cp.expires_at IS NULL OR cp.expires_at >= ?))`;
 
+// 舊方案先用（業主 2026-11 指定）：同一位客人、同類型（1對1／1對2）裡，還可用的方案要從最早買的那筆開始登錄。
+// 最早買＝id 最小（AUTOINCREMENT；created_at 建立後不會改，兩者順序一致）。
+// use_first_id＝要先用完的那筆方案 id；這筆自己就是該用的那筆，或自己已不可用 → null。
+const olderValidStmt = db.prepare(
+  `SELECT MIN(cp.id) AS id FROM customer_packages cp
+    WHERE cp.member_id = ? AND cp.session_type = ? AND cp.id < ? AND ${VALID_EXPR}`
+);
+
 export function getPackage(id) {
   const row = db.prepare(`SELECT cp.*, ${VALID_EXPR} AS is_valid FROM customer_packages cp WHERE cp.id = ?`)
     .get(todayLocal(), id);
   if (!row) return null;
   row.is_valid = !!row.is_valid;
+  row.use_first_id = row.is_valid
+    ? (olderValidStmt.get(row.member_id, row.session_type, row.id, todayLocal()).id ?? null)
+    : null;
   return row;
 }
 
@@ -73,7 +84,15 @@ export function listPackagesForMember(memberId, { includeArchived = false } = {}
                (cp.remaining_sessions > 0) DESC,
                (cp.expires_at IS NULL) ASC, cp.expires_at ASC, cp.created_at ASC`
   ).all(todayLocal(), now, now, memberId);
-  for (const r of rows) r.is_valid = !!r.is_valid;
+  const firstByType = new Map();   // session_type → 還可用的方案中最早買的那筆 id
+  for (const r of rows) {
+    r.is_valid = !!r.is_valid;
+    if (r.is_valid && r.id < (firstByType.get(r.session_type) ?? Infinity)) firstByType.set(r.session_type, r.id);
+  }
+  for (const r of rows) {
+    const first = firstByType.get(r.session_type);
+    r.use_first_id = r.is_valid && first !== r.id ? first : null;
+  }
   return rows;
 }
 

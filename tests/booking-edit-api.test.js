@@ -31,6 +31,8 @@ const wkAll=await req('GET',`/api/coach/week?all=1&start=${D}`,{token});
 expect('管理者 all=1 → 回 all:true',()=>{ assert.equal(wkAll.status,200); assert.equal(wkAll.data.all,true); });
 
 // 管理者取消（他教練的）方案預約 → 200 + 回補方案堂（編輯彈窗取消路徑）
+// 舊方案先用：m1 前面那筆 1on1 方案（改指定後退回、還有堂數）先作廢，pkgC 才是該用的那筆
+db.prepare("UPDATE customer_packages SET archived_at='2020-01-01T00:00:00' WHERE member_id=? AND session_type='1on1' AND archived_at IS NULL").run(m1);
 const pkgC=await req('POST','/api/coach/packages',{token,body:{memberId:m1,sessionType:'1on1',totalSessions:4,amount:6000}});
 const regC=await req('POST','/api/coach/register',{token,body:{coachId,memberId:m1,packageId:pkgC.data.id,startAt:`${D}T11:00:00`,recurrence:null}});
 const cbid=regC.data.created[0].id;

@@ -588,6 +588,7 @@ const getValidPackageForRegister = (packageId, memberId) => {
   if (!p) throw new ApiError(404, 'package_not_found');
   if (p.member_id !== memberId) throw new ApiError(400, 'package_member_mismatch');
   if (!p.is_valid) throw new ApiError(409, 'package_invalid'); // 已作廢/用罄/過期
+  if (p.use_first_id) throw new ApiError(409, 'older_package_first', { useFirstId: p.use_first_id }); // 同類型較早買的方案還有堂數 → 先用完
   return p;
 };
 
@@ -708,6 +709,9 @@ export function reassignBooking({ bookingId, newMemberId, newPackageId, actorUse
     if (!p.is_valid) throw new ApiError(409, 'package_invalid');
     if (b.discount_code) releaseRedemption({ kind: 'booking', refId: bookingId }); // 釋放舊折扣碼用量（轉方案後不再套折扣；比照 cancelBooking）
     if (b.package_id) refundPackageOne(b.package_id);          // 退舊方案（+1；refundOne 封頂、best-effort）
+    // 舊方案先用：退回之後再判斷（原方案退回一堂後可能就是該先用的那筆）；丟錯 → tx rollback 還原退舊
+    const useFirstId = pkgGetPackage(newPackageId).use_first_id;
+    if (useFirstId) throw new ApiError(409, 'older_package_first', { useFirstId });
     if (!pkgDeductOne(newPackageId)) throw new ApiError(409, 'package_depleted'); // 防禦（單執行緒下用罄方案 is_valid=false 已先擋為 package_invalid）；失敗 → tx rollback 還原退舊
     const unitPrice = p.amount != null ? Math.round(p.amount / p.total_sessions) : null;
     // 新方案 1對1 或新主客人＝原同行 → 同行位清空；否則保留原同行

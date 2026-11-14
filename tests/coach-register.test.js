@@ -15,9 +15,15 @@ const admin = Number(db.prepare("INSERT INTO users (name,email,role,is_admin) VA
 // 未來日期（避免與既有衝突）
 const base = new Date(Date.now()+10*86400000);
 const D = `${base.getFullYear()}-${pad(base.getMonth()+1)}-${pad(base.getDate())}`;
+// 舊方案先用：同類型較早買的方案還有堂數時，不能登錄／改指定到較新的。這些案例測的不是先後順序，
+// 開方案前先把這位客人同類型的舊方案作廢，新開的這筆就是該用的那筆。
+const freshPkg = (opts) => {
+  db.prepare("UPDATE customer_packages SET archived_at = '2020-01-01T00:00:00' WHERE member_id = ? AND session_type = ? AND archived_at IS NULL").run(opts.memberId, opts.sessionType);
+  return createPackage(opts);
+};
 
 expect('單筆登錄：扣 1 堂、自動已核對、寫 package_id/original_amount', () => {
-  const p = createPackage({ memberId: mid, sessionType:'1on1', totalSessions:10, amount:15000 });
+  const p = freshPkg({ memberId: mid, sessionType:'1on1', totalSessions:10, amount:15000 });
   const r = createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T09:00:00`, recurrence:null, actorId: admin });
   assert.equal(r.created.length, 1);
   assert.equal(getPackage(p.id).remaining_sessions, 9);
@@ -31,7 +37,7 @@ expect('不存在方案 → 404 package_not_found', () => {
   assert.throws(() => createCoachRegister({ coachId, memberId: mid, packageId: 999999, startAt:`${D}T11:00:00`, recurrence:null, actorId: admin }), /package_not_found/);
 });
 expect('session_type 由方案決定（1on2 方案 → 預約 1on2）', () => {
-  const p = createPackage({ memberId: mid, sessionType:'1on2', totalSessions:5 });
+  const p = freshPkg({ memberId: mid, sessionType:'1on2', totalSessions:5 });
   const r = createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T11:00:00`, recurrence:null, actorId: admin });
   assert.equal(db.prepare('SELECT session_type FROM bookings WHERE id=?').get(r.created[0].id).session_type, '1on2');
 });
@@ -41,7 +47,7 @@ expect('方案不屬該客人 → 擋', () => {
   assert.throws(() => createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T12:00:00`, recurrence:null, actorId: admin }), /package_member_mismatch|invalid_package/);
 });
 expect('循環：方案剩餘不足 → 只建立到用罄為止', () => {
-  const p = createPackage({ memberId: mid, sessionType:'1on1', totalSessions:2 });
+  const p = freshPkg({ memberId: mid, sessionType:'1on1', totalSessions:2 });
   const r = createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T14:00:00`,
     recurrence:{ frequency:'daily', end:{type:'count',count:5} }, actorId: admin });
   assert.equal(r.created.length, 2);             // 只建立 2 筆（堂數 2）
@@ -51,7 +57,7 @@ expect('循環：方案剩餘不足 → 只建立到用罄為止', () => {
   assert.equal(grp, r.created[0].id);            // group = 首筆
 });
 expect('循環：衝突場次跳過不扣', () => {
-  const p = createPackage({ memberId: mid, sessionType:'1on1', totalSessions:5 });
+  const p = freshPkg({ memberId: mid, sessionType:'1on1', totalSessions:5 });
   // 先佔一個未來時段（同教練），讓循環第二筆衝突
   const clashDay = new Date(Date.now()+20*86400000); const CD = `${clashDay.getFullYear()}-${pad(clashDay.getMonth()+1)}-${pad(clashDay.getDate())}`;
   db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type) VALUES (?,?,?,?, '1on1')").run(coachId, admin, `${CD}T08:00:00`, `${CD}T09:00:00`);
@@ -64,7 +70,7 @@ expect('循環：衝突場次跳過不扣', () => {
   assert.equal(getPackage(p.id).remaining_sessions, 4);
 });
 expect('preview：標 ok/conflict/depleted，回 willCreate/willDeduct', () => {
-  const p = createPackage({ memberId: mid, sessionType:'1on1', totalSessions:1 });
+  const p = freshPkg({ memberId: mid, sessionType:'1on1', totalSessions:1 });
   const futureDay = new Date(Date.now()+40*86400000); const FD = `${futureDay.getFullYear()}-${pad(futureDay.getMonth()+1)}-${pad(futureDay.getDate())}`;
   const pv = previewCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${FD}T07:00:00`, recurrence:{ frequency:'daily', end:{type:'count',count:3} } });
   assert.equal(pv.occurrences.length, 3);
@@ -76,18 +82,18 @@ expect('preview：標 ok/conflict/depleted，回 willCreate/willDeduct', () => {
 // ── 一對二同行客人 ──
 const mate = Number(db.prepare("INSERT INTO users (name,email,role,phone) VALUES ('reg同行','reg-mate@x.com','user','0971000002')").run().lastInsertRowid);
 expect('1on2 方案帶 companionId：循環每筆 member2_id 相同、同行收循環摘要一則', () => {
-  const p = createPackage({ memberId: mid, sessionType:'1on2', totalSessions:3 });
+  const p = freshPkg({ memberId: mid, sessionType:'1on2', totalSessions:3 });
   const r = createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T16:00:00`, recurrence:{ frequency:'daily', interval:1, end:{ type:'count', count:2 } }, actorId: admin, companionId: mate });
   assert.equal(r.created.length, 2);
   for (const c of r.created) assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(c.id).member2_id, mate);
   assert.equal(db.prepare("SELECT COUNT(*) c FROM notifications WHERE user_id=? AND type='booking_recurring_created'").get(mate).c, 1);
 });
 expect('1on1 方案帶 companionId → 400 companion_not_allowed', () => {
-  const p = createPackage({ memberId: mid, sessionType:'1on1', totalSessions:3 });
+  const p = freshPkg({ memberId: mid, sessionType:'1on1', totalSessions:3 });
   assert.throws(() => createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T18:00:00`, recurrence:null, actorId: admin, companionId: mate }), /companion_not_allowed/);
 });
 expect('companionId＝主客人 → 400 companion_same_person；不存在 → 404 companion_not_found', () => {
-  const p = createPackage({ memberId: mid, sessionType:'1on2', totalSessions:3 });
+  const p = freshPkg({ memberId: mid, sessionType:'1on2', totalSessions:3 });
   assert.throws(() => createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T19:00:00`, recurrence:null, actorId: admin, companionId: mid }), /companion_same_person/);
   assert.throws(() => createCoachRegister({ coachId, memberId: mid, packageId: p.id, startAt:`${D}T19:00:00`, recurrence:null, actorId: admin, companionId: 999999 }), /companion_not_found/);
 });
