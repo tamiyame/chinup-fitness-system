@@ -85,6 +85,7 @@ import {
   unbindByUserId,
   requestPublicBindCode,
 } from './services/lineBindingService.js';
+import { backfillOnlineSingles } from './services/onlineSingleBackfill.js';
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
@@ -97,6 +98,7 @@ import {
   adjustRemaining as svcAdjustRemaining,
   updateUnitPrice as svcUpdateUnitPrice,
   archivePackage as svcArchivePackage,
+  getPackagesSummary as svcPackagesSummary,
   restorePackage as svcRestorePackage,
 } from './services/packageService.js';
 import { getCoachWeek as svcGetCoachWeek, searchCustomers as svcSearchCustomers } from './services/coachCalendarService.js';
@@ -904,6 +906,11 @@ app.get('/api/coach/packages', requireCoach, asyncHandler((req, res) => {
   res.json(svcListPackages(memberId, { includeArchived }));
 }));
 
+// 後台方案總覽（各來源方案數、未掛方案預約數、補登結果）
+app.get('/api/admin/packages/summary', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcPackagesSummary());
+}));
+
 app.patch('/api/coach/packages/:id', requireCoach, asyncHandler((req, res) => {
   const { remaining, note } = req.body || {};
   if (remaining == null) return res.status(400).json({ error: 'missing_remaining' });
@@ -1594,6 +1601,14 @@ const PORT = Number(process.env.PORT || 3000);
 if (process.env.NODE_ENV !== 'test') {
   // Bootstrap: migrations already applied on DB open; ensure an admin exists.
   ensureInitialAdmin();
+
+  // 線上單堂：一次性補登既有預約（先快照；失敗只記錄，不擋開機；原因也看得到於 GET /api/admin/packages/summary 的 backfillError）
+  const bf = backfillOnlineSingles();
+  if (bf.ran) console.log(`[migrate] online single backfill: ${bf.created} bookings / ${bf.members} members${bf.snapshot ? ` (snapshot ${bf.snapshot})` : ''}`);
+  else if (bf.reason !== 'done') {
+    console.error(`[migrate] online single backfill skipped: ${bf.reason}${bf.error ? ` (${bf.error})` : ''}`
+      + `${bf.snapshotLeft ? ` [snapshot left: ${bf.snapshotLeft}]` : ''}${Array.isArray(bf.files) ? ` [leftover snapshots: ${bf.files.join(', ')}]` : ''}`);
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[server] listening on port ${PORT}`);

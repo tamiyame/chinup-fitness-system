@@ -4,7 +4,7 @@ import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js
 import { notify, notifyAdmins, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getOneOnOnePriceByType, getLineOfficialUrl } from './discountService.js';
-import { refundOne as refundPackageOne, deductOne as pkgDeductOne, getPackage as pkgGetPackage } from './packageService.js';
+import { refundOne as refundPackageOne, deductOne as pkgDeductOne, getPackage as pkgGetPackage, closeOnlineSinglePackage, createOnlineSingleForBooking } from './packageService.js';
 import { assertBookableTx, computeAvailableSlots } from './availabilityService.js';
 import { sendPaymentConfirmedEmail } from './emailService.js';
 
@@ -24,11 +24,24 @@ const cancelBookingStmt = db.prepare(`
   WHERE id = ? AND status = 'confirmed'
 `);
 
-// 取消「confirmed→cancelled」的預約若來自方案 → 回補 1 堂（呼叫端須保證恰在轉移當下呼叫一次）。
-function refundPackageForBooking(b) {
-  if (b && b.package_id) {
-    try { refundPackageOne(b.package_id); } catch { /* 回補失敗不阻斷取消 */ }
+// 預約從 confirmed 轉 cancelled 的當下呼叫一次（呼叫端須保證恰在轉移當下），依方案來源與付款狀態分流：
+//   沒有方案                    → 釋放折扣碼用量
+//   教練開立(staff)             → 回補 1 堂（失敗不阻斷）＋釋放折扣碼用量
+//   線上單堂未付款、或已退款    → 回補後整張方案作廢（由關閉一併釋放折扣碼用量）；錢不在店裡，不留堂
+//     （已退款卻仍未取消只會出現在人工改過的舊資料：現行退款一定連同取消）
+//   線上單堂已付款且未退款      → 回補、保留 1 堂可改約，折扣碼用量不釋放（錢還在）
+// 回 { creditKept }：取消後是否真的留下一堂可用的方案堂數。
+function settleCancelledBooking(b) {
+  const release = () => releaseRedemption({ kind: 'booking', refId: b.id });
+  if (!b || !b.package_id) { if (b) release(); return { creditKept: false }; }
+  const p = pkgGetPackage(b.package_id);
+  try { refundPackageOne(b.package_id); } catch { /* 回補失敗不阻斷取消 */ }
+  if (p && p.source === 'online') {
+    if (!b.paid_at || b.refunded_at) { closeOnlineSinglePackage(b.package_id); return { creditKept: false }; }
+    return { creditKept: true };
   }
+  release();
+  return { creditKept: true };
 }
 
 const listMemberStmt = db.prepare(`
@@ -159,6 +172,7 @@ function createBookingCore({ coach, memberId, startAt, note, sessionType = '1on1
   return { id: bookingId, startAt, endAt };
 }
 
+// 程式裡只有示範資料（seed-demo，另有幾個舊測試）在用：建出來的預約不掛方案（package_id NULL），正式流程不要接它。
 export function createBooking({ coachId, memberId, startAt, note = null }) {
   if (!coachId || !memberId || !startAt) throw new ApiError(400, 'missing_fields');
   if (typeof startAt !== 'string' || !START_AT_RE.test(startAt)) throw new ApiError(400, 'invalid_start_at');
@@ -189,6 +203,8 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
     if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalAmount = applied.finalTotal; }
     db.prepare('UPDATE bookings SET original_amount=?, discount_amount=?, discount_code=?, customer_email=? WHERE id=?')
       .run(originalAmount, discountAmount, discountCode_, (email || null), r.id);
+    // 線上單堂一律建成「一堂的方案」；與預約同一個交易，失敗整筆回滾。結果不放進回傳物件。
+    createOnlineSingleForBooking(r.id);
     r.sessionType = sessionType;
     r.customerEmail = email || null;
     r.originalAmount = originalAmount; r.discountAmount = discountAmount; r.discountCode = discountCode_; r.finalAmount = finalAmount;
@@ -215,8 +231,7 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
     }
 
     cancelBookingStmt.run(nowLocal(), actorUserId, reason, bookingId);
-    refundPackageForBooking(b);
-    releaseRedemption({ kind: 'booking', refId: bookingId });
+    settleCancelledBooking(b);
 
     // Phase 3C: notify the OTHER party (the one who didn't cancel)
     const memberRow = getUserNameStmt.get(b.member_id);
@@ -245,19 +260,19 @@ export function cancelBooking({ bookingId, actorUserId, isCoach = false, reason 
 }
 
 /** gcal 刪除事件 → 自動取消（對客人與教練皆靜默；管理者通知由呼叫端 gcalPull 發）。
- *  回補方案、釋放折扣；cancel_reason 供稽核；事件已不存在故清 gcal_event_id（免 reconcile 再刪）。 */
+ *  方案與折扣碼依 settleCancelledBooking 分流（教練開立的回補 1 堂；線上單堂未付款作廢、已付款保留 1 堂）；
+ *  回傳的 refunded＝取消後是否真的留下可用堂數。cancel_reason 供稽核；事件已不存在故清 gcal_event_id（免 reconcile 再刪）。 */
 export function cancelBookingFromGcal(bookingId) {
   return tx(() => {
     const b = getBookingStmt.get(bookingId);
     if (!b || b.status === 'cancelled') return { ok: false };
     const coach = getCoachStmt.get(b.coach_id);
     cancelBookingStmt.run(nowLocal(), null, 'gcal_event_deleted', bookingId);
-    refundPackageForBooking(b);
-    releaseRedemption({ kind: 'booking', refId: bookingId });
+    const { creditKept } = settleCancelledBooking(b);
     db.prepare('UPDATE bookings SET gcal_event_id = NULL WHERE id = ?').run(bookingId);
     const memberRow = getUserNameStmt.get(b.member_id);
     return { ok: true, coachName: coach?.display_name || '', memberName: memberRow?.name || '',
-             startAt: b.start_at, refunded: !!b.package_id,
+             startAt: b.start_at, refunded: creditKept,
              companionName: b.member2_id ? (getUserNameStmt.get(b.member2_id)?.name || '') : null };
   });
 }
@@ -272,8 +287,7 @@ export function cancelBookingAnon({ bookingId, phone, name }) {
     const isCompanion = !!user && b.member2_id != null && user.id === b.member2_id;
     if (!isPrimary && !isCompanion) throw new ApiError(403, 'forbidden');
     cancelBookingStmt.run(nowLocal(), user.id, null, bookingId);
-    refundPackageForBooking(b);
-    releaseRedemption({ kind: 'booking', refId: bookingId });
+    settleCancelledBooking(b);
     const coach = getCoachStmt.get(b.coach_id);
     if (coach) {
       const startFmt = fmtDateForLine(b.start_at);
@@ -289,15 +303,14 @@ export function cancelBookingAnon({ bookingId, phone, name }) {
 }
 
 /** admin 於後台取消教練課預約（待核對匯款卡片的「取消預約」）。
- *  與顧客/教練取消同語意：釋放折扣、時段釋出；通知會員＋該教練。 */
+ *  與顧客/教練取消同語意：時段釋出，方案與折扣碼依 settleCancelledBooking 分流；通知會員＋該教練。 */
 export function cancelBookingAdmin({ bookingId, actorId, reason = null }) {
   return tx(() => {
     const b = getBookingStmt.get(bookingId);
     if (!b) throw new ApiError(404, 'booking_not_found');
     if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
     cancelBookingStmt.run(nowLocal(), actorId, reason, bookingId);
-    refundPackageForBooking(b);
-    releaseRedemption({ kind: 'booking', refId: bookingId });
+    settleCancelledBooking(b);
     const coach = getCoachStmt.get(b.coach_id);
     const memberRow = getUserNameStmt.get(b.member_id);
     if (coach && memberRow) {
@@ -315,6 +328,19 @@ export function cancelBookingAdmin({ bookingId, actorId, reason = null }) {
   });
 }
 
+// 線上單堂方案的退款限制（預約沒掛方案或是教練開立的方案則不受限）：回錯誤碼或 null。
+//   方案已作廢 → package_closed；這筆已取消而方案上另有未取消的預約（保留的那堂已改約）→ credit_in_use
+function onlineSingleRefundBlock(b) {
+  if (!b.package_id) return null;
+  const p = pkgGetPackage(b.package_id);
+  if (!p || p.source !== 'online') return null;
+  if (p.archived_at) return 'package_closed';
+  if (b.status === 'cancelled' && db.prepare(
+    "SELECT 1 FROM bookings WHERE package_id = ? AND status = 'confirmed' AND id != ?"
+  ).get(b.package_id, b.id)) return 'credit_in_use';
+  return null;
+}
+
 /** admin 取消「已收款」的教練課預約並退款（已核對匯款卡片長按）。
  *  金流由店家線下退回，系統記錄 refunded_at/by；已取消但已收款者也可單純補退款紀錄。 */
 export function refundBookingAdmin({ bookingId, actorId }) {
@@ -323,13 +349,15 @@ export function refundBookingAdmin({ bookingId, actorId }) {
     if (!b) throw new ApiError(404, 'booking_not_found');
     if (!b.paid_at) throw new ApiError(409, 'not_paid');
     if (b.refunded_at) throw new ApiError(409, 'already_refunded');
+    const blocked = onlineSingleRefundBlock(b);
+    if (blocked) throw new ApiError(409, blocked);
     const wasConfirmed = b.status === 'confirmed';
     if (wasConfirmed) {
       cancelBookingStmt.run(nowLocal(), actorId, '取消並退款', bookingId);
-      refundPackageForBooking(b);
-      releaseRedemption({ kind: 'booking', refId: bookingId });
+      settleCancelledBooking(b);
     }
     db.prepare('UPDATE bookings SET refunded_at=?, refunded_by=? WHERE id=?').run(nowLocal(), actorId, bookingId);
+    if (b.package_id) closeOnlineSinglePackage(b.package_id); // 退款後線上單堂方案作廢（其他方案無動作）
     const coach = getCoachStmt.get(b.coach_id);
     if (coach) {
       const amount = b.original_amount != null ? b.original_amount - (b.discount_amount || 0) : null;
@@ -694,7 +722,9 @@ export function rescheduleBooking({ bookingId, newStartAt, actorUserId, isAdmin 
   });
 }
 
-/** 改客人/方案（同教練同時段）：退舊方案(若有)→驗新方案(屬新客人、有效)→扣新→更新欄位（轉為方案登錄、已核對）。 */
+/** 改客人/方案（同教練同時段）：已付款的線上單堂不能改（paid_online_single）→驗新方案(屬新客人、有效)
+ *  →釋放舊折扣碼用量→退舊方案(若有；未付款的線上單堂退回後立刻作廢)→舊方案先用檢查→扣新
+ *  →更新欄位（轉為方案登錄、已核對、金額＝新方案單價、折扣清空）。任一步失敗整筆回滾。 */
 export function reassignBooking({ bookingId, newMemberId, newPackageId, actorUserId, isAdmin = false }) {
   return tx(() => {
     const b = getBookingStmt.get(bookingId);
@@ -702,6 +732,10 @@ export function reassignBooking({ bookingId, newMemberId, newPackageId, actorUse
     if (b.status === 'cancelled') throw new ApiError(409, 'already_cancelled');
     const coach = getCoachStmt.get(b.coach_id);
     if (!isAdmin && (!coach || coach.user_id !== actorUserId)) throw new ApiError(403, 'forbidden');
+    // 線上單堂方案：已付款的不能改掛（什麼都不改）；未付款的在回補後作廢
+    const oldPkg = b.package_id ? pkgGetPackage(b.package_id) : null;
+    const fromOnlineSingle = !!oldPkg && oldPkg.source === 'online';
+    if (fromOnlineSingle && b.paid_at) throw new ApiError(409, 'paid_online_single');
     const memberId = Number(newMemberId);
     const p = pkgGetPackage(newPackageId);
     if (!p) throw new ApiError(404, 'package_not_found');
@@ -709,6 +743,7 @@ export function reassignBooking({ bookingId, newMemberId, newPackageId, actorUse
     if (!p.is_valid) throw new ApiError(409, 'package_invalid');
     if (b.discount_code) releaseRedemption({ kind: 'booking', refId: bookingId }); // 釋放舊折扣碼用量（轉方案後不再套折扣；比照 cancelBooking）
     if (b.package_id) refundPackageOne(b.package_id);          // 退舊方案（+1；refundOne 封頂、best-effort）
+    if (fromOnlineSingle) closeOnlineSinglePackage(b.package_id); // 未付款線上單堂：回補後立刻作廢（要在「舊方案先用」判斷之前）
     // 舊方案先用：退回之後再判斷（原方案退回一堂後可能就是該先用的那筆）；丟錯 → tx rollback 還原退舊
     const useFirstId = pkgGetPackage(newPackageId).use_first_id;
     if (useFirstId) throw new ApiError(409, 'older_package_first', { useFirstId });
@@ -771,9 +806,9 @@ export function confirmBookingPaymentGroup({ groupId, actorId }) {
   });
 }
 
-/** 整批取消（待核對卡片）：只取消「未收款」的預約；已收款的留在已核對卡走退款。 */
 // 取消「全部預約」：取消該筆所屬循環群組、同教練名下、所有 confirmed 預約（含過去）。
-// 每筆回補堂數；整批彙整一則通知。授權：非管理者只能取消自己名下（比照 reschedule/reassign）。
+// 每筆依 settleCancelledBooking 分流（教練開立的回補 1 堂；線上單堂未付款作廢、已付款各留 1 堂）；
+// 整批彙整一則通知。授權：非管理者只能取消自己名下（比照 reschedule/reassign）。
 // 無 recurring_group_id → 退化成只取消這一筆。回 { ok, cancelled:[ids] } 供 route 逐筆刪日曆。
 export function cancelCoachGroup({ bookingId, actorUserId, isAdmin = false, reason = null }) {
   return tx(() => {
@@ -788,8 +823,7 @@ export function cancelCoachGroup({ bookingId, actorUserId, isAdmin = false, reas
     const now = nowLocal();
     for (const r of rows) {
       cancelBookingStmt.run(now, actorUserId, reason, r.id);
-      refundPackageForBooking(r);                       // 含過去筆也回補（業主拍板）
-      releaseRedemption({ kind: 'booking', refId: r.id });
+      settleCancelledBooking(r);
     }
     const memberRow = getUserNameStmt.get(rows[0].member_id);
     if (coach && memberRow) {
@@ -805,6 +839,7 @@ export function cancelCoachGroup({ bookingId, actorUserId, isAdmin = false, reas
   });
 }
 
+/** 整批取消（待核對卡片）：只取消「未收款」的預約（線上單堂各自作廢）；已收款的留在已核對卡走退款。 */
 export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
   return tx(() => {
     const rows = db.prepare(
@@ -813,8 +848,7 @@ export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
     if (!rows.length) throw new ApiError(409, 'no_pending_bookings');
     for (const b of rows) {
       cancelBookingStmt.run(nowLocal(), actorId, reason, b.id);
-      refundPackageForBooking(b);
-      releaseRedemption({ kind: 'booking', refId: b.id });
+      settleCancelledBooking(b);
     }
     const coach = getCoachStmt.get(rows[0].coach_id);
     const memberRow = getUserNameStmt.get(rows[0].member_id);
@@ -832,7 +866,8 @@ export function cancelBookingAdminGroup({ groupId, actorId, reason = null }) {
   });
 }
 
-/** 整批取消並退款（已核對卡片長按）：group 內已收款未退款者全數退款（必要時取消）。 */
+/** 整批取消並退款（已核對卡片長按）：group 內已收款未退款者退款（必要時取消）；
+ *  已改約／已作廢的線上單堂跳過、列在 skipped，一筆都退不了 → already_refunded。 */
 export function refundBookingGroupAdmin({ groupId, actorId }) {
   return tx(() => {
     const rows = db.prepare(
@@ -841,24 +876,29 @@ export function refundBookingGroupAdmin({ groupId, actorId }) {
     if (!rows.length) throw new ApiError(409, 'already_refunded');
     const now = nowLocal();
     const cancelled = [];
+    const skipped = [];
+    const refundedRows = [];
     let total = 0;
     for (const b of rows) {
+      if (onlineSingleRefundBlock(b)) { skipped.push(b.id); continue; } // 已改約／已作廢的線上單堂不退
       if (b.status === 'confirmed') {
         cancelBookingStmt.run(now, actorId, '取消並退款', b.id);
-        refundPackageForBooking(b);
-        releaseRedemption({ kind: 'booking', refId: b.id });
+        settleCancelledBooking(b);
         cancelled.push(b.id);
       }
       db.prepare('UPDATE bookings SET refunded_at=?, refunded_by=? WHERE id=?').run(now, actorId, b.id);
+      if (b.package_id) closeOnlineSinglePackage(b.package_id);
+      refundedRows.push(b);
       if (b.original_amount != null) total += b.original_amount - (b.discount_amount || 0);
     }
-    const coach = getCoachStmt.get(rows[0].coach_id);
+    if (!refundedRows.length) throw new ApiError(409, 'already_refunded');
+    const coach = getCoachStmt.get(refundedRows[0].coach_id);
     if (coach) {
-      notify({ userId: rows[0].member_id, sessionId: null, type: 'booking_refunded',
+      notify({ userId: refundedRows[0].member_id, sessionId: null, type: 'booking_refunded',
         vars: { coach_display_name: coach.display_name,
-                start_at: `${fmtDateForLine(rows[0].start_at)} 起共 ${rows.length} 堂`,
+                start_at: `${fmtDateForLine(refundedRows[0].start_at)} 起共 ${refundedRows.length} 堂`,
                 amount_text: total > 0 ? `（NT$${total}）` : '' } });
     }
-    return { ok: true, refunded: rows.length, cancelled };
+    return { ok: true, refunded: refundedRows.length, cancelled, skipped };
   });
 }

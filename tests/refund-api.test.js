@@ -14,7 +14,7 @@ async function req(method, path, { body, token } = {}) {
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 console.log('[refund-api test] start');
 
-db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0988%' OR email LIKE 'rfa-%'); DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0988%'); DELETE FROM users WHERE phone LIKE '0988%' OR email LIKE 'rfa-%'");
+db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0988%' OR email LIKE 'rfa-%'); DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0988%'); DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL); DELETE FROM users WHERE phone LIKE '0988%' OR email LIKE 'rfa-%'");
 const uid = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('RFA Coach','rfa-c@x.com','coach')").run().lastInsertRowid);
 const coachId = Number(db.prepare("INSERT INTO coaches (user_id, display_name, is_active) VALUES (?, 'RFA', 1)").run(uid).lastInsertRowid);
 const pad = n => String(n).padStart(2,'0');
@@ -61,5 +61,5 @@ expect('重複退款 → 409 already_refunded', () => {
   assert.equal(rf2.data.error, 'already_refunded');
 });
 
-db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0988%' OR email LIKE 'rfa-%'); DELETE FROM bookings WHERE coach_id = " + coachId + "; DELETE FROM coaches WHERE id = " + coachId + "; DELETE FROM users WHERE phone LIKE '0988%' OR email LIKE 'rfa-%'");
+db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0988%' OR email LIKE 'rfa-%'); DELETE FROM bookings WHERE coach_id = " + coachId + "; DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL); DELETE FROM coaches WHERE id = " + coachId + "; DELETE FROM users WHERE phone LIKE '0988%' OR email LIKE 'rfa-%'");
 console.log('[refund-api test] done');

@@ -9,7 +9,7 @@ function reset() {
   db.exec(`
     DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0992%' OR email LIKE 'dbk-%@%');
     DELETE FROM discount_redemptions WHERE phone LIKE '0992%';
-    DELETE FROM bookings WHERE coach_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dbk-%@%'));
+    DELETE FROM bookings WHERE coach_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dbk-%@%')); DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL);
     DELETE FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'dbk-%@%');
     DELETE FROM users WHERE phone LIKE '0992%' OR email LIKE 'dbk-%@%';
     DELETE FROM discount_codes WHERE code LIKE 'TESTDBK%';

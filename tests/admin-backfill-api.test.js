@@ -21,8 +21,8 @@ console.log('[admin-backfill-api test] start');
 // FK-safe 清理（notifications → bookings → coaches → users），避免前次中斷殘留造成 FK 失敗
 db.exec(`
   DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'abfa-%' OR phone LIKE '0957%');
-  DELETE FROM bookings WHERE coach_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'abfa-%'));
-  DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0957%' OR email LIKE 'abfa-%');
+  DELETE FROM bookings WHERE coach_id IN (SELECT id FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'abfa-%')); DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL);
+  DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0957%' OR email LIKE 'abfa-%'); DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL);
   DELETE FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'abfa-%');
   DELETE FROM users WHERE email LIKE 'abfa-%' OR phone LIKE '0957%';
 `);
@@ -81,7 +81,7 @@ expect('過去預約出現在課表、paid=false（待核對，比照正常）',
 
 db.exec(`
   DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'abfa-%' OR phone LIKE '0957%');
-  DELETE FROM bookings WHERE coach_id = ${coachId};
+  DELETE FROM bookings WHERE coach_id = ${coachId}; DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL);
   DELETE FROM coaches WHERE id = ${coachId};
   DELETE FROM users WHERE id = ${uid} OR phone LIKE '0957%' OR email LIKE 'abfa-%';
 `);

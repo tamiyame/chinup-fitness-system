@@ -1456,6 +1456,37 @@ async function renderMemberPackages(memberId, mountEl) {
     const unit = p.amount != null ? Math.round(p.amount / p.total_sessions) : null;
     const money = unit != null ? `單價 NT$${unit.toLocaleString('zh-TW')}（總額 NT$${Number(p.amount).toLocaleString('zh-TW')}）` : '無單價';
     const buy = String(p.created_at || '');   // 本地時間字串 YYYY-MM-DDTHH:MM:SS，直接切片不轉時區
+    if (p.source === 'online' && p.single) {
+      // 線上單堂卡：一堂的方案，顯示上課時間、教練、金額與付款狀態（不出現「調整」「還原」）
+      const sg = p.single;
+      const stMap = {
+        booked: '<span class="badge" style="font-size:10px;background:#dcfce7;color:#166534;">已預約</span>',
+        done: '<span class="badge" style="font-size:10px;">已上完</span>',
+        credit: '<span class="badge" style="font-size:10px;background:#fef9c3;color:#854d0e;">保留 1 堂</span>',
+        cancelled: '<span class="badge badge-cancelled" style="font-size:10px;">已取消</span>',
+        void: '<span class="badge badge-cancelled" style="font-size:10px;">已作廢</span>',
+      };
+      const stBadge = stMap[sg.state] || '';
+      const when = sg.booking_id
+        ? `上課 ${escapeHtml(String(sg.start_at || '').slice(0, 10).replace(/-/g, '/'))} ${escapeHtml(String(sg.start_at || '').slice(11, 16))}・${escapeHtml(sg.coach_name || '')}`
+        : '預約已改到其他方案';
+      const payMap = { pending: '待核對', paid: '已核對', refunded: '已退款' };
+      const amt = sg.amount != null ? `NT$${Number(sg.amount).toLocaleString('zh-TW')}` : '無金額';
+      const canRefund = sg.refundable_booking_id != null;
+      return `<div class="pkg-row${arch ? ' is-arch' : ''}">
+      <div class="pkg-buy"><span class="pkg-buy-ymd">${escapeHtml(buy.slice(0, 10).replace(/-/g, '/'))}</span><span class="pkg-buy-hm">${escapeHtml(buy.slice(11, 16))} 購買</span></div>
+      <div class="pkg-body">
+        <div class="pkg-head"><strong>${PKG_TYPE_LABEL[p.session_type] || escapeHtml(p.session_type)}</strong><span class="badge" style="font-size:10px;">線上單堂</span>${stBadge}</div>
+        <div class="pkg-stats">${when}</div>
+        <div class="pkg-meta">${amt} · ${escapeHtml(payMap[sg.pay_status] || '')}</div>
+        <div class="pkg-acts">
+          ${arch ? '' : `<button class="btn btn-ghost btn-sm" data-act="unitprice" data-single="1" data-id="${p.id}" data-unit="${sg.amount != null ? escapeHtml(String(sg.amount)) : ''}">改單價</button>`}
+          ${canRefund ? `<button class="btn btn-ghost btn-sm" data-act="refund" data-id="${p.id}" data-booking="${escapeHtml(String(sg.refundable_booking_id))}" data-amount="${sg.amount != null ? escapeHtml(String(sg.amount)) : ''}" data-state="${escapeHtml(sg.state)}">退款</button>` : ''}
+          ${sg.state === 'credit' ? `<button class="btn btn-danger btn-sm" data-act="archive" data-single="1" data-id="${p.id}">作廢</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+    }
     return `<div class="pkg-row${arch ? ' is-arch' : ''}">
       <div class="pkg-buy"><span class="pkg-buy-ymd">${escapeHtml(buy.slice(0, 10).replace(/-/g, '/'))}</span><span class="pkg-buy-hm">${escapeHtml(buy.slice(11, 16))} 購買</span></div>
       <div class="pkg-body">
@@ -1545,9 +1576,18 @@ async function renderMemberPackages(memberId, mountEl) {
         await api(`/api/coach/packages/${id}`, { method: 'PATCH', body: { remaining: r } });
         toast('已調整剩餘堂數', 'success');
       } else if (act === 'archive') {
-        if (!confirm('確定作廢此方案？此方案名下所有未取消的預約將一併取消（不可復原），剩餘堂數保留紀錄。')) return;
+        const archMsg = btn.dataset.single === '1'
+          ? '作廢這 1 堂？作廢＝不退款，這 1 堂失效；不會通知客人，之後也不能再對這張方案退款。要退錢請改按「退款」。'
+          : '確定作廢此方案？此方案名下所有未取消的預約將一併取消（不可復原），剩餘堂數保留紀錄。';
+        if (!confirm(archMsg)) return;
         const r = await api(`/api/coach/packages/${id}/archive`, { method: 'POST' });
         toast(r.cancelledBookingIds?.length ? `已作廢，連動取消 ${r.cancelledBookingIds.length} 筆預約` : '已作廢', 'success');
+      } else if (act === 'refund') {
+        const amtTxt = btn.dataset.amount !== '' ? `NT$${Number(btn.dataset.amount).toLocaleString('zh-TW')}` : '這堂款項';
+        const cancelNote = (btn.dataset.state === 'booked' || btn.dataset.state === 'done') ? '這堂預約會一併取消、時段釋出。' : '';
+        if (!confirm(`退款 ${amtTxt}？${cancelNote}會記錄退款時間並通知客人；實際退款請自行匯回。退款後這張單堂方案就結束，不能再改約。`)) return;
+        await api(`/api/admin/bookings/${btn.dataset.booking}/refund`, { method: 'POST' });
+        toast('已標記退款，已通知客人', 'success');
       } else if (act === 'restore') {
         await api(`/api/coach/packages/${id}/restore`, { method: 'POST' });
         toast('已還原', 'success');
@@ -1557,7 +1597,10 @@ async function renderMemberPackages(memberId, mountEl) {
         if (v == null || String(v).trim() === '') return;   // 取消或清空 → 中止（避免空值被 Number('')=0 靜默定價為 0 元）
         const n = Number(v);
         if (!Number.isInteger(n) || n < 0) { toast('單價需為 0 以上整數', 'error'); return; }
-        if (!confirm(`確定將單價改為 NT$${n}？此方案所有已登錄堂（含已上完）的單價會一併修正，薪資將依新單價計算。`)) return;
+        const upMsg = btn.dataset.single === '1'
+          ? `確定將這堂的金額改為 NT$${n}？原本的折扣會一併清除，薪資將依新金額計算。`
+          : `確定將單價改為 NT$${n}？此方案所有已登錄堂（含已上完）的單價會一併修正，薪資將依新單價計算。`;
+        if (!confirm(upMsg)) return;
         const r = await api(`/api/coach/packages/${id}/unit-price`, { method: 'PATCH', body: { unitPrice: n } });
         toast(`已修正單價並回寫 ${r.rewrittenBookings} 堂`, 'success');
         renderMemberPackages(memberId, mountEl);
@@ -1565,7 +1608,14 @@ async function renderMemberPackages(memberId, mountEl) {
       }
       renderMemberPackages(memberId, mountEl);
     } catch (e) {
-      const msgs = { invalid_remaining: '剩餘堂數超出範圍', package_not_found: '找不到方案' };
+      const msgs = {
+        invalid_remaining: '剩餘堂數超出範圍', package_not_found: '找不到方案',
+        online_single_readonly: '線上單堂方案不能調整堂數或還原',
+        has_active_booking: '這堂還有未取消的預約，請先取消預約',
+        package_closed: '這堂已經退款或已作廢',
+        credit_in_use: '這堂已經改約，請對改約後的那一堂退款',
+        not_paid: '這堂尚未核對收款', already_refunded: '這堂已退款過',
+      };
       toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
     }
   });
@@ -2119,9 +2169,15 @@ function bindConfirmedPaymentLongPress(container) {
           : t === 'booking_group' ? `/api/admin/bookings/group/${card.dataset.id}/refund`
           : `/api/admin/group-orders/${card.dataset.id}/refund`;
         api(url, { method: 'POST' })
-          .then(() => { toast('已取消並標記退款，已通知顧客', 'success'); loadPendingOrders(); loadConfirmedPayments(); })
+          .then((r) => {
+            const sk = r?.skipped?.length || 0;
+            toast(sk ? `已退款 ${r.refunded ?? 0} 堂；另有 ${sk} 堂已改約或已結束，未處理` : '已取消並標記退款，已通知顧客', 'success');
+            loadPendingOrders(); loadConfirmedPayments();
+          })
           .catch(e => {
-            const msgs = { not_paid: '此筆尚未核對收款', already_refunded: '此筆已退款過', booking_not_found: '找不到預約', order_not_found: '找不到訂單' };
+            const msgs = { not_paid: '此筆尚未核對收款', already_refunded: '此筆已退款過', booking_not_found: '找不到預約', order_not_found: '找不到訂單',
+              package_closed: '這堂已經退款或已作廢', credit_in_use: '這堂已經改約，請對改約後的那一堂退款' };
+            if (t === 'booking_group') msgs.already_refunded = '沒有可退款的堂數（已退款過，或已改約／已結束）';   // 整批全被略過時後端回 already_refunded
             toast(msgs[e.data?.error] || `退款失敗：${e.message}`, 'error');
           });
       }, 500);

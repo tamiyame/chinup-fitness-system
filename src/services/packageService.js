@@ -1,6 +1,6 @@
 import { db, tx, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
-import { quoteDiscount } from './discountService.js';
+import { quoteDiscount, releaseRedemption } from './discountService.js';
 
 const SESSION_TYPES = ['1on1', '1on2'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -93,7 +93,65 @@ export function listPackagesForMember(memberId, { includeArchived = false } = {}
     const first = firstByType.get(r.session_type);
     r.use_first_id = r.is_valid && first !== r.id ? first : null;
   }
+  attachSingle(rows, now);
   return rows;
+}
+
+// 線上單堂方案附 single（卡片顯示用）；教練開立的列不動。名下預約一次查回，不逐張方案查。
+function attachSingle(rows, now) {
+  const online = rows.filter((r) => r.source === 'online');
+  if (!online.length) return;
+  const ids = online.map((r) => r.id);
+  const bks = db.prepare(
+    `SELECT b.id, b.package_id, b.start_at, b.status, b.paid_at, b.refunded_at, c.display_name AS coach_name
+       FROM bookings b JOIN coaches c ON c.id = b.coach_id
+      WHERE b.package_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY b.id`
+  ).all(...ids);
+  const byPkg = new Map();
+  for (const b of bks) { if (!byPkg.has(b.package_id)) byPkg.set(b.package_id, []); byPkg.get(b.package_id).push(b); }
+  for (const r of online) {
+    const list = byPkg.get(r.id) || [];   // 依 id 由小到大；名下可能沒有預約（被改掛走）
+    const confirmed = list.filter((b) => b.status === 'confirmed');
+    const rep = confirmed.length ? confirmed[confirmed.length - 1] : (list[list.length - 1] || null);
+    const payStatus = list.some((b) => b.refunded_at) ? 'refunded' : list.some((b) => b.paid_at) ? 'paid' : 'pending';
+    let state;
+    if (r.archived_at) state = payStatus === 'paid' ? 'void' : 'cancelled';
+    else if (confirmed.length) state = rep.start_at >= now ? 'booked' : 'done';
+    else state = 'credit';
+    let refundable = null;
+    if (!r.archived_at && payStatus === 'paid') {
+      if (rep && rep.paid_at && !rep.refunded_at) refundable = rep.id;
+      else { const hit = list.filter((b) => b.paid_at && !b.refunded_at); refundable = hit.length ? hit[hit.length - 1].id : null; }
+    }
+    r.single = {
+      booking_id: rep?.id ?? null, start_at: rep?.start_at ?? null, coach_name: rep?.coach_name ?? null, booking_status: rep?.status ?? null,
+      pay_status: payStatus, amount: r.amount, state, refundable_booking_id: refundable,
+    };
+  }
+}
+
+/** 後台方案總覽：各來源方案數、沒有方案的未取消預約數、補登結果（沒補登過 → null）、
+ *  上次補登失敗的原因（{ at, reason, error, snapshotLeft }；沒有、空字串、壞資料 → null；補登成功時會清成空字串）。 */
+export function getPackagesSummary() {
+  const n = (sql) => db.prepare(sql).get().c;
+  const raw = db.prepare("SELECT value FROM app_settings WHERE key = 'online_single_backfill_summary'").get()?.value;
+  let backfill = null;
+  if (raw) { try { backfill = JSON.parse(raw); } catch { backfill = null; } }
+  const rawErr = db.prepare("SELECT value FROM app_settings WHERE key = 'online_single_backfill_error'").get()?.value;
+  let backfillError = null;
+  if (rawErr) {
+    try { const v = JSON.parse(rawErr); backfillError = v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { backfillError = null; }
+  }
+  return {
+    packages: {
+      staff: n("SELECT COUNT(*) AS c FROM customer_packages WHERE source = 'staff'"),
+      online: n("SELECT COUNT(*) AS c FROM customer_packages WHERE source = 'online'"),
+    },
+    confirmedWithoutPackage: n("SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed' AND package_id IS NULL"),
+    backfill,
+    backfillError,
+  };
 }
 
 export function listValidPackagesForMember(memberId, sessionType = null) {
@@ -120,7 +178,7 @@ export function listScheduleViewPackages(memberId, now) {
   const today = String(now).slice(0, 10);
   const pkgs = db.prepare(
     `SELECT * FROM customer_packages
-      WHERE member_id = ? AND archived_at IS NULL
+      WHERE member_id = ? AND archived_at IS NULL AND source <> 'online'
       ORDER BY (expires_at IS NULL) ASC, expires_at ASC, created_at ASC`
   ).all(memberId);
   if (!pkgs.length) return [];
@@ -153,6 +211,7 @@ export function adjustRemaining({ packageId, remaining, note = null }) {
   return tx(() => {
     const p = db.prepare('SELECT * FROM customer_packages WHERE id = ?').get(packageId);
     if (!p) throw new ApiError(404, 'package_not_found');
+    if (p.source === 'online') throw new ApiError(409, 'online_single_readonly');
     const r = Number(remaining);
     if (!Number.isInteger(r) || r < 0 || r > p.total_sessions) throw new ApiError(400, 'invalid_remaining');
     const newNote = note && note.trim() ? note.trim() : null;
@@ -162,8 +221,14 @@ export function adjustRemaining({ packageId, remaining, note = null }) {
   });
 }
 
-/** 修正單價（管理者）：amount 改為 unitPrice×total、清除折扣註記，並回寫該方案全部已登錄堂
- *  （含已上完；薪資口徑從根修正——舊期別薪資頁重開會依新單價重算，屬修正目的）。 */
+/** 修正單價（管理者）：amount 改為 unitPrice×total、清除方案的折扣碼註記，並回寫名下預約：
+ *  定價改成新單價、折扣欄位清成 NULL、釋放它們的折扣碼用量（含已上完；薪資口徑從根修正——
+ *  舊期別薪資頁重開會依新單價重算，屬修正目的）。rewrittenBookings＝實際改到的預約筆數。
+ *  回寫哪些預約：
+ *    教練開立的方案、已作廢的線上單堂 → 只回寫未取消（confirmed）的預約
+ *    未作廢的線上單堂 → 名下所有還沒退款的預約（不分狀態，含「保留 1 堂」背後已取消、已付款的原筆）。
+ *      規格對改單價的意思是「管理者指定的單價就是最後的金額」，所以卡片、已核對匯款清單、
+ *      退款通知三處要顯示同一個數字；只改未取消的那筆，保留 1 堂之後退款時通知會寫舊的實付金額。 */
 export function updateUnitPrice({ packageId, unitPrice }) {
   const u = Number(unitPrice);
   if (!Number.isInteger(u) || u < 0) throw new ApiError(400, 'invalid_unit_price');
@@ -172,9 +237,15 @@ export function updateUnitPrice({ packageId, unitPrice }) {
     if (!p) throw new ApiError(404, 'package_not_found');
     const amount = u * p.total_sessions;
     db.prepare('UPDATE customer_packages SET amount = ?, discount_code = NULL WHERE id = ?').run(amount, packageId);
+    const which = p.source === 'online' && !p.archived_at
+      ? 'package_id = ? AND refunded_at IS NULL'
+      : "package_id = ? AND status = 'confirmed'";
+    // 同一批預約：改定價、折扣欄位清成 NULL，並釋放它們的折扣碼用量（避免折扣被重複套用或用量殘留）。
+    const ids = db.prepare(`SELECT id FROM bookings WHERE ${which}`).all(packageId);
     const r = db.prepare(
-      "UPDATE bookings SET original_amount = ? WHERE package_id = ? AND status = 'confirmed'"
+      `UPDATE bookings SET original_amount = ?, discount_amount = NULL, discount_code = NULL WHERE ${which}`
     ).run(u, packageId);
+    for (const row of ids) releaseRedemption({ kind: 'booking', refId: row.id });
     return { ok: true, amount, unitPrice: u, rewrittenBookings: r.changes };
   });
 }
@@ -188,12 +259,20 @@ const cancelBookingsByPackageStmt = db.prepare(
    WHERE package_id = ? AND status = 'confirmed'`
 );
 
-// 作廢方案 → 連動取消名下所有未取消預約（含過去；靜默、不回補堂數）。
+// 作廢方案：
+//   教練開立的方案 → 連動取消名下所有未取消預約（含過去；靜默、不回補堂數）。
+//   線上單堂 → 名下還有未取消的預約就擋（has_active_booking）；否則只關閉方案（釋放折扣碼用量），不取消任何預約。
 // 回傳含 cancelledBookingIds 供 route 端逐筆刪 Google 日曆事件。天然冪等（再作廢→空陣列）。
 export function archivePackage(packageId, actorId = null) {
   return tx(() => {
-    const p = db.prepare('SELECT id FROM customer_packages WHERE id = ?').get(packageId);
+    const p = db.prepare('SELECT id, source FROM customer_packages WHERE id = ?').get(packageId);
     if (!p) throw new ApiError(404, 'package_not_found');
+    if (p.source === 'online') {
+      // 線上單堂：還有未取消的預約要先取消；否則只關閉方案（釋放折扣碼用量），不連動取消。
+      if (listConfirmedBookingsByPackageStmt.all(packageId).length) throw new ApiError(409, 'has_active_booking');
+      closeOnlineSinglePackage(packageId);
+      return { ...getPackage(packageId), cancelledBookingIds: [] };
+    }
     db.prepare('UPDATE customer_packages SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(nowLocal(), packageId);
     const cancelledBookingIds = listConfirmedBookingsByPackageStmt.all(packageId).map((r) => r.id);
     if (cancelledBookingIds.length) {
@@ -204,8 +283,9 @@ export function archivePackage(packageId, actorId = null) {
 }
 
 export function restorePackage(packageId) {
-  const p = db.prepare('SELECT id FROM customer_packages WHERE id = ?').get(packageId);
+  const p = db.prepare('SELECT id, source FROM customer_packages WHERE id = ?').get(packageId);
   if (!p) throw new ApiError(404, 'package_not_found');
+  if (p.source === 'online') throw new ApiError(409, 'online_single_readonly');
   db.prepare('UPDATE customer_packages SET archived_at = NULL WHERE id = ?').run(packageId);
   return getPackage(packageId);
 }
@@ -228,4 +308,35 @@ export function refundOne(packageId) {
       WHERE id = ? AND remaining_sessions < total_sessions`
   ).run(packageId);
   return info.changes === 1;
+}
+
+/** 為一筆線上預約建立「一堂的方案」並掛上（source='online'、total 1、remaining 0＝這堂已預約掉）。
+ *  金額＝定價−折扣（定價 NULL → NULL；折到 0 元 → 0）。不通知、不改預約其他欄位。回方案 id。 */
+export function createOnlineSingleForBooking(bookingId, { createdAt = nowLocal() } = {}) {
+  return tx(() => {
+    const b = db.prepare('SELECT id, member_id, session_type, original_amount, discount_amount, discount_code, package_id FROM bookings WHERE id = ?').get(bookingId);
+    if (!b) throw new ApiError(404, 'booking_not_found');
+    if (b.package_id != null) throw new ApiError(409, 'booking_has_package');
+    const amount = b.original_amount == null ? null : Math.max(0, b.original_amount - (b.discount_amount || 0));
+    const packageId = Number(db.prepare(
+      `INSERT INTO customer_packages (member_id, session_type, total_sessions, remaining_sessions, amount, discount_code, source, created_at)
+       VALUES (?, ?, 1, 0, ?, ?, 'online', ?)`
+    ).run(b.member_id, b.session_type, amount, b.discount_code ?? null, createdAt).lastInsertRowid);
+    db.prepare('UPDATE bookings SET package_id = ? WHERE id = ?').run(packageId, bookingId);
+    return packageId;
+  });
+}
+
+/** 關閉線上單堂方案：寫作廢時間（已作廢不改）、釋放名下預約的折扣碼用量。
+ *  不是線上單堂方案（或找不到）→ 不動、回 false。不取消預約、不通知。 */
+export function closeOnlineSinglePackage(packageId) {
+  return tx(() => {
+    const p = db.prepare("SELECT id FROM customer_packages WHERE id = ? AND source = 'online'").get(packageId);
+    if (!p) return false;
+    db.prepare('UPDATE customer_packages SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(nowLocal(), packageId);
+    for (const row of db.prepare('SELECT id FROM bookings WHERE package_id = ?').all(packageId)) {
+      releaseRedemption({ kind: 'booking', refId: row.id });
+    }
+    return true;
+  });
 }

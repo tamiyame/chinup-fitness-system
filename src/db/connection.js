@@ -197,9 +197,10 @@ addColumnIfMissing('course_sessions', 'is_open', 'INTEGER NOT NULL DEFAULT 1');
 // ── 2026-06-02 1對1 / 1對2 課程型態 ──
 // session_type 記錄該預約是 1對1 還是 1對2，供後台對帳與教練辨識。
 // 舊資料一律視為 '1on1'（ALTER ADD COLUMN 的 DEFAULT 會填入既有列）。
-// 注意：SQLite 無法用 ALTER ADD COLUMN 附加 CHECK，故既有 DB 此欄無 DB 層 CHECK
-// （全新 DB 由 schema.js 帶 CHECK in ('1on1','1on2')）。值的正確性由 app 層把關：
-// createBookingAnon 寫入前驗證、createBooking 一律走 '1on1' 預設，無其他寫入路徑。
+// 注意：這個欄位當初用 ALTER ADD COLUMN 加的時候沒有附 CHECK（SQLite 其實可以附，會對既有列檢查，
+// 見下方 customer_packages.source），故既有 DB 此欄無 DB 層 CHECK（全新 DB 由 schema.js 帶 CHECK in ('1on1','1on2')）。
+// 值的正確性由 app 層把關：createBookingAnon 寫入前驗證、createBooking 一律走 '1on1' 預設，
+// 教練登錄與改掛取自方案的 session_type（customer_packages 有 CHECK）。
 addColumnIfMissing('bookings', 'session_type', "TEXT NOT NULL DEFAULT '1on1'");
 
 // ── 2026-06-05 團體課程：授課教練 ──
@@ -269,6 +270,12 @@ addColumnIfMissing('bookings', 'recurring_group_id', 'INTEGER');
 // bookings.package_id：扣抵來源方案（NULL=非方案預約）。取消預約時回補該方案 1 堂。
 addColumnIfMissing('bookings', 'package_id', 'INTEGER REFERENCES customer_packages(id)');
 addColumnIfMissing('customer_packages', 'discount_code', 'TEXT');
+
+// ── 2026-11-14 線上單堂方案 ──
+// source：方案來源（staff=教練／管理者開立、online=客人線上預約自動建立的一堂方案）；舊資料一律 staff。
+addColumnIfMissing('customer_packages', 'source', "TEXT NOT NULL DEFAULT 'staff' CHECK (source IN ('staff', 'online'))");
+// 依方案查名下預約（關閉、退款、改掛都會用到）；放在 package_id 欄位確定存在之後。
+db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_package ON bookings(package_id)');
 
 // ── 2026-06-12 教練課付款狀態流 ──
 // paid_at NULL=待核對、非 NULL=已核對（鏡像 group_orders.paid_at/paid_by；status 不變，佔時段/容量照舊）。
@@ -375,14 +382,15 @@ export function offsetLocal(ms) {
 // 手動 transaction 包裝。node:sqlite 尚未內建 transaction API。
 // 使用 IMMEDIATE 以避免寫入競態 (serialise writes)。
 // 支援巢狀呼叫：內層 tx() 不會開新 transaction，直接執行並由外層管理提交／回滾。
+// BEGIN 成功之後才加深度：BEGIN 失敗（例如資料庫被鎖）時深度維持 0，之後的 tx() 照常開交易。
 let _txDepth = 0;
 export function tx(fn) {
   if (_txDepth > 0) {
     // Already inside a transaction — run fn() directly; outer tx handles commit/rollback.
     return fn();
   }
-  _txDepth++;
   db.exec('BEGIN IMMEDIATE');
+  _txDepth++;
   try {
     const result = fn();
     db.exec('COMMIT');

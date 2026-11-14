@@ -35,7 +35,7 @@ function cleanup() {
   db.exec(`
     DELETE FROM discount_redemptions WHERE phone LIKE '0995%';
     DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
-    DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
+    DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0995%'); DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL);
     DELETE FROM registrations WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
     DELETE FROM group_orders WHERE customer_phone LIKE '0995%';
     DELETE FROM users WHERE phone LIKE '0995%';

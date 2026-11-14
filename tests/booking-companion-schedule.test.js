@@ -15,7 +15,7 @@ function futureLocal(days, hh = 10) { const d = new Date(); d.setDate(d.getDate(
 console.log('[booking-companion-schedule test] start');
 db.exec(`
   DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0989%' OR email LIKE 'bcs-%');
-  DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0989%') OR member2_id IN (SELECT id FROM users WHERE phone LIKE '0989%');
+  DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0989%') OR member2_id IN (SELECT id FROM users WHERE phone LIKE '0989%'); DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL);
   DELETE FROM coaches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'bcs-%');
   DELETE FROM users WHERE phone LIKE '0989%' OR email LIKE 'bcs-%';
 `);

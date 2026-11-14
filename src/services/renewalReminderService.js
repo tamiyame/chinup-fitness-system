@@ -1,5 +1,6 @@
 // 堂數即將用完自動提醒：10 堂方案「尚餘」剩 1 堂 → 帶課教練＋管理者；團課未來正取合計剩最後 1 堂 → 會員。
 // 方案只提醒 10 堂的（單堂、其他堂數不提醒）；客人已經買了新方案（較晚買、還有堂數）的舊方案也不提醒。
+// 線上單堂（source='online'）是自助預約自動產生的，不算已買新方案。
 // 每日 9 點掃描；renewal_reminders 去重（每狀態一次）。
 // 規格：docs/superpowers/specs/2026-07-04-renewal-reminders-design.md
 import { db, nowLocal } from '../db/connection.js';
@@ -10,7 +11,7 @@ const SESSION_LABELS = { '1on1': '1對1', '1on2': '1對2' };
 // 尚餘（我的課表口徑）＝ 未來 confirmed 預約 ＋（未過期 ? 未登錄餘額 : 0）
 // 帶課教練：方案本身沒記教練，取此方案最後一筆 confirmed 預約的在職教練（沒有就只發管理者）
 const lowPackagesStmt = db.prepare(`
-  SELECT p.id, p.member_id, p.session_type, p.total_sessions, u.name AS member_name,
+  SELECT p.id, p.member_id, p.session_type, p.source, p.total_sessions, u.name AS member_name,
          (SELECT c.user_id FROM bookings b JOIN coaches c ON c.id = b.coach_id
            WHERE b.package_id = p.id AND b.status = 'confirmed' AND c.is_active = 1
            ORDER BY b.start_at DESC, b.id DESC LIMIT 1) AS coach_user_id,
@@ -42,12 +43,12 @@ const sessionLabel = (type) => SESSION_LABELS[type] || type;
 const REMIND_TOTAL = 10;   // 只提醒 10 堂方案（業主 2026-11 指定：單堂、其他堂數都不用）
 /**
  * 需要續購提醒的方案：10 堂、尚餘剛好 1 堂，而且客人名下沒有「較晚買、還有堂數」的方案（已續購就不提醒）。
- * 較晚買＝id 較大（AUTOINCREMENT；created_at 建立後不會改，兩者順序一致）。新方案作廢、上完或過期（尚餘 0）不算已續購。
+ * 線上單堂不算已買新方案。較晚買＝id 較大（AUTOINCREMENT；created_at 建立後不會改，兩者順序一致）。新方案作廢、上完或過期（尚餘 0）不算已續購。
  */
 function dueLowPackages(now) {
   const rows = lowPackagesStmt.all(String(now).slice(0, 10), now);
   const newestUsable = new Map();   // member_id → 還有堂數的方案中最大的 id
-  for (const p of rows) if (p.still >= 1 && p.id > (newestUsable.get(p.member_id) ?? 0)) newestUsable.set(p.member_id, p.id);
+  for (const p of rows) if (p.source !== 'online' && p.still >= 1 && p.id > (newestUsable.get(p.member_id) ?? 0)) newestUsable.set(p.member_id, p.id);
   return rows.filter((p) => p.total_sessions === REMIND_TOTAL && p.still === 1 && newestUsable.get(p.member_id) === p.id);
 }
 
