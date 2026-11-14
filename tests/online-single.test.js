@@ -379,6 +379,17 @@ expect('summary：backfill 有值時解析成物件', () => {
   try { assert.deepEqual(pkg.getPackagesSummary().backfill, { created: 3, members: 2 }); }
   finally { db.prepare("DELETE FROM app_settings WHERE key = 'online_single_backfill_summary'").run(); }
 });
+expect('summary：補登失敗原因沒有、空字串、壞 JSON → null；有值時解析成物件', () => {
+  const set = (v) => db.prepare("INSERT INTO app_settings (key, value) VALUES ('online_single_backfill_error', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(v);
+  try {
+    assert.equal(pkg.getPackagesSummary().backfillError, null);
+    set(''); assert.equal(pkg.getPackagesSummary().backfillError, null);
+    set('{'); assert.equal(pkg.getPackagesSummary().backfillError, null);
+    set('"x"'); assert.equal(pkg.getPackagesSummary().backfillError, null);
+    set('{"at":"2026-11-14T09:00:00","reason":"error","error":"booking 5: x"}');
+    assert.deepEqual(pkg.getPackagesSummary().backfillError, { at: '2026-11-14T09:00:00', reason: 'error', error: 'booking 5: x' });
+  } finally { db.prepare("DELETE FROM app_settings WHERE key = 'online_single_backfill_error'").run(); }
+});
 
 // ── 不變量（這一段永遠留在檔案最後；之後的 task 把測試加在它前面）──
 expect('線上單堂方案都是共 1 堂、剩 0 或 1', () => {

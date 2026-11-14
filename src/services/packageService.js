@@ -131,12 +131,18 @@ function attachSingle(rows, now) {
   }
 }
 
-/** 後台方案總覽：各來源方案數、沒有方案的未取消預約數、補登結果（沒補登過 → null）。 */
+/** 後台方案總覽：各來源方案數、沒有方案的未取消預約數、補登結果（沒補登過 → null）、
+ *  上次補登失敗的原因（{ at, reason, error, snapshotLeft }；沒有、空字串、壞資料 → null；補登成功時會清成空字串）。 */
 export function getPackagesSummary() {
   const n = (sql) => db.prepare(sql).get().c;
   const raw = db.prepare("SELECT value FROM app_settings WHERE key = 'online_single_backfill_summary'").get()?.value;
   let backfill = null;
   if (raw) { try { backfill = JSON.parse(raw); } catch { backfill = null; } }
+  const rawErr = db.prepare("SELECT value FROM app_settings WHERE key = 'online_single_backfill_error'").get()?.value;
+  let backfillError = null;
+  if (rawErr) {
+    try { const v = JSON.parse(rawErr); backfillError = v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { backfillError = null; }
+  }
   return {
     packages: {
       staff: n("SELECT COUNT(*) AS c FROM customer_packages WHERE source = 'staff'"),
@@ -144,6 +150,7 @@ export function getPackagesSummary() {
     },
     confirmedWithoutPackage: n("SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed' AND package_id IS NULL"),
     backfill,
+    backfillError,
   };
 }
 

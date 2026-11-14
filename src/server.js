@@ -1602,10 +1602,13 @@ if (process.env.NODE_ENV !== 'test') {
   // Bootstrap: migrations already applied on DB open; ensure an admin exists.
   ensureInitialAdmin();
 
-  // 線上單堂：一次性補登既有預約（先快照；失敗只記錄，不擋開機）
+  // 線上單堂：一次性補登既有預約（先快照；失敗只記錄，不擋開機；原因也看得到於 GET /api/admin/packages/summary 的 backfillError）
   const bf = backfillOnlineSingles();
   if (bf.ran) console.log(`[migrate] online single backfill: ${bf.created} bookings / ${bf.members} members${bf.snapshot ? ` (snapshot ${bf.snapshot})` : ''}`);
-  else if (bf.reason !== 'done') console.error(`[migrate] online single backfill skipped: ${bf.reason}${bf.error ? ` (${bf.error})` : ''}`);
+  else if (bf.reason !== 'done') {
+    console.error(`[migrate] online single backfill skipped: ${bf.reason}${bf.error ? ` (${bf.error})` : ''}`
+      + `${bf.snapshotLeft ? ` [snapshot left: ${bf.snapshotLeft}]` : ''}${Array.isArray(bf.files) ? ` [leftover snapshots: ${bf.files.join(', ')}]` : ''}`);
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[server] listening on port ${PORT}`);

@@ -3,16 +3,16 @@
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { rmSync, mkdtempSync, existsSync, writeFileSync } from 'node:fs';
-const dbPath = join(tmpdir(), `online-single-backfill-test-${process.pid}.db`);
-for (const s of ['', '-wal', '-shm']) rmSync(dbPath + s, { force: true });
+import { mkdtempSync, mkdirSync, existsSync, writeFileSync, readdirSync } from 'node:fs';
+// 資料庫放在自己的暫存資料夾：預設的快照資料夾（資料庫旁的 backups/）也就跟著隔離，不受其他測試殘留影響。
+const dbPath = join(mkdtempSync(join(tmpdir(), 'online-single-backfill-')), 'test.db');
 process.env.DB_PATH = dbPath;
 process.env.LINE_MOCK = '1'; process.env.GMAIL_MOCK = '1'; process.env.GCAL_MOCK = '1';
 const { db } = await import('../src/db/connection.js');
 const pkg = await import('../src/services/packageService.js');
 const bk = await import('../src/services/bookingService.js');
 const { backfillOnlineSingles, utcToLocal } = await import('../src/services/onlineSingleBackfill.js');
-const { runNamedSnapshot, listBackups, pruneOldBackups } = await import('../src/services/backupService.js');
+const { runNamedSnapshot, removeNamedSnapshot, listNamedSnapshots, listBackups, pruneOldBackups } = await import('../src/services/backupService.js');
 const { computePayroll, defaultPeriod } = await import('../src/services/payrollService.js');
 
 function expect(label, fn) { try { fn(); console.log(`  ✓ ${label}`); } catch (e) { console.log(`  ✗ ${label}`); console.error(e); process.exitCode = 1; } }
@@ -65,16 +65,37 @@ const noPkgCount = () => db.prepare('SELECT COUNT(*) AS c FROM bookings WHERE pa
 const flag = () => db.prepare("SELECT value FROM app_settings WHERE key = 'online_single_backfill_done'").get()?.value ?? null;
 const summaryRow = () => db.prepare("SELECT value FROM app_settings WHERE key = 'online_single_backfill_summary'").get()?.value ?? null;
 const clean = () => [flag(), summaryRow()];
+const errorRow = () => db.prepare("SELECT value FROM app_settings WHERE key = 'online_single_backfill_error'").get()?.value ?? null;
+const backfillError = () => pkg.getPackagesSummary().backfillError;
+const LOCAL_TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
+const SNAP = 'pre-online-single';
+/** 快照、刪快照、列快照都指向同一個暫存資料夾（不碰預設的快照資料夾）。 */
+const snapIn = (dir) => ({
+  snapshot: () => runNamedSnapshot(SNAP, dir),
+  removeSnapshot: (f) => removeNamedSnapshot(f, SNAP, dir),
+  listSnapshots: () => listNamedSnapshots(SNAP, dir),
+});
+/** 預期中的 console.error 不印出來（測試輸出保持乾淨）。 */
+const quiet = (fn) => { const orig = console.error; console.error = () => {}; try { return fn(); } finally { console.error = orig; } };
+/** 替某位會員建方案時強制失敗（模擬單一筆壞資料讓整批補登失敗）。 */
+const failFor = (memberId, fn) => {
+  db.exec(`CREATE TRIGGER bf_row_fail BEFORE INSERT ON customer_packages WHEN NEW.member_id = ${Number(memberId)} BEGIN SELECT RAISE(ABORT, 'forced row'); END`);
+  try { return fn(); } finally { db.exec('DROP TRIGGER bf_row_fail'); }
+};
 
-expect('快照失敗 → 不補、不寫旗標', () => {
+expect('快照失敗 → 不補、不寫旗標；summary 看得到原因', () => {
   const before = [pkgCount(), noPkgCount()];
   assert.deepEqual(backfillOnlineSingles({ snapshot: () => ({ ok: false, error: 'x' }) }), { ran: false, reason: 'snapshot_failed' });
   assert.deepEqual([pkgCount(), noPkgCount(), ...clean()], [...before, null, null]);
+  const e = backfillError();
+  assert.deepEqual([e.reason, e.error ?? null, e.snapshotLeft ?? null], ['snapshot_failed', null, null]);
+  assert.match(e.at, LOCAL_TS);
 });
-expect('快照函式丟例外 → 不往外丟、不補、不寫旗標', () => {
+expect('快照函式丟例外 → 不往外丟、不補、不寫旗標；summary 看得到原因', () => {
   const before = [pkgCount(), noPkgCount()];
   const r = backfillOnlineSingles({ snapshot: () => { throw new Error('boom'); } });
   assert.deepEqual([r.ran, r.reason, r.error, pkgCount(), noPkgCount(), ...clean()], [false, 'error', 'boom', ...before, null, null]);
+  assert.deepEqual([backfillError().reason, backfillError().error], ['error', 'boom']);
 });
 expect('寫入中途失敗 → 交易整個回滾：沒有新方案、沒有掛上、沒有旗標與摘要', () => {
   const before = [pkgCount(), noPkgCount()];
@@ -86,6 +107,56 @@ expect('寫入中途失敗 → 交易整個回滾：沒有新方案、沒有掛�
     assert.match(r.error, /forced/);
   } finally { db.exec('DROP TRIGGER bf_fail'); }
   assert.deepEqual([pkgCount(), noPkgCount(), ...clean()], [...before, null, null]);
+});
+expect('某一筆寫入失敗 → 錯誤訊息帶預約 id、剛做的快照被刪掉、summary 看得到原因', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'os-snap-'));
+  const before = [pkgCount(), noPkgCount()];
+  const r = failFor(m2, () => backfillOnlineSingles(snapIn(dir)));   // m2 的第一筆是 C（A、B 已先插入，要一起回滾）
+  assert.deepEqual([r.ran, r.reason, 'snapshotLeft' in r], [false, 'error', false]);
+  assert.ok(r.error.startsWith(`booking ${C}: `), r.error); assert.match(r.error, /forced row/);
+  assert.deepEqual(readdirSync(dir), []);
+  assert.deepEqual([pkgCount(), noPkgCount(), ...clean()], [...before, null, null]);
+  const e = backfillError();
+  assert.deepEqual([e.reason, e.error, e.snapshotLeft ?? null], ['error', r.error, null]);
+  assert.match(e.at, LOCAL_TS);
+});
+expect('刪快照的函式丟例外 → 不往外丟、只回 ran:false 並帶 snapshotLeft；快照留著', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'os-snap-'));
+  const opts = { ...snapIn(dir), removeSnapshot: () => { throw new Error('rm boom'); } };
+  const before = [pkgCount(), noPkgCount()];
+  const r = failFor(m2, () => backfillOnlineSingles(opts));
+  assert.deepEqual([r.ran, r.reason], [false, 'error']);
+  assert.ok(r.error.startsWith(`booking ${C}: `), r.error);
+  assert.match(r.snapshotLeft, /^pre-online-single-\d{8}-\d{6}\.db$/);
+  assert.deepEqual(readdirSync(dir), [r.snapshotLeft]);
+  assert.deepEqual([pkgCount(), noPkgCount(), ...clean()], [...before, null, null]);
+  assert.deepEqual([backfillError().error, backfillError().snapshotLeft], [r.error, r.snapshotLeft]);
+});
+expect('快照資料夾已有兩份殘留 → 不做新快照、不補登，回報殘留檔名', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'os-snap-'));
+  const left = ['pre-online-single-20261101-000000.db', 'pre-online-single-20261102-000000.db'];
+  for (const f of left) writeFileSync(join(dir, f), 'x');
+  let snaps = 0;
+  const before = [pkgCount(), noPkgCount()];
+  const r = backfillOnlineSingles({ ...snapIn(dir), snapshot: () => { snaps++; return runNamedSnapshot(SNAP, dir); } });
+  assert.deepEqual(r, { ran: false, reason: 'snapshot_leftover', files: left });
+  assert.deepEqual([snaps, readdirSync(dir).sort(), pkgCount(), noPkgCount(), ...clean()], [0, left, ...before, null, null]);
+  assert.equal(backfillError().reason, 'snapshot_leftover');
+});
+expect('刪具名快照：檔名不合不刪、刪掉回 true、本來就不在也算成功、刪不掉回 false 不丟例外', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'os-snap-'));
+  const ok = 'pre-online-single-20261103-000000.db';
+  const others = ['app-20261103-000000.db', 'pre-online-single-x.db'];
+  for (const f of [ok, ...others]) writeFileSync(join(dir, f), 'x');
+  for (const f of [...others, `../${ok}`, null]) assert.equal(removeNamedSnapshot(f, SNAP, dir), false, String(f));
+  assert.deepEqual(listNamedSnapshots(SNAP, dir), [ok]);
+  assert.equal(removeNamedSnapshot(ok, SNAP, dir), true);
+  assert.equal(removeNamedSnapshot(ok, SNAP, dir), true);   // 已經不在（ENOENT）也算成功
+  assert.deepEqual(readdirSync(dir).sort(), others);
+  const asDir = 'pre-online-single-20261104-000000.db'; mkdirSync(join(dir, asDir));   // 刪不掉的情況：同名的是資料夾
+  assert.equal(quiet(() => removeNamedSnapshot(asDir, SNAP, dir)), false);
+  assert.equal(existsSync(join(dir, asDir)), true);
+  assert.deepEqual(listNamedSnapshots(SNAP, join(dir, 'missing')), []);
 });
 
 let calls = 0;
@@ -126,11 +197,12 @@ expect('補登後教練登錄不被單堂方案卡住；之後留下的 1 堂排
   bk.cancelBookingAdmin({ bookingId: I, actorId: admin });          // I 已付款 → 保留 1 堂
   assert.equal(pkg.getPackage(pack(I).id).use_first_id, pack(H).id);
 });
-expect('summary：沒有方案的未取消預約為 0、補登摘要帶出', () => {
-  const s = pkg.getPackagesSummary(); assert.deepEqual([s.confirmedWithoutPackage, s.backfill.created], [0, 7]);
+expect('summary：沒有方案的未取消預約為 0、補登摘要帶出；成功後先前的失敗原因清掉', () => {
+  const s = pkg.getPackagesSummary(); assert.deepEqual([s.confirmedWithoutPackage, s.backfill.created, s.backfillError, errorRow()], [0, 7, null, '']);
 });
 expect('再跑一次 → 已完成；旗標遺失重跑 → 建立 0 筆、不再做快照', () => {
   assert.deepEqual(backfillOnlineSingles({ snapshot }), { ran: false, reason: 'done' });
+  assert.equal(errorRow(), '');   // 「已完成」不算失敗，不寫失敗原因
   db.prepare("DELETE FROM app_settings WHERE key = 'online_single_backfill_done'").run();
   const n = pkgCount(); const again = backfillOnlineSingles({ snapshot });
   assert.deepEqual([again.ran, again.created, again.members, again.snapshot, pkgCount(), calls], [true, 0, 0, null, n, 1]);

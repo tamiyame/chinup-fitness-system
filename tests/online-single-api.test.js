@@ -105,9 +105,10 @@ expect('補登過去預約 201、package_id 不是 NULL', () => {
 
 // 8. summary
 const sm = await req('GET', '/api/admin/packages/summary', { token });
-expect('summary 200、三個數字', () => {
+expect('summary 200、三個數字、帶補登失敗原因欄位', () => {
   assert.equal(sm.status, 200);
   for (const v of [sm.data.packages.online, sm.data.packages.staff, sm.data.confirmedWithoutPackage]) assert.equal(typeof v, 'number');
+  assert.ok('backfillError' in sm.data); assert.equal(typeof sm.data.backfillError, 'object');   // null 或 { at, reason, ... }
 });
 const smAnon = await req('GET', '/api/admin/packages/summary');
 expect('summary 無 token → 401 或 403', () => assert.ok([401, 403].includes(smAnon.status)));
