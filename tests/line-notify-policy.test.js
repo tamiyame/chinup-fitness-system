@@ -4,7 +4,7 @@ process.env.LINE_MOCK = '1';
 import assert from 'node:assert/strict';
 import { db, offsetLocal } from '../src/db/connection.js';
 import { hashPassword } from '../src/services/auth.js';
-import { LINE_NOTIFY_GROUPS, isLineNotifyEnabled, getLineNotifyState, setLineNotifyState } from '../src/services/lineNotifyPolicy.js';
+import { LINE_NOTIFY_GROUPS, isLineNotifyEnabled, getLineNotifyState, setLineNotifyState, inheritSplitItems } from '../src/services/lineNotifyPolicy.js';
 import { notify, processFailedNotifications } from '../src/services/notifications.js';
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
@@ -18,7 +18,7 @@ function throwsApi(fn, status, code) {
 const clearSettings = () => db.exec("DELETE FROM app_settings WHERE key LIKE 'line_notify_%'");
 const allItems = () => LINE_NOTIFY_GROUPS.flatMap((g) => g.items);
 
-// 32 種現役推播模板（2026-09-08 盤點；legacy 4 種＋已停用會員 course_confirmed 不在內）
+// 33 種現役推播模板（2026-09-08 盤點、2026-10-30 增補；legacy 4 種＋已停用會員 course_confirmed 不在內）
 const ACTIVE_TYPES = [
   'booking_created', 'booking_confirmed', 'booking_recurring_created', 'booking_recurring_created_coach',
   'booking_payment_received', 'booking_rescheduled', 'booking_rescheduled_coach',
@@ -30,7 +30,7 @@ const ACTIVE_TYPES = [
   'group_promoted', 'course_waitlisted_coach', 'course_promoted_coach',
   'course_member_cancelled_coach', 'course_member_leave_coach',
   'course_confirmed_coach', 'course_cancelled_coach', 'course_cancelled',
-  'group_order_refunded', 'package_low_sessions', 'group_last_session',
+  'group_order_refunded', 'package_low_sessions', 'package_low_recheck', 'group_last_session',
   'gcal_move_rejected', 'gcal_delete_cancelled', 'period_rollover_admin',
 ];
 
@@ -38,14 +38,14 @@ console.log('[line-notify-policy test] start');
 clearSettings();
 
 // ── 目錄 ──
-expect('3 組 16 項、項目 key 唯一', () => {
+expect('3 組 17 項、項目 key 唯一', () => {
   assert.equal(LINE_NOTIFY_GROUPS.length, 3);
   assert.deepEqual(LINE_NOTIFY_GROUPS.map((g) => g.key), ['one_on_one', 'group', 'system']);
   const items = allItems();
-  assert.equal(items.length, 16);
-  assert.equal(new Set(items.map((i) => i.key)).size, 16);
+  assert.equal(items.length, 17);
+  assert.equal(new Set(items.map((i) => i.key)).size, 17);
 });
-expect('每個 type 只屬一個項目、32 個現役 type 全涵蓋、無多餘', () => {
+expect('每個 type 只屬一個項目、33 個現役 type 全涵蓋、無多餘', () => {
   const all = allItems().flatMap((i) => i.types);
   assert.equal(new Set(all).size, all.length);
   for (const t of ACTIVE_TYPES) assert(all.includes(t), `missing ${t}`);
@@ -69,6 +69,45 @@ expect('預設 isLineNotifyEnabled 全 false（含 legacy type）', () => {
   assert.equal(isLineNotifyEnabled('registered_confirmed'), false);
 });
 
+// ── 拆項沿用：團課最後一堂提醒原本掛在「續購提醒」底下，拆成獨立項後要沿用舊開關存過的值 ──
+// （否則業主關掉的團課提醒，會因新項目「未設定＝ON」在部署後自己打開）
+const rawFlag = (key) => db.prepare('SELECT value FROM app_settings WHERE key = ?').get(`line_notify_${key}`)?.value;
+const putFlag = (key, v) => db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(`line_notify_${key}`, v);
+const itemEnabled = (key) => getLineNotifyState().groups.flatMap((g) => g.items).find((i) => i.key === key).enabled;
+expect('拆項沿用：續購提醒關著 → 團課最後一堂提醒跟著關', () => {
+  clearSettings(); putFlag('master', '1'); putFlag('renewal_reminder', '0');
+  inheritSplitItems();
+  assert.equal(rawFlag('group_last_session'), '0');
+  assert.equal(itemEnabled('group_last_session'), false);
+  assert.equal(isLineNotifyEnabled('group_last_session'), false);
+});
+expect('拆項沿用：之後兩項各自獨立（再開續購提醒，團課提醒不跟著開）', () => {
+  setLineNotifyState({ items: { renewal_reminder: true } });
+  inheritSplitItems();
+  assert.equal(itemEnabled('renewal_reminder'), true);
+  assert.equal(itemEnabled('group_last_session'), false);
+});
+expect('拆項沿用：續購提醒明確開著 → 團課最後一堂提醒存成開', () => {
+  clearSettings(); putFlag('renewal_reminder', '1');
+  inheritSplitItems();
+  assert.equal(rawFlag('group_last_session'), '1');
+});
+expect('拆項沿用：舊開關沒存過 → 新項目不寫入、維持預設開', () => {
+  clearSettings();
+  inheritSplitItems();
+  assert.equal(rawFlag('group_last_session'), undefined);
+  assert.equal(itemEnabled('group_last_session'), true);
+});
+expect('拆項沿用：新項目已經有值 → 不覆蓋', () => {
+  clearSettings(); putFlag('renewal_reminder', '0'); putFlag('group_last_session', '1');
+  inheritSplitItems();
+  assert.equal(rawFlag('group_last_session'), '1');
+  clearSettings(); putFlag('renewal_reminder', '1'); putFlag('group_last_session', '0');
+  inheritSplitItems();
+  assert.equal(rawFlag('group_last_session'), '0');
+});
+clearSettings();
+
 // ── 讀寫 ──
 expect('setLineNotifyState({ master: true }) → 現役與 legacy 皆 true', () => {
   const s = setLineNotifyState({ master: true });
@@ -83,6 +122,16 @@ expect('關單一項目只影響該項目的 type', () => {
   assert.equal(isLineNotifyEnabled('booking_created'), false);
   assert.equal(isLineNotifyEnabled('booking_confirmed'), true);
   assert.equal(isLineNotifyEnabled('registered_confirmed'), true);
+});
+expect('續購提醒寫教練與管理者，開關只管方案提醒；團課最後一堂提醒另有開關、仍發會員', () => {
+  const s = setLineNotifyState({ master: true, items: { booking_new: true, renewal_reminder: false } });
+  const items = s.groups.flatMap((g) => g.items);
+  assert.equal(items.find((i) => i.key === 'renewal_reminder').recipients, '教練與管理者');
+  assert.equal(items.find((i) => i.key === 'group_last_session').recipients, '會員');
+  assert.equal(isLineNotifyEnabled('package_low_sessions'), false);
+  assert.equal(isLineNotifyEnabled('package_low_recheck'), false);
+  assert.equal(isLineNotifyEnabled('group_last_session'), true);
+  setLineNotifyState({ items: { renewal_reminder: true } });
 });
 expect('總開關 OFF 蓋過項目 ON（項目值仍存 1）', () => {
   setLineNotifyState({ master: false, items: { booking_new: true } });

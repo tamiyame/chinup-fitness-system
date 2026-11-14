@@ -1578,7 +1578,7 @@ app.patch('/api/admin/settings', requireAdmin, asyncHandler((req, res) => {
   tx(() => { for (const [k, v] of writes) setSetting(k, v); });
   res.json(settingsPayload());
 }));
-// --- Admin: LINE 通知開關（總開關＋16 項目）與本月推播額度 ---
+// --- Admin: LINE 通知開關（總開關＋17 項目）與本月推播額度 ---
 app.get('/api/admin/line-notify', requireAdmin, asyncHandler((req, res) => {
   res.json(getLineNotifyState());
 }));
