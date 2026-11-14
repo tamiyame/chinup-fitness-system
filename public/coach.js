@@ -967,7 +967,7 @@ function pkgSourceLabel(b) {
 function renderBkeditBody() {
   const b = bkeditBooking;
   const tag = b.session_type === '1on2' ? '1對2' : '1對1';
-  const source = b.package_id ? pkgSourceLabel(b) : (b.discount_code ? `折扣碼 ${escapeHtml(b.discount_code)}` : '一般預約');
+  const source = b.pkg_source === 'online' ? (b.discount_code ? `線上預約 · 折扣碼 ${escapeHtml(b.discount_code)}` : '線上預約') : b.package_id ? pkgSourceLabel(b) : (b.discount_code ? `折扣碼 ${escapeHtml(b.discount_code)}` : '一般預約');
   const paid = b.paid_at ? '已核對' : '待核對';
   const body = $('bkedit-body');
   body.innerHTML = `
@@ -999,7 +999,7 @@ function renderBkeditBody() {
 
 async function doBkCancel() {
   const b = bkeditBooking;
-  if (!confirm(`確定取消「${b.member_name}」${bkSlotLabel(b.start_at)} 的預約？${b.package_id ? '（將回補 1 堂方案）' : ''}`)) return;
+  if (!confirm(`確定取消「${b.member_name}」${bkSlotLabel(b.start_at)} 的預約？${b.package_id ? (b.pkg_source === 'online' ? (b.paid_at ? '（已付款，會保留 1 堂可改約）' : '') : '（將回補 1 堂方案）') : ''}`)) return;
   try {
     // 管理者取消他教練的預約：帶該預約 coach_id 走 adminOnBehalf；本人取消自己不需。
     const qs = isAdmin ? `?coachId=${b.coach_id}` : '';
@@ -1011,7 +1011,7 @@ async function doBkCancel() {
 // 取消全部預約：取消這筆所屬循環群組（同教練、含過去）的全部預約。
 async function doBkCancelGroup() {
   const b = bkeditBooking;
-  if (!confirm(`確定取消「${b.member_name}」這筆所屬循環的全部預約？此循環（含已過去）的所有未取消預約將一併取消，並回補方案堂數。`)) return;
+  if (!confirm(`確定取消「${b.member_name}」這筆所屬循環的全部預約？${b.pkg_source === 'online' ? '此循環（含已過去）的所有未取消預約將一併取消；已付款的會各保留 1 堂可改約。' : '此循環（含已過去）的所有未取消預約將一併取消，並回補方案堂數。'}`)) return;
   try {
     const r = await api(`/api/coach/bookings/${b.id}/cancel-group`, { method: 'POST', body: { reason: '後台取消（全部）' } });
     toast(`已取消全部預約（${r.cancelled?.length || 0} 筆）`, 'success'); bkeditClose(); renderRegister();
@@ -1064,12 +1064,12 @@ function renderBkReassign() {
           const valid = sortPkgsOldFirst(all.filter(p => p.is_valid));
           if (!valid.length) { $('bke-pkg').innerHTML = '<div class="regm-sub" style="color:var(--warn-fg);">此客人沒有可用方案，請先於會員管理或登錄彈窗開方案。</div>'; return; }
           const PT = { '1on1': '一對一', '1on2': '一對二' };
-          $('bke-pkg').innerHTML = `<select id="bke-pkgsel" class="form-select">${valid.map(p => `<option value="${p.id}"${pkgLocked(p) ? ' disabled' : ''}>${PT[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}${pkgLocked(p) ? '・' + PKG_LOCKED_NOTE : ''}</option>`).join('')}</select><button id="bke-reassign-go" class="btn-primary" style="margin-top:6px;">確認改指定</button>`;
+          $('bke-pkg').innerHTML = `<select id="bke-pkgsel" class="form-select">${valid.map(p => `<option value="${p.id}"${pkgLocked(p) ? ' disabled' : ''}>${PT[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}${pkgLocked(p) ? '・' + PKG_LOCKED_NOTE : ''}${p.source === 'online' ? '・線上單堂' : ''}</option>`).join('')}</select><button id="bke-reassign-go" class="btn-primary" style="margin-top:6px;">確認改指定</button>`;
           $('bke-reassign-go').onclick = async () => {
             try {
               await api(`/api/coach/bookings/${b.id}/reassign`, { method: 'PATCH', body: { memberId: picked.id, packageId: Number($('bke-pkgsel').value) } });
               toast('已改指定客人/方案', 'success'); bkeditClose(); renderRegister();
-            } catch (e) { const m = { package_invalid: '方案已失效/用罄', older_package_first: '同類型較早買的方案還有堂數，請先用完舊方案', package_member_mismatch: '方案不屬此客人', package_depleted: '方案堂數不足', forbidden: '無權限' }; toast(m[e.data?.error] || `失敗：${e.message}`, 'error'); }
+            } catch (e) { const m = { package_invalid: '方案已失效/用罄', older_package_first: '同類型較早買的方案還有堂數，請先用完舊方案', package_member_mismatch: '方案不屬此客人', package_depleted: '方案堂數不足', paid_online_single: '這堂線上預約已付款，不能直接改客人或方案。要改請先取消（會保留 1 堂），或由管理者退款。', forbidden: '無權限' }; toast(m[e.data?.error] || `失敗：${e.message}`, 'error'); }
           };
         }));
       } catch (e) { $('bke-results').innerHTML = `<div class="regm-sub" style="color:#dc2626;padding:6px;">${escapeHtml(e.message)}</div>`; }
@@ -1300,7 +1300,7 @@ function renderRegmPicked() {
     const unit = p.amount != null
       ? `單價 NT$${Math.round(p.amount / p.total_sessions).toLocaleString('zh-TW')}`
       : '無單價';
-    return `<option value="${p.id}"${pkgLocked(p) ? ' disabled' : ''}>${PKG_TYPE[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}・${unit}${p.expires_at ? '・到期 ' + escapeHtml(p.expires_at) : ''}${pkgLocked(p) ? '・' + PKG_LOCKED_NOTE : ''}</option>`;
+    return `<option value="${p.id}"${pkgLocked(p) ? ' disabled' : ''}>${PKG_TYPE[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}・${unit}${p.expires_at ? '・到期 ' + escapeHtml(p.expires_at) : ''}${pkgLocked(p) ? '・' + PKG_LOCKED_NOTE : ''}${p.source === 'online' ? '・線上單堂' : ''}</option>`;
   }).join('');
   picked.innerHTML = `
     <div class="regm-pkg-head">
