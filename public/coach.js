@@ -1061,15 +1061,15 @@ function renderBkReassign() {
           picked = list.find(u => u.id === Number(r.dataset.id));
           $('bke-results').innerHTML = ''; search.value = picked.name;
           const all = await api(`/api/coach/packages?memberId=${picked.id}`);
-          const valid = all.filter(p => p.is_valid);
+          const valid = sortPkgsOldFirst(all.filter(p => p.is_valid));
           if (!valid.length) { $('bke-pkg').innerHTML = '<div class="regm-sub" style="color:var(--warn-fg);">此客人沒有可用方案，請先於會員管理或登錄彈窗開方案。</div>'; return; }
           const PT = { '1on1': '一對一', '1on2': '一對二' };
-          $('bke-pkg').innerHTML = `<select id="bke-pkgsel" class="form-select">${valid.map(p => `<option value="${p.id}">${PT[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}</option>`).join('')}</select><button id="bke-reassign-go" class="btn-primary" style="margin-top:6px;">確認改指定</button>`;
+          $('bke-pkg').innerHTML = `<select id="bke-pkgsel" class="form-select">${valid.map(p => `<option value="${p.id}"${pkgLocked(p) ? ' disabled' : ''}>${PT[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}${pkgLocked(p) ? '・' + PKG_LOCKED_NOTE : ''}</option>`).join('')}</select><button id="bke-reassign-go" class="btn-primary" style="margin-top:6px;">確認改指定</button>`;
           $('bke-reassign-go').onclick = async () => {
             try {
               await api(`/api/coach/bookings/${b.id}/reassign`, { method: 'PATCH', body: { memberId: picked.id, packageId: Number($('bke-pkgsel').value) } });
               toast('已改指定客人/方案', 'success'); bkeditClose(); renderRegister();
-            } catch (e) { const m = { package_invalid: '方案已失效/用罄', package_member_mismatch: '方案不屬此客人', package_depleted: '方案堂數不足', forbidden: '無權限' }; toast(m[e.data?.error] || `失敗：${e.message}`, 'error'); }
+            } catch (e) { const m = { package_invalid: '方案已失效/用罄', older_package_first: '同類型較早買的方案還有堂數，請先用完舊方案', package_member_mismatch: '方案不屬此客人', package_depleted: '方案堂數不足', forbidden: '無權限' }; toast(m[e.data?.error] || `失敗：${e.message}`, 'error'); }
           };
         }));
       } catch (e) { $('bke-results').innerHTML = `<div class="regm-sub" style="color:#dc2626;padding:6px;">${escapeHtml(e.message)}</div>`; }
@@ -1155,16 +1155,25 @@ function renderRegmBody() {
   });
 }
 
-async function loadRegmPackages(selectId = null) {
+// 舊方案先用：同一位客人同類型裡，較早買的方案還有堂數時，較晚買的不能選（use_first_id 由後端算，後端也會擋）。
+// 可選的排前面、要等的排後面，各自由舊到新。
+const pkgLocked = (p) => !!p.use_first_id;
+const sortPkgsOldFirst = (list) => list.slice().sort((a, b) => (pkgLocked(a) - pkgLocked(b)) || (a.id - b.id));
+const PKG_LOCKED_NOTE = '先用完較早買的方案';
+
+/** createdPkg：剛在彈窗裡開的新方案（有的話）。 */
+async function loadRegmPackages(createdPkg = null) {
   const picked = $('regm-picked');
   picked.innerHTML = '<p class="regm-sub">載入方案中…</p>';
   let all = [];
   try { all = await api(`/api/coach/packages?memberId=${regmCustomer.id}`); }
   catch (e) { picked.innerHTML = `<p class="regm-sub" style="color:#dc2626;">${escapeHtml(e.message)}</p>`; return; }
-  regmPackages = all.filter(p => p.is_valid);
-  regmPackageId = selectId && regmPackages.some(p => p.id === selectId)
-    ? selectId
-    : (regmPackages.length ? regmPackages[0].id : null);
+  regmPackages = sortPkgsOldFirst(all.filter(p => p.is_valid));
+  const usable = regmPackages.filter(p => !pkgLocked(p));
+  // 預設＝最早買、還有堂數的那筆；剛開了新方案 → 選「該類型」要先用的那筆（同類型舊方案還有堂數時就是舊的）
+  const pick = (createdPkg && usable.find(p => p.session_type === createdPkg.session_type)) || usable[0] || null;
+  regmPackageId = pick ? pick.id : null;
+  if (createdPkg && pick && pick.id !== createdPkg.id) toast('方案已建立。同類型較早買的方案還有堂數，請先用完舊方案', 'info');
   renderRegmPicked();
 }
 
@@ -1284,14 +1293,14 @@ function renderRegmPicked() {
   if (!regmPackages.length) {
     picked.innerHTML = `
       <div class="regm-nopkg">此客人沒有可用方案，請先開一個：</div>` + regmNewPkgFormHtml();
-    bindRegmNewPkgForm((pkg) => loadRegmPackages(pkg.id));
+    bindRegmNewPkgForm((pkg) => loadRegmPackages(pkg));
     return;
   }
   const opts = regmPackages.map(p => {
     const unit = p.amount != null
       ? `單價 NT$${Math.round(p.amount / p.total_sessions).toLocaleString('zh-TW')}`
       : '無單價';
-    return `<option value="${p.id}">${PKG_TYPE[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}・${unit}${p.expires_at ? '・到期 ' + escapeHtml(p.expires_at) : ''}</option>`;
+    return `<option value="${p.id}"${pkgLocked(p) ? ' disabled' : ''}>${PKG_TYPE[p.session_type] || escapeHtml(p.session_type)}・剩 ${escapeHtml(String(p.remaining_sessions))}/${escapeHtml(String(p.total_sessions))}・${unit}${p.expires_at ? '・到期 ' + escapeHtml(p.expires_at) : ''}${pkgLocked(p) ? '・' + PKG_LOCKED_NOTE : ''}</option>`;
   }).join('');
   picked.innerHTML = `
     <div class="regm-pkg-head">
@@ -1300,6 +1309,7 @@ function renderRegmPicked() {
     </div>
     <div id="regm-np-box" class="hidden">${regmNewPkgFormHtml()}</div>
     <select id="regm-pkg" class="form-select">${opts}</select>
+    ${regmPackages.some(pkgLocked) ? '<div class="regm-sub">同類型的方案從最早買的開始用，用完才能選下一筆。</div>' : ''}
     <label class="regm-check"><input id="regm-rec-on" type="checkbox" /> 開啟循環</label>
     <div id="regm-rec" class="regm-rec hidden">
       <div class="regm-rec-row">
@@ -1330,7 +1340,7 @@ function renderRegmPicked() {
   sel.onchange = () => { regmPackageId = Number(sel.value); renderRegmMate(regmPackages.find(p => p.id === regmPackageId)); };
   regmPackageId = Number(sel.value);
   $('regm-np-toggle').onclick = () => $('regm-np-box').classList.toggle('hidden');
-  bindRegmNewPkgForm((pkg) => loadRegmPackages(pkg.id));
+  bindRegmNewPkgForm((pkg) => loadRegmPackages(pkg));
   // 週幾勾選（預設循環起始日的星期）
   const wdWrap = $('regm-weekdays');
   wdWrap.innerHTML = ['一','二','三','四','五','六','日'].map((lab, i) => {
@@ -1382,7 +1392,10 @@ async function doRegmPreview() {
     const label = { ok: '✓ 建立', conflict: '✕ 衝突跳過', no_date: '✕ 無此日', depleted: '✕ 方案用罄' };
     box.innerHTML = `<div class="regm-sub">將建立 <strong>${r.willCreate}</strong> 筆、扣 ${r.willDeduct} 堂、方案剩 ${r.remainingAfter}</div>` +
       r.occurrences.map(o => `<div class="regm-occ regm-${o.status}">${regmSlotLabel(o.startAt)} — ${label[o.status]}</div>`).join('');
-  } catch (e) { box.innerHTML = `<div class="regm-sub" style="color:#dc2626;">${escapeHtml(e.data?.error || e.message)}</div>`; }
+  } catch (e) {
+    const msgs = { older_package_first: '同類型較早買的方案還有堂數，請先用完舊方案' };
+    box.innerHTML = `<div class="regm-sub" style="color:#dc2626;">${escapeHtml(msgs[e.data?.error] || e.data?.error || e.message)}</div>`;
+  }
 }
 
 async function doRegmSubmit() {
@@ -1391,7 +1404,7 @@ async function doRegmSubmit() {
     toast(`已登錄 ${r.created.length} 筆${r.skipped.length ? `（跳過 ${r.skipped.length}）` : ''}`, 'success');
     regmClose(); renderRegister();
   } catch (e) {
-    const msgs = { package_invalid: '方案已失效/用罄', package_member_mismatch: '方案不屬此客人', nothing_created: '無可建立場次（全衝突或用罄）', slot_taken: '此時段已被預約', companion_not_allowed: '只有 1對2 方案可加同行客人', companion_same_person: '同行客人不可與主客人相同', companion_not_found: '找不到同行客人' };
+    const msgs = { package_invalid: '方案已失效/用罄', older_package_first: '同類型較早買的方案還有堂數，請先用完舊方案', package_member_mismatch: '方案不屬此客人', nothing_created: '無可建立場次（全衝突或用罄）', slot_taken: '此時段已被預約', companion_not_allowed: '只有 1對2 方案可加同行客人', companion_same_person: '同行客人不可與主客人相同', companion_not_found: '找不到同行客人' };
     toast(msgs[e.data?.error] || `登錄失敗：${e.message}`, 'error');
   }
 }

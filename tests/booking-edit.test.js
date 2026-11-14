@@ -19,6 +19,13 @@ const admin=Number(db.prepare("INSERT INTO users (name,email,role,is_admin) VALU
 const D=`${new Date(Date.now()+13*86400000).getFullYear()}-${pad(new Date(Date.now()+13*86400000).getMonth()+1)}-${pad(new Date(Date.now()+13*86400000).getDate())}`;
 const mkBk=(memberId,hh,pkgId=null,sType='1on1')=>Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,package_id,paid_at) VALUES (?,?,?,?,?,?,?)").run(coach,memberId,`${D}T${hh}:00:00`,`${D}T${String(Number(hh)+1).padStart(2,'0')}:00:00`,sType,pkgId,pkgId?'2026-06-24T00:00:00':null).lastInsertRowid);
 
+// 舊方案先用：同類型較早買的方案還有堂數時，不能登錄／改指定到較新的。這些案例測的不是先後順序，
+// 開方案前先把這位客人同類型的舊方案作廢，新開的這筆就是該用的那筆。
+const freshPkg = (opts) => {
+  db.prepare("UPDATE customer_packages SET archived_at = '2020-01-01T00:00:00' WHERE member_id = ? AND session_type = ? AND archived_at IS NULL").run(opts.memberId, opts.sessionType);
+  return createPackage(opts);
+};
+
 expect('reschedule：移到新整點、member/package 不變', () => {
   const bid=mkBk(m1,'09');
   rescheduleBooking({ bookingId:bid, newStartAt:`${D}T15:00:00`, actorUserId:cu, isAdmin:false });
@@ -75,7 +82,7 @@ expect('reassign 折扣碼非方案預約 → 釋放舊折扣 redemption', () =>
   const codeId=Number(db.prepare("INSERT INTO discount_codes (code,discount_type,discount_value,active) VALUES ('BE10','percent',10,1)").run().lastInsertRowid);
   const bid=Number(db.prepare("INSERT INTO bookings (coach_id,member_id,start_at,end_at,session_type,original_amount,discount_code,discount_amount) VALUES (?,?,?,?, '1on1',1500,'BE10',150)").run(coach,m1,`${D}T20:00:00`,`${D}T21:00:00`).lastInsertRowid);
   db.prepare("INSERT INTO discount_redemptions (code_id,phone,kind,ref_id,amount) VALUES (?, '0981000001','booking',?,150)").run(codeId,bid);
-  const pNew=createPackage({memberId:m2,sessionType:'1on1',totalSessions:3,amount:3000});
+  const pNew=freshPkg({memberId:m2,sessionType:'1on1',totalSessions:3,amount:3000});
   reassignBooking({ bookingId:bid, newMemberId:m2, newPackageId:pNew.id, actorUserId:admin, isAdmin:true });
   assert.equal(db.prepare("SELECT COUNT(*) c FROM discount_redemptions WHERE kind='booking' AND ref_id=?").get(bid).c, 0); // 已釋放
 });
@@ -181,15 +188,15 @@ expect('setBookingCompanion：1on1 → 400、他教練 → 403、管理者可代
   assert.equal(setBookingCompanion({ bookingId:b2, companionId:m2, actorUserId:admin, isAdmin:true }).companionId, m2);
 });
 expect('reassign：新方案 1on1 → 清同行；新主客人＝原同行 → 清同行；否則保留', () => {
-  const p2=createPackage({ memberId:m2, sessionType:'1on1', totalSessions:5 });
+  const p2=freshPkg({ memberId:m2, sessionType:'1on1', totalSessions:5 });
   const b1=mkBk2(m1,'20',null,'1on2'); setBookingCompanion({ bookingId:b1, companionId:m3, actorUserId:cu });
   reassignBooking({ bookingId:b1, newMemberId:m2, newPackageId:p2.id, actorUserId:cu });
   assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(b1).member2_id, null);
-  const p3=createPackage({ memberId:m3, sessionType:'1on2', totalSessions:5 });
+  const p3=freshPkg({ memberId:m3, sessionType:'1on2', totalSessions:5 });
   const b2=mkBk2(m1,'21',null,'1on2'); setBookingCompanion({ bookingId:b2, companionId:m3, actorUserId:cu });
   reassignBooking({ bookingId:b2, newMemberId:m3, newPackageId:p3.id, actorUserId:cu });
   assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(b2).member2_id, null);
-  const p1=createPackage({ memberId:m1, sessionType:'1on2', totalSessions:5 });
+  const p1=freshPkg({ memberId:m1, sessionType:'1on2', totalSessions:5 });
   const b3=mkBk2(m2,'22',null,'1on2'); setBookingCompanion({ bookingId:b3, companionId:m3, actorUserId:cu });
   reassignBooking({ bookingId:b3, newMemberId:m1, newPackageId:p1.id, actorUserId:cu });
   assert.equal(db.prepare('SELECT member2_id FROM bookings WHERE id=?').get(b3).member2_id, m3);
