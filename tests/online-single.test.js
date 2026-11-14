@@ -336,6 +336,50 @@ expect('限用一次的折扣碼：已付款取消後還保留 1 堂時不能再
   assert.ok(again().id);
 });
 
+// ── 會員方案區的單堂資料 ──
+const single = (memberId, packageId) => pkg.listPackagesForMember(memberId, { includeArchived: true }).find((p) => p.id === packageId).single;
+expect('已預約・待核對 → 核對後可退款', () => {
+  const o = online(); let s = single(o.memberId, o.packageId);
+  assert.deepEqual([s.state, s.pay_status, s.booking_id, s.start_at, s.coach_name, s.booking_status, s.amount, s.refundable_booking_id],
+    ['booked', 'pending', o.id, o.startAt, 'os教練', 'confirmed', 1500, null]);
+  bk.confirmBookingPayment({ bookingId: o.id, actorId: admin }); s = single(o.memberId, o.packageId);
+  assert.deepEqual([s.pay_status, s.refundable_booking_id], ['paid', o.id]);
+});
+expect('已上完', () => { const o = online({ startAt: pastSlot(), paid: true }); assert.equal(single(o.memberId, o.packageId).state, 'done'); });
+expect('保留 1 堂 → 改約後代表預約換成新的那筆 → 退款後已取消・已退款', () => {
+  const m = member(); const o = online({ memberId: m, paid: true }); adminCancel(o.id);
+  let s = single(m, o.packageId);
+  assert.deepEqual([s.state, s.pay_status, s.booking_id, s.booking_status, s.refundable_booking_id], ['credit', 'paid', o.id, 'cancelled', o.id]);
+  const nid = register(m, o.packageId); s = single(m, o.packageId);
+  assert.deepEqual([s.state, s.booking_id, s.refundable_booking_id], ['booked', nid, nid]);
+  refund(nid); s = single(m, o.packageId);
+  assert.deepEqual([s.state, s.pay_status, s.refundable_booking_id], ['cancelled', 'refunded', null]);
+});
+expect('未付款取消 → 已取消・待核對；作廢保留的 1 堂 → 已作廢・已核對，不能退款', () => {
+  const a = online(); adminCancel(a.id);
+  assert.deepEqual([single(a.memberId, a.packageId).state, single(a.memberId, a.packageId).pay_status], ['cancelled', 'pending']);
+  const b = online({ paid: true }); adminCancel(b.id); pkg.archivePackage(b.packageId, admin);
+  const s = single(b.memberId, b.packageId);
+  assert.deepEqual([s.state, s.pay_status, s.refundable_booking_id], ['void', 'paid', null]);
+});
+expect('預約被改掛走、名下沒有預約的線上單堂：預約欄位都是 null、狀態已取消', () => {
+  const o = online(); const m2 = member(); reassign(o.id, m2, tenPack(m2).id);
+  const s = single(o.memberId, o.packageId);
+  assert.deepEqual([s.booking_id, s.start_at, s.coach_name, s.booking_status, s.state, s.pay_status, s.refundable_booking_id], [null, null, null, null, 'cancelled', 'pending', null]);
+});
+expect('教練開立的方案沒有 single', () => { const m = member(); tenPack(m); assert.equal(pkg.listPackagesForMember(m)[0].single, undefined); });
+expect('summary：各來源方案數、沒有方案的未取消預約數；還沒補登 → backfill 為 null', () => {
+  const s = pkg.getPackagesSummary(); const n = (sql) => db.prepare(sql).get().c;
+  assert.deepEqual([s.packages.online, s.packages.staff, s.confirmedWithoutPackage, s.backfill],
+    [n("SELECT COUNT(*) AS c FROM customer_packages WHERE source = 'online'"), n("SELECT COUNT(*) AS c FROM customer_packages WHERE source = 'staff'"),
+     n("SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed' AND package_id IS NULL"), null]);
+});
+expect('summary：backfill 有值時解析成物件', () => {
+  db.prepare("INSERT INTO app_settings (key, value) VALUES ('online_single_backfill_summary', ?)").run('{"created":3,"members":2}');
+  try { assert.deepEqual(pkg.getPackagesSummary().backfill, { created: 3, members: 2 }); }
+  finally { db.prepare("DELETE FROM app_settings WHERE key = 'online_single_backfill_summary'").run(); }
+});
+
 // ── 不變量（這一段永遠留在檔案最後；之後的 task 把測試加在它前面）──
 expect('線上單堂方案都是共 1 堂、剩 0 或 1', () => {
   assert.equal(db.prepare("SELECT COUNT(*) AS c FROM customer_packages WHERE source = 'online' AND (total_sessions <> 1 OR remaining_sessions NOT IN (0, 1))").get().c, 0);

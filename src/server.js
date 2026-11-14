@@ -97,6 +97,7 @@ import {
   adjustRemaining as svcAdjustRemaining,
   updateUnitPrice as svcUpdateUnitPrice,
   archivePackage as svcArchivePackage,
+  getPackagesSummary as svcPackagesSummary,
   restorePackage as svcRestorePackage,
 } from './services/packageService.js';
 import { getCoachWeek as svcGetCoachWeek, searchCustomers as svcSearchCustomers } from './services/coachCalendarService.js';
@@ -902,6 +903,11 @@ app.get('/api/coach/packages', requireCoach, asyncHandler((req, res) => {
   if (!memberId) return res.status(400).json({ error: 'missing_member' });
   const includeArchived = req.query.includeArchived === '1' || req.query.includeArchived === 'true';
   res.json(svcListPackages(memberId, { includeArchived }));
+}));
+
+// 後台方案總覽（各來源方案數、未掛方案預約數、補登結果）
+app.get('/api/admin/packages/summary', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcPackagesSummary());
 }));
 
 app.patch('/api/coach/packages/:id', requireCoach, asyncHandler((req, res) => {

@@ -93,7 +93,58 @@ export function listPackagesForMember(memberId, { includeArchived = false } = {}
     const first = firstByType.get(r.session_type);
     r.use_first_id = r.is_valid && first !== r.id ? first : null;
   }
+  attachSingle(rows, now);
   return rows;
+}
+
+// 線上單堂方案附 single（卡片顯示用）；教練開立的列不動。名下預約一次查回，不逐張方案查。
+function attachSingle(rows, now) {
+  const online = rows.filter((r) => r.source === 'online');
+  if (!online.length) return;
+  const ids = online.map((r) => r.id);
+  const bks = db.prepare(
+    `SELECT b.id, b.package_id, b.start_at, b.status, b.paid_at, b.refunded_at, c.display_name AS coach_name
+       FROM bookings b JOIN coaches c ON c.id = b.coach_id
+      WHERE b.package_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY b.id`
+  ).all(...ids);
+  const byPkg = new Map();
+  for (const b of bks) { if (!byPkg.has(b.package_id)) byPkg.set(b.package_id, []); byPkg.get(b.package_id).push(b); }
+  for (const r of online) {
+    const list = byPkg.get(r.id) || [];   // 依 id 由小到大；名下可能沒有預約（被改掛走）
+    const confirmed = list.filter((b) => b.status === 'confirmed');
+    const rep = confirmed.length ? confirmed[confirmed.length - 1] : (list[list.length - 1] || null);
+    const payStatus = list.some((b) => b.refunded_at) ? 'refunded' : list.some((b) => b.paid_at) ? 'paid' : 'pending';
+    let state;
+    if (r.archived_at) state = payStatus === 'paid' ? 'void' : 'cancelled';
+    else if (confirmed.length) state = rep.start_at >= now ? 'booked' : 'done';
+    else state = 'credit';
+    let refundable = null;
+    if (!r.archived_at && payStatus === 'paid') {
+      if (rep && rep.paid_at && !rep.refunded_at) refundable = rep.id;
+      else { const hit = list.filter((b) => b.paid_at && !b.refunded_at); refundable = hit.length ? hit[hit.length - 1].id : null; }
+    }
+    r.single = {
+      booking_id: rep?.id ?? null, start_at: rep?.start_at ?? null, coach_name: rep?.coach_name ?? null, booking_status: rep?.status ?? null,
+      pay_status: payStatus, amount: r.amount, state, refundable_booking_id: refundable,
+    };
+  }
+}
+
+/** 後台方案總覽：各來源方案數、沒有方案的未取消預約數、補登結果（沒補登過 → null）。 */
+export function getPackagesSummary() {
+  const n = (sql) => db.prepare(sql).get().c;
+  const raw = db.prepare("SELECT value FROM app_settings WHERE key = 'online_single_backfill_summary'").get()?.value;
+  let backfill = null;
+  if (raw) { try { backfill = JSON.parse(raw); } catch { backfill = null; } }
+  return {
+    packages: {
+      staff: n("SELECT COUNT(*) AS c FROM customer_packages WHERE source = 'staff'"),
+      online: n("SELECT COUNT(*) AS c FROM customer_packages WHERE source = 'online'"),
+    },
+    confirmedWithoutPackage: n("SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed' AND package_id IS NULL"),
+    backfill,
+  };
 }
 
 export function listValidPackagesForMember(memberId, sessionType = null) {
