@@ -291,6 +291,8 @@ expect('改單價：線上單堂的折扣一併清除並釋放用量，薪資＝
 expect('改單價：保留的 1 堂改價後，改約的那堂用新價', () => {
   const m = member(); const o = online({ memberId: m, paid: true }); adminCancel(o.id);
   pkg.updateUnitPrice({ packageId: o.packageId, unitPrice: 1000 });
+  const c = B(o.id);   // 保留那堂背後已取消的原筆也一併改正
+  assert.deepEqual([P(o.packageId).amount, c.status, c.original_amount, c.discount_amount, c.discount_code], [1000, 'cancelled', 1000, null, null]);
   assert.equal(B(register(m, o.packageId)).original_amount, 1000);
 });
 expect('教練開立的方案：調整、作廢連動取消、還原都照舊', () => {
@@ -389,6 +391,42 @@ expect('summary：補登失敗原因沒有、空字串、壞 JSON → null；有
     set('{"at":"2026-11-14T09:00:00","reason":"error","error":"booking 5: x"}');
     assert.deepEqual(pkg.getPackagesSummary().backfillError, { at: '2026-11-14T09:00:00', reason: 'error', error: 'booking 5: x' });
   } finally { db.prepare("DELETE FROM app_settings WHERE key = 'online_single_backfill_error'").run(); }
+});
+
+// ── 最終修正波：取消與改單價 ──
+expect('已退款卻仍是未取消的舊預約（人工改過的資料）→ 取消時方案作廢、不留堂；卡片已取消・已退款', () => {
+  const o = online({ paid: true });
+  db.prepare('UPDATE bookings SET refunded_at = ?, refunded_by = ? WHERE id = ?').run('2026-03-02T12:00:00', admin, o.id);
+  adminCancel(o.id);
+  const p = pkg.getPackage(o.packageId); const s = single(o.memberId, o.packageId);
+  assert.deepEqual([!!p.archived_at, p.is_valid, s.state, s.pay_status], [true, false, 'cancelled', 'refunded']);
+});
+const refundNote = (memberId) => db.prepare("SELECT body FROM notifications WHERE type = 'booking_refunded' AND user_id = ? ORDER BY id DESC").get(memberId)?.body;
+expect('改單價：保留的 1 堂（1500、折扣碼 OS100）改成 1000 → 已取消的原筆一併改正、釋放用量；退款通知寫 1000', () => {
+  const m = member(); const o = online({ memberId: m, code: 'OS100', paid: true }); adminCancel(o.id);
+  assert.equal(uses(o.id), 1);
+  const r = pkg.updateUnitPrice({ packageId: o.packageId, unitPrice: 1000 });
+  const b = B(o.id);
+  assert.deepEqual([r.rewrittenBookings, b.status, b.original_amount, b.discount_amount, b.discount_code, uses(o.id), P(o.packageId).amount],
+    [1, 'cancelled', 1000, null, null, 0, 1000]);
+  assert.equal(single(m, o.packageId).amount, 1000);
+  refund(o.id);
+  const body = refundNote(m);
+  assert.ok(body && body.includes('NT$1000'), body); assert.ok(!body.includes('NT$1400'), body);
+});
+expect('改單價：教練開立的方案只回寫未取消的預約（已取消的不動）', () => {
+  const m = member(); const ten = tenPack(m); const kept = register(m, ten.id); const gone = register(m, ten.id); adminCancel(gone);
+  const r = pkg.updateUnitPrice({ packageId: ten.id, unitPrice: 1200 });
+  assert.deepEqual([r.rewrittenBookings, B(kept).original_amount, B(gone).original_amount, P(ten.id).amount], [1, 1200, 1500, 12000]);
+});
+expect('改單價：已作廢的線上單堂 → 名下已取消／已退款的預約都不動', () => {
+  const a = online({ code: 'OS100' }); adminCancel(a.id);          // 未付款取消 → 作廢
+  const b = online({ code: 'OS100', paid: true }); refund(b.id);   // 退款 → 作廢
+  for (const o of [a, b]) {
+    const before = B(o.id);
+    const r = pkg.updateUnitPrice({ packageId: o.packageId, unitPrice: 900 });
+    assert.deepEqual([r.rewrittenBookings, B(o.id)], [0, before]);
+  }
 });
 
 // ── 不變量（這一段永遠留在檔案最後；之後的 task 把測試加在它前面）──

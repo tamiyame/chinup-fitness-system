@@ -25,10 +25,11 @@ const cancelBookingStmt = db.prepare(`
 `);
 
 // 預約從 confirmed 轉 cancelled 的當下呼叫一次（呼叫端須保證恰在轉移當下），依方案來源與付款狀態分流：
-//   沒有方案        → 釋放折扣碼用量
-//   教練開立(staff) → 回補 1 堂（失敗不阻斷）＋釋放折扣碼用量
-//   線上單堂未付款  → 回補後整張方案作廢（由關閉一併釋放折扣碼用量）
-//   線上單堂已付款  → 回補、保留 1 堂可改約，折扣碼用量不釋放（錢還在）
+//   沒有方案                    → 釋放折扣碼用量
+//   教練開立(staff)             → 回補 1 堂（失敗不阻斷）＋釋放折扣碼用量
+//   線上單堂未付款、或已退款    → 回補後整張方案作廢（由關閉一併釋放折扣碼用量）；錢不在店裡，不留堂
+//     （已退款卻仍未取消只會出現在人工改過的舊資料：現行退款一定連同取消）
+//   線上單堂已付款且未退款      → 回補、保留 1 堂可改約，折扣碼用量不釋放（錢還在）
 // 回 { creditKept }：取消後是否真的留下一堂可用的方案堂數。
 function settleCancelledBooking(b) {
   const release = () => releaseRedemption({ kind: 'booking', refId: b.id });
@@ -37,7 +38,7 @@ function settleCancelledBooking(b) {
   let refunded = false;
   try { refunded = refundPackageOne(b.package_id); } catch { /* 回補失敗不阻斷取消 */ }
   if (p && p.source === 'online') {
-    if (!b.paid_at) { closeOnlineSinglePackage(b.package_id); return { creditKept: false }; }
+    if (!b.paid_at || b.refunded_at) { closeOnlineSinglePackage(b.package_id); return { creditKept: false }; }
     return { creditKept: true };
   }
   release();

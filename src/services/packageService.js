@@ -221,8 +221,14 @@ export function adjustRemaining({ packageId, remaining, note = null }) {
   });
 }
 
-/** 修正單價（管理者）：amount 改為 unitPrice×total、清除折扣註記，並回寫該方案全部已登錄堂
- *  （含已上完；薪資口徑從根修正——舊期別薪資頁重開會依新單價重算，屬修正目的）。 */
+/** 修正單價（管理者）：amount 改為 unitPrice×total、清除方案的折扣碼註記，並回寫名下預約：
+ *  定價改成新單價、折扣欄位清成 NULL、釋放它們的折扣碼用量（含已上完；薪資口徑從根修正——
+ *  舊期別薪資頁重開會依新單價重算，屬修正目的）。rewrittenBookings＝實際改到的預約筆數。
+ *  回寫哪些預約：
+ *    教練開立的方案、已作廢的線上單堂 → 只回寫未取消（confirmed）的預約
+ *    未作廢的線上單堂 → 名下所有還沒退款的預約（不分狀態，含「保留 1 堂」背後已取消、已付款的原筆）。
+ *      規格對改單價的意思是「管理者指定的單價就是最後的金額」，所以卡片、已核對匯款清單、
+ *      退款通知三處要顯示同一個數字；只改未取消的那筆，保留 1 堂之後退款時通知會寫舊的實付金額。 */
 export function updateUnitPrice({ packageId, unitPrice }) {
   const u = Number(unitPrice);
   if (!Number.isInteger(u) || u < 0) throw new ApiError(400, 'invalid_unit_price');
@@ -231,10 +237,13 @@ export function updateUnitPrice({ packageId, unitPrice }) {
     if (!p) throw new ApiError(404, 'package_not_found');
     const amount = u * p.total_sessions;
     db.prepare('UPDATE customer_packages SET amount = ?, discount_code = NULL WHERE id = ?').run(amount, packageId);
+    const which = p.source === 'online' && !p.archived_at
+      ? 'package_id = ? AND refunded_at IS NULL'
+      : "package_id = ? AND status = 'confirmed'";
     // 同一批預約：改定價、折扣欄位清成 NULL，並釋放它們的折扣碼用量（避免折扣被重複套用或用量殘留）。
-    const ids = db.prepare("SELECT id FROM bookings WHERE package_id = ? AND status = 'confirmed'").all(packageId);
+    const ids = db.prepare(`SELECT id FROM bookings WHERE ${which}`).all(packageId);
     const r = db.prepare(
-      "UPDATE bookings SET original_amount = ?, discount_amount = NULL, discount_code = NULL WHERE package_id = ? AND status = 'confirmed'"
+      `UPDATE bookings SET original_amount = ?, discount_amount = NULL, discount_code = NULL WHERE ${which}`
     ).run(u, packageId);
     for (const row of ids) releaseRedemption({ kind: 'booking', refId: row.id });
     return { ok: true, amount, unitPrice: u, rewrittenBookings: r.changes };
