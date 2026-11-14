@@ -4,7 +4,6 @@
 // 規格：docs/superpowers/specs/2026-07-04-renewal-reminders-design.md
 import { db, nowLocal } from '../db/connection.js';
 import { notify, notifyAdmins, fmtDateForLine } from './notifications.js';
-import { isLineNotifyEnabled } from './lineNotifyPolicy.js';
 
 const SESSION_LABELS = { '1on1': '1對1', '1on2': '1對2' };
 
@@ -37,11 +36,6 @@ const lastGroupStmt = db.prepare(`
 `);
 const hasMarker = db.prepare('SELECT 1 FROM renewal_reminders WHERE kind = ? AND member_id = ? AND ref_id = ? LIMIT 1');
 const insertMarker = db.prepare('INSERT OR IGNORE INTO renewal_reminders (kind, member_id, ref_id) VALUES (?, ?, ?)');
-// 一次性檢查已完成：LINE 送達，或還在重試中（永久失敗與未綁 LINE 的紀錄不算）
-const recheckDone = db.prepare(`
-  SELECT 1 FROM notifications
-  WHERE type = 'package_low_recheck' AND channel = 'line' AND status IN ('sent', 'failed') LIMIT 1
-`);
 
 const sessionLabel = (type) => SESSION_LABELS[type] || type;
 
@@ -49,7 +43,6 @@ const REMIND_TOTAL = 10;   // 只提醒 10 堂方案（業主 2026-11 指定：�
 /**
  * 需要續購提醒的方案：10 堂、尚餘剛好 1 堂，而且客人名下沒有「較晚買、還有堂數」的方案（已續購就不提醒）。
  * 較晚買＝id 較大（AUTOINCREMENT；created_at 建立後不會改，兩者順序一致）。新方案作廢、上完或過期（尚餘 0）不算已續購。
- * 每日提醒與一次性名單共用，兩邊口徑才會一致。
  */
 function dueLowPackages(now) {
   const rows = lowPackagesStmt.all(String(now).slice(0, 10), now);
@@ -80,22 +73,4 @@ export function processRenewalReminders(now = nowLocal()) {
   }
 
   return { packagesSent, groupSent };
-}
-
-/**
- * 一次性：續購提醒改發員工時，重新檢查全部 10 堂方案，把尚餘 1 堂的客人列成一則發給管理者。
- * 條件與每日提醒相同（dueLowPackages：已買新方案的不列，所以一位客人最多一筆），
- * 但不看 renewal_reminders（之前已提醒過會員的也要列入）。沒有符合者也發一則，管理者才知道檢查過了。
- * LINE 關閉或沒送達（例如月額度用完）都不算完成，由開機或 9 點排程再發，直到有管理者收到。
- * 回 { count }，沒執行回 null。
- */
-export function recheckTenSessionPackagesOnce(now = nowLocal()) {
-  if (!isLineNotifyEnabled('package_low_recheck') || recheckDone.get()) return null;
-  const hits = dueLowPackages(now);
-  const count = hits.length;
-  const summary = count
-    ? `目前有 ${count} 位客人的 10 堂方案只剩 1 堂：\n${hits.map((p) => `・${p.member_name}（${sessionLabel(p.session_type)}）`).join('\n')}`
-    : '目前沒有客人的 10 堂方案只剩 1 堂。';
-  notifyAdmins({ type: 'package_low_recheck', vars: { summary } });
-  return { count };
 }

@@ -25,7 +25,7 @@ export const LINE_NOTIFY_GROUPS = [
     { key: 'group_refund', label: '訂單退款', recipients: '會員', types: ['group_order_refunded'] },
   ] },
   { key: 'system', label: '排程與系統', items: [
-    { key: 'renewal_reminder', label: '續購提醒', recipients: '教練與管理者', types: ['package_low_sessions', 'package_low_recheck'] },
+    { key: 'renewal_reminder', label: '續購提醒', recipients: '教練與管理者', types: ['package_low_sessions'] },
     { key: 'group_last_session', label: '團課最後一堂提醒', recipients: '會員', types: ['group_last_session'] },
     { key: 'gcal_sync', label: 'Google 日曆同步', recipients: '教練退回＋管理者取消', types: ['gcal_move_rejected', 'gcal_delete_cancelled'] },
     { key: 'period_rollover', label: '期課續期', recipients: '管理者', types: ['period_rollover_admin'] },
