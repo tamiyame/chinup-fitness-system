@@ -8,7 +8,7 @@ const { createGroupOrder, confirmGroupOrder, refundGroupOrder, listPendingOrders
 
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 console.log('[refund test] start');
-db.exec("DELETE FROM notifications; DELETE FROM bookings; DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM coaches; DELETE FROM users WHERE phone LIKE '0989%' OR email LIKE 'rf-%'");
+db.exec("DELETE FROM notifications; DELETE FROM bookings; DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL); DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM course_sessions; DELETE FROM course_templates; DELETE FROM coaches; DELETE FROM users WHERE phone LIKE '0989%' OR email LIKE 'rf-%'");
 
 const pad = n => String(n).padStart(2,'0');
 const day = (d) => { const x = new Date(Date.now() + d*86400000); return `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`; };
@@ -102,5 +102,5 @@ expect('listConfirmedPayments：退款後仍保留、帶 refunded_at', () => {
   assert.equal(g.detail, '1 場次'); // amount_due 計數不受取消影響
 });
 
-db.exec("DELETE FROM notifications; DELETE FROM bookings; DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM course_sessions WHERE template_id=" + tplId + "; DELETE FROM course_templates WHERE id=" + tplId + "; DELETE FROM coaches; DELETE FROM users WHERE phone LIKE '0989%' OR email LIKE 'rf-%'");
+db.exec("DELETE FROM notifications; DELETE FROM bookings; DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL); DELETE FROM registrations; DELETE FROM group_orders; DELETE FROM course_sessions WHERE template_id=" + tplId + "; DELETE FROM course_templates WHERE id=" + tplId + "; DELETE FROM coaches; DELETE FROM users WHERE phone LIKE '0989%' OR email LIKE 'rf-%'");
 console.log('[refund test] done');
