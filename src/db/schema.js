@@ -227,6 +227,7 @@ CREATE TABLE IF NOT EXISTS customer_packages (
   expires_at TEXT,
   note TEXT,
   discount_code TEXT,
+  source TEXT NOT NULL DEFAULT 'staff' CHECK (source IN ('staff', 'online')),
   created_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   archived_at TEXT

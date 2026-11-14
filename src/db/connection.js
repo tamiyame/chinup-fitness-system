@@ -270,6 +270,12 @@ addColumnIfMissing('bookings', 'recurring_group_id', 'INTEGER');
 addColumnIfMissing('bookings', 'package_id', 'INTEGER REFERENCES customer_packages(id)');
 addColumnIfMissing('customer_packages', 'discount_code', 'TEXT');
 
+// ── 2026-11-14 線上單堂方案 ──
+// source：方案來源（staff=教練／管理者開立、online=客人線上預約自動建立的一堂方案）；舊資料一律 staff。
+addColumnIfMissing('customer_packages', 'source', "TEXT NOT NULL DEFAULT 'staff' CHECK (source IN ('staff', 'online'))");
+// 依方案查名下預約（關閉、退款、改掛都會用到）；放在 package_id 欄位確定存在之後。
+db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_package ON bookings(package_id)');
+
 // ── 2026-06-12 教練課付款狀態流 ──
 // paid_at NULL=待核對、非 NULL=已核對（鏡像 group_orders.paid_at/paid_by；status 不變，佔時段/容量照舊）。
 // 一次性 backfill（偵測訊號=欄位不存在）：上線當下過去場次視為已核對、未來場次留 NULL 進待核對（業主決策）。

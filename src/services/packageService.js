@@ -1,6 +1,6 @@
 import { db, tx, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
-import { quoteDiscount } from './discountService.js';
+import { quoteDiscount, releaseRedemption } from './discountService.js';
 
 const SESSION_TYPES = ['1on1', '1on2'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -228,4 +228,35 @@ export function refundOne(packageId) {
       WHERE id = ? AND remaining_sessions < total_sessions`
   ).run(packageId);
   return info.changes === 1;
+}
+
+/** 為一筆線上預約建立「一堂的方案」並掛上（source='online'、total 1、remaining 0＝這堂已預約掉）。
+ *  金額＝定價−折扣（定價 NULL → NULL；折到 0 元 → 0）。不通知、不改預約其他欄位。回方案 id。 */
+export function createOnlineSingleForBooking(bookingId, { createdAt = nowLocal() } = {}) {
+  return tx(() => {
+    const b = db.prepare('SELECT id, member_id, session_type, original_amount, discount_amount, discount_code, package_id FROM bookings WHERE id = ?').get(bookingId);
+    if (!b) throw new ApiError(404, 'booking_not_found');
+    if (b.package_id != null) throw new ApiError(409, 'booking_has_package');
+    const amount = b.original_amount == null ? null : Math.max(0, b.original_amount - (b.discount_amount || 0));
+    const packageId = Number(db.prepare(
+      `INSERT INTO customer_packages (member_id, session_type, total_sessions, remaining_sessions, amount, discount_code, source, created_at)
+       VALUES (?, ?, 1, 0, ?, ?, 'online', ?)`
+    ).run(b.member_id, b.session_type, amount, b.discount_code ?? null, createdAt).lastInsertRowid);
+    db.prepare('UPDATE bookings SET package_id = ? WHERE id = ?').run(packageId, bookingId);
+    return packageId;
+  });
+}
+
+/** 關閉線上單堂方案：寫作廢時間（已作廢不改）、釋放名下預約的折扣碼用量。
+ *  不是線上單堂方案（或找不到）→ 不動、回 false。不取消預約、不通知。 */
+export function closeOnlineSinglePackage(packageId) {
+  return tx(() => {
+    const p = db.prepare("SELECT id FROM customer_packages WHERE id = ? AND source = 'online'").get(packageId);
+    if (!p) return false;
+    db.prepare('UPDATE customer_packages SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(nowLocal(), packageId);
+    for (const row of db.prepare('SELECT id FROM bookings WHERE package_id = ?').all(packageId)) {
+      releaseRedemption({ kind: 'booking', refId: row.id });
+    }
+    return true;
+  });
 }
