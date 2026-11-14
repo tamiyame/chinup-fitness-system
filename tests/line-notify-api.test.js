@@ -40,12 +40,12 @@ try {
   db.exec("DELETE FROM app_settings WHERE key LIKE 'line_notify_%'");
 
   const g0 = await req('GET', '/api/admin/line-notify', { token: adminToken });
-  expect('GET 200：master false、3 組 16 項、欄位齊', () => {
+  expect('GET 200：master false、3 組 17 項、欄位齊', () => {
     assert.equal(g0.status, 200);
     assert.equal(g0.data.master, false);
     assert.equal(g0.data.groups.length, 3);
     const items = g0.data.groups.flatMap((g) => g.items);
-    assert.equal(items.length, 16);
+    assert.equal(items.length, 17);
     for (const i of items) {
       assert.equal(typeof i.key, 'string'); assert.equal(typeof i.label, 'string');
       assert.equal(typeof i.recipients, 'string'); assert.equal(i.enabled, true);

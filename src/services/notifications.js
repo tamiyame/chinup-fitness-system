@@ -170,9 +170,13 @@ const TEMPLATES = {
   },
 
   // === new 2（堂數即將用完自動提醒） ===
-  package_low_sessions: {
-    subject: '方案堂數提醒',
-    body: '提醒您：您的{{session_type_label}}方案還剩 {{remaining}} 堂課。歡迎向教練預約續購，讓訓練不中斷！',
+  package_low_sessions: {  // 寄給帶課教練與管理者（第三人稱）
+    subject: '續購提醒 - {{member_name}}',
+    body: '🔔 續購提醒：{{member_name}}的{{session_type_label}}方案（共 {{total}} 堂）只剩 {{remaining}} 堂。',
+  },
+  package_low_recheck: {  // 寄給管理者（一次性 10 堂方案檢查；整份名單一則）
+    subject: '續購提醒名單',
+    body: '🔔 續購提醒：{{summary}}',
   },
   group_last_session: {
     subject: '團體課報名提醒',
