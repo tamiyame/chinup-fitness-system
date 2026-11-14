@@ -18,7 +18,8 @@ function throwsApi(fn, status, code) {
 const clearSettings = () => db.exec("DELETE FROM app_settings WHERE key LIKE 'line_notify_%'");
 const allItems = () => LINE_NOTIFY_GROUPS.flatMap((g) => g.items);
 
-// 33 種現役推播模板（2026-09-08 盤點、2026-10-30 增補；legacy 4 種＋已停用會員 course_confirmed 不在內）
+// 32 種現役推播模板（2026-09-08 盤點、2026-10-30 增補、2026-11-14 移除已發完的一次性名單 package_low_recheck；
+// legacy 4 種＋已停用會員 course_confirmed 不在內）
 const ACTIVE_TYPES = [
   'booking_created', 'booking_confirmed', 'booking_recurring_created', 'booking_recurring_created_coach',
   'booking_payment_received', 'booking_rescheduled', 'booking_rescheduled_coach',
@@ -30,7 +31,7 @@ const ACTIVE_TYPES = [
   'group_promoted', 'course_waitlisted_coach', 'course_promoted_coach',
   'course_member_cancelled_coach', 'course_member_leave_coach',
   'course_confirmed_coach', 'course_cancelled_coach', 'course_cancelled',
-  'group_order_refunded', 'package_low_sessions', 'package_low_recheck', 'group_last_session',
+  'group_order_refunded', 'package_low_sessions', 'group_last_session',
   'gcal_move_rejected', 'gcal_delete_cancelled', 'period_rollover_admin',
 ];
 
@@ -45,7 +46,7 @@ expect('3 組 17 項、項目 key 唯一', () => {
   assert.equal(items.length, 17);
   assert.equal(new Set(items.map((i) => i.key)).size, 17);
 });
-expect('每個 type 只屬一個項目、33 個現役 type 全涵蓋、無多餘', () => {
+expect('每個 type 只屬一個項目、32 個現役 type 全涵蓋、無多餘', () => {
   const all = allItems().flatMap((i) => i.types);
   assert.equal(new Set(all).size, all.length);
   for (const t of ACTIVE_TYPES) assert(all.includes(t), `missing ${t}`);
@@ -129,7 +130,6 @@ expect('續購提醒寫教練與管理者，開關只管方案提醒；團課最
   assert.equal(items.find((i) => i.key === 'renewal_reminder').recipients, '教練與管理者');
   assert.equal(items.find((i) => i.key === 'group_last_session').recipients, '會員');
   assert.equal(isLineNotifyEnabled('package_low_sessions'), false);
-  assert.equal(isLineNotifyEnabled('package_low_recheck'), false);
   assert.equal(isLineNotifyEnabled('group_last_session'), true);
   setLineNotifyState({ items: { renewal_reminder: true } });
 });

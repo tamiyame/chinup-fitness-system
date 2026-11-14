@@ -174,10 +174,6 @@ const TEMPLATES = {
     subject: '續購提醒 - {{member_name}}',
     body: '🔔 續購提醒：{{member_name}}的{{session_type_label}}方案（共 {{total}} 堂）只剩 {{remaining}} 堂。',
   },
-  package_low_recheck: {  // 寄給管理者（一次性 10 堂方案檢查；整份名單一則）
-    subject: '續購提醒名單',
-    body: '🔔 續購提醒：{{summary}}',
-  },
   group_last_session: {
     subject: '團體課報名提醒',
     body: '提醒您：您報名的團體課只剩最後一堂（{{course_name}}，{{start_at}}）。歡迎繼續報名之後的場次，我們課堂上見！',
