@@ -14,7 +14,7 @@ async function req(method, path, { body, token } = {}) {
 function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){console.log(`  ✗ ${label}`);console.error(e);process.exitCode=1;} }
 console.log('[booking-admin-cancel-api test] start');
 
-db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0992%' OR email LIKE 'bca-%'); DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0992%'); DELETE FROM users WHERE phone LIKE '0992%' OR email LIKE 'bca-%'");
+db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0992%' OR email LIKE 'bca-%'); DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0992%'); DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL); DELETE FROM users WHERE phone LIKE '0992%' OR email LIKE 'bca-%'");
 const uid = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('BCA Coach','bca-c@x.com','coach')").run().lastInsertRowid);
 const coachId = Number(db.prepare("INSERT INTO coaches (user_id, display_name, is_active) VALUES (?, 'BCA', 1)").run(uid).lastInsertRowid);
 const pad = n => String(n).padStart(2,'0');
@@ -51,5 +51,5 @@ expect('取消後不在待核對清單', () => assert.ok(!p.data.some(x => x.id 
 const av2 = await req('GET', `/api/coaches/${coachId}/availability?from=${date}&to=${date}`);
 expect('取消後 11:00 時段釋出', () => assert.ok(av2.data.some(s => s.start === `${date}T11:00:00`)));
 
-db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0992%' OR email LIKE 'bca-%'); DELETE FROM bookings WHERE coach_id = " + coachId + "; DELETE FROM coaches WHERE id = " + coachId + "; DELETE FROM users WHERE phone LIKE '0992%' OR email LIKE 'bca-%'");
+db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0992%' OR email LIKE 'bca-%'); DELETE FROM bookings WHERE coach_id = " + coachId + "; DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL); DELETE FROM coaches WHERE id = " + coachId + "; DELETE FROM users WHERE phone LIKE '0992%' OR email LIKE 'bca-%'");
 console.log('[booking-admin-cancel-api test] done');

@@ -13,7 +13,7 @@ function expect(label, fn){ try{fn();console.log(`  ✓ ${label}`);}catch(e){con
 console.log('[booking-validate-api test] start');
 
 // 比照 booking-anon reset：先刪 notifications（FK 無 cascade）再刪 users
-db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0997%' OR email LIKE 'bv-%'); DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0997%'); DELETE FROM users WHERE phone LIKE '0997%' OR email LIKE 'bv-%'");
+db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0997%' OR email LIKE 'bv-%'); DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0997%'); DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL); DELETE FROM users WHERE phone LIKE '0997%' OR email LIKE 'bv-%'");
 const uid = Number(db.prepare("INSERT INTO users (name,email,role) VALUES ('BV Coach','bv-c@x.com','coach')").run().lastInsertRowid);
 const coachId = Number(db.prepare("INSERT INTO coaches (user_id, display_name, is_active) VALUES (?, 'BV', 1)").run(uid).lastInsertRowid);
 const pad = n => String(n).padStart(2,'0');
@@ -52,5 +52,5 @@ expect('同教練同時段 → 409（slot_unavailable 或 slot_taken）', () => 
   assert(['slot_unavailable', 'slot_taken'].includes(dup.data.error));
 });
 
-db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0997%' OR email LIKE 'bv-%'); DELETE FROM bookings WHERE coach_id = " + coachId + "; DELETE FROM coaches WHERE id = " + coachId + "; DELETE FROM users WHERE phone LIKE '0997%' OR email LIKE 'bv-%'");
+db.exec("DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0997%' OR email LIKE 'bv-%'); DELETE FROM bookings WHERE coach_id = " + coachId + "; DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL); DELETE FROM coaches WHERE id = " + coachId + "; DELETE FROM users WHERE phone LIKE '0997%' OR email LIKE 'bv-%'");
 console.log('[booking-validate-api test] done');

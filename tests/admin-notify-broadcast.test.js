@@ -15,7 +15,7 @@ function reset() {
   db.exec(`
     DELETE FROM registrations WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'anb-%' OR phone LIKE '0944%');
     DELETE FROM group_orders WHERE customer_phone LIKE '0944%';
-    DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'anb-%' OR phone LIKE '0944%');
+    DELETE FROM bookings WHERE member_id IN (SELECT id FROM users WHERE email LIKE 'anb-%' OR phone LIKE '0944%'); DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL);
     DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'anb-%' OR phone LIKE '0944%');
     DELETE FROM course_sessions WHERE template_id IN (SELECT id FROM course_templates WHERE name LIKE 'ANB%');
     DELETE FROM course_templates WHERE name LIKE 'ANB%';

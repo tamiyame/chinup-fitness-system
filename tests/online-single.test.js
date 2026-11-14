@@ -299,3 +299,52 @@ expect('教練開立的方案：調整、作廢連動取消、還原都照舊', 
   assert.deepEqual(pkg.archivePackage(ten.id, admin).cancelledBookingIds, [rid]);
   assert.equal(pkg.restorePackage(ten.id).archived_at, null);
 });
+
+// ── 線上預約實際流程（createBookingAnon）──
+const book = (extra = {}) => { seq++; const phone = `0977${pad(seq, 6)}`; const name = `線上客${seq}`;
+  return { ...bk.createBookingAnon({ coachId, startAt: slot(), name, phone, ...extra }), phone, name }; };
+expect('線上預約送出 → 自動建一堂方案並掛上；回傳內容不多出欄位', () => {
+  const r = book(); const b = B(r.id); const p = P(b.package_id);
+  assert.equal(b.paid_at, null);
+  assert.deepEqual([p.source, p.total_sessions, p.remaining_sessions, p.amount, p.member_id], ['online', 1, 0, 1500, b.member_id]);
+  assert.equal('packageId' in r, false);
+});
+expect('有折扣碼；一對二有同行客人', () => {
+  const r = book({ discountCode: 'OS100' }); const p = P(B(r.id).package_id);
+  assert.deepEqual([p.amount, p.discount_code, uses(r.id)], [1400, 'OS100', 1]);
+  seq++; const r2 = book({ sessionType: '1on2', companion: { name: `同行${seq}`, phone: `0978${pad(seq, 6)}` } }); const b2 = B(r2.id);
+  assert.ok(b2.member2_id);
+  assert.deepEqual([P(b2.package_id).session_type, P(b2.package_id).amount, P(b2.package_id).member_id], ['1on2', 2000, b2.member_id]);
+});
+expect('整段流程：預約→核對→客人取消（保留 1 堂）→教練改約→退款；原筆不能再退', () => {
+  const r = book(); const b = B(r.id);
+  bk.confirmBookingPayment({ bookingId: r.id, actorId: admin });
+  bk.cancelBookingAnon({ bookingId: r.id, phone: r.phone, name: r.name });
+  assert.equal(pkg.getPackage(b.package_id).is_valid, true);
+  refund(register(b.member_id, b.package_id));
+  assert.ok(P(b.package_id).archived_at);
+  throwsCode(() => refund(r.id), 409, 'package_closed');
+});
+expect('限用一次的折扣碼：已付款取消後還保留 1 堂時不能再用同一個碼；退款後才釋放', () => {
+  createDiscountCode({ code: 'OSONCE', discount_type: 'fixed', discount_value: 100, per_phone_limit: 1 });
+  const r = book({ discountCode: 'OSONCE' });
+  bk.confirmBookingPayment({ bookingId: r.id, actorId: admin });
+  bk.cancelBookingAnon({ bookingId: r.id, phone: r.phone, name: r.name });
+  const again = () => bk.createBookingAnon({ coachId, startAt: slot(), name: r.name, phone: r.phone, discountCode: 'OSONCE' });
+  throwsCode(again, 409, 'per_phone_exhausted');
+  refund(r.id);
+  assert.ok(again().id);
+});
+
+// ── 不變量（這一段永遠留在檔案最後；之後的 task 把測試加在它前面）──
+expect('線上單堂方案都是共 1 堂、剩 0 或 1', () => {
+  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM customer_packages WHERE source = 'online' AND (total_sessions <> 1 OR remaining_sessions NOT IN (0, 1))").get().c, 0);
+});
+expect('未作廢的線上單堂方案：剩餘堂數＋未取消預約數 恆為 1（一筆錢不會對到兩堂，也不會一堂都沒有）', () => {
+  assert.equal(db.prepare(`SELECT COUNT(*) AS c FROM customer_packages p WHERE p.source = 'online' AND p.archived_at IS NULL
+    AND p.remaining_sessions + (SELECT COUNT(*) FROM bookings b WHERE b.package_id = p.id AND b.status = 'confirmed') <> 1`).get().c, 0);
+});
+expect('已作廢的線上單堂方案名下沒有未取消的預約', () => {
+  assert.equal(db.prepare(`SELECT COUNT(*) AS c FROM bookings b JOIN customer_packages p ON p.id = b.package_id
+    WHERE p.source = 'online' AND p.archived_at IS NOT NULL AND b.status = 'confirmed'`).get().c, 0);
+});

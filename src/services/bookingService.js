@@ -4,7 +4,7 @@ import { findOrCreateUserByPhone, getUserByPhoneAndName } from './userService.js
 import { notify, notifyAdmins, fmtDateForLine } from './notifications.js';
 import { generateBindCode } from './lineBindingService.js';
 import { applyDiscountTx, releaseRedemption, getOneOnOnePriceByType, getLineOfficialUrl } from './discountService.js';
-import { refundOne as refundPackageOne, deductOne as pkgDeductOne, getPackage as pkgGetPackage, closeOnlineSinglePackage } from './packageService.js';
+import { refundOne as refundPackageOne, deductOne as pkgDeductOne, getPackage as pkgGetPackage, closeOnlineSinglePackage, createOnlineSingleForBooking } from './packageService.js';
 import { assertBookableTx, computeAvailableSlots } from './availabilityService.js';
 import { sendPaymentConfirmedEmail } from './emailService.js';
 
@@ -202,6 +202,8 @@ export function createBookingAnon({ coachId, startAt, name, phone, note = null, 
     if (applied) { discountAmount = applied.discountAmount; discountCode_ = applied.discountCode; finalAmount = applied.finalTotal; }
     db.prepare('UPDATE bookings SET original_amount=?, discount_amount=?, discount_code=?, customer_email=? WHERE id=?')
       .run(originalAmount, discountAmount, discountCode_, (email || null), r.id);
+    // 線上單堂一律建成「一堂的方案」；與預約同一個交易，失敗整筆回滾。結果不放進回傳物件。
+    createOnlineSingleForBooking(r.id);
     r.sessionType = sessionType;
     r.customerEmail = email || null;
     r.originalAmount = originalAmount; r.discountAmount = discountAmount; r.discountCode = discountCode_; r.finalAmount = finalAmount;

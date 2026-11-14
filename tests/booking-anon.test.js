@@ -9,7 +9,7 @@ import { ApiError } from '../src/services/registration.js';
 function reset() {
   db.exec(`
     DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'anon-bk-%' OR phone LIKE '0998%');
-    DELETE FROM bookings;
+    DELETE FROM bookings; DELETE FROM customer_packages WHERE source = 'online' AND id NOT IN (SELECT package_id FROM bookings WHERE package_id IS NOT NULL);
     DELETE FROM coaches;
     DELETE FROM users WHERE email LIKE 'anon-bk-%' OR phone LIKE '0998%';
   `);
