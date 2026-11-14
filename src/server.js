@@ -85,6 +85,7 @@ import {
   unbindByUserId,
   requestPublicBindCode,
 } from './services/lineBindingService.js';
+import { backfillOnlineSingles } from './services/onlineSingleBackfill.js';
 import { runBackup, listBackups, safeBackupPath } from './services/backupService.js';
 import { createReadStream } from 'node:fs';
 import { createRateLimiter } from './middleware/rateLimit.js';
@@ -1600,6 +1601,11 @@ const PORT = Number(process.env.PORT || 3000);
 if (process.env.NODE_ENV !== 'test') {
   // Bootstrap: migrations already applied on DB open; ensure an admin exists.
   ensureInitialAdmin();
+
+  // 線上單堂：一次性補登既有預約（先快照；失敗只記錄，不擋開機）
+  const bf = backfillOnlineSingles();
+  if (bf.ran) console.log(`[migrate] online single backfill: ${bf.created} bookings / ${bf.members} members${bf.snapshot ? ` (snapshot ${bf.snapshot})` : ''}`);
+  else if (bf.reason !== 'done') console.error(`[migrate] online single backfill skipped: ${bf.reason}${bf.error ? ` (${bf.error})` : ''}`);
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[server] listening on port ${PORT}`);

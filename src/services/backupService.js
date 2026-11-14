@@ -41,6 +41,24 @@ export function runBackup(dir = DEFAULT_DIR, tsFn = tsForFile) {
   }
 }
 
+/** 具名快照（例如上線補登前）：同樣用 VACUUM INTO 取得一致的複本，
+ *  檔名 `${name}-YYYYMMDD-HHMMSS.db` 不符合 FILE_RE，所以不受輪替刪除、也不會出現在備份清單。
+ *  不寫 .last-error.txt（那是每週備份的狀態）。 */
+export function runNamedSnapshot(name, dir = DEFAULT_DIR, tsFn = tsForFile) {
+  try {
+    if (!/^[A-Za-z0-9-]+$/.test(name)) throw new Error('invalid snapshot name');
+    mkdirSync(dir, { recursive: true });
+    const file = `${name}-${tsFn()}.db`;
+    const fullPath = resolve(dir, file);
+    if (existsSync(fullPath)) throw new Error(`snapshot exists: ${file}`);
+    db.exec(`VACUUM INTO '${fullPath.replace(/'/g, "''")}'`);
+    return { ok: true, file, size: statSync(fullPath).size };
+  } catch (e) {
+    console.error('[backup] named snapshot failed:', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
 export function pruneOldBackups(dir = DEFAULT_DIR, keep = KEEP) {
   if (!existsSync(dir)) return;
   const files = readdirSync(dir).filter((f) => FILE_RE.test(f)).sort();
