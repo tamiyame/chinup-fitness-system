@@ -255,21 +255,37 @@ export function confirmGroupOrder({ orderId, actorId }) {
   });
 }
 
-/** 取消整筆未付 order（只有 pending 可整筆放棄）。釋名額後遞補。 */
+// 取消整筆未付 order 的主體（呼叫端已在 tx 內、已確認身分或是管理者）。釋名額後遞補。
+function cancelPendingOrder(order) {
+  if (order.status === 'paid') throw new ApiError(409, 'order_already_paid');
+  if (order.status === 'cancelled') return { ok: true };
+  const regs = db.prepare("SELECT session_id FROM registrations WHERE order_id=? AND status='pending'").all(order.id);
+  db.prepare("UPDATE registrations SET status='cancelled' WHERE order_id=? AND status='pending'").run(order.id);
+  db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=? WHERE id=?").run(nowLocal(), order.id);
+  releaseRedemption({ kind: 'group_order', refId: order.id });
+  for (const r of regs) promoteWaitlist(r.session_id);
+  return { ok: true };
+}
+
+/** 客人自己放棄整筆未付 order（只有 pending 可整筆放棄）：要比對電話＋姓名。 */
 export function cancelGroupOrder({ orderId, phone, name }) {
   return tx(() => {
     const order = getOrder.get(orderId);
     if (!order) throw new ApiError(404, 'order_not_found');
     const user = getUserByPhone.get(phone);
     if (!ownerMatches(user, phone, name) || user.id !== order.member_id) throw new ApiError(403, 'forbidden');
-    if (order.status === 'paid') throw new ApiError(409, 'order_already_paid');
-    if (order.status === 'cancelled') return { ok: true };
-    const regs = db.prepare("SELECT session_id FROM registrations WHERE order_id=? AND status='pending'").all(orderId);
-    db.prepare("UPDATE registrations SET status='cancelled' WHERE order_id=? AND status='pending'").run(orderId);
-    db.prepare("UPDATE group_orders SET status='cancelled', cancelled_at=? WHERE id=?").run(nowLocal(), orderId);
-    releaseRedemption({ kind: 'group_order', refId: orderId });
-    for (const r of regs) promoteWaitlist(r.session_id);
-    return { ok: true };
+    return cancelPendingOrder(order);
+  });
+}
+
+/** admin 取消整筆未付 order（待核對匯款卡片的「取消訂單」）：不比對客人身分。
+ *  訂單上的姓名／電話是建單當下的快照，可能和帳號不同（回頭客換名字報名、沒有電話的客人、
+ *  事後改過會員資料），拿它去比對會被擋；逾期不自動取消後，這是待付款單唯一的出口。 */
+export function adminCancelGroupOrder({ orderId }) {
+  return tx(() => {
+    const order = getOrder.get(orderId);
+    if (!order) throw new ApiError(404, 'order_not_found');
+    return cancelPendingOrder(order);
   });
 }
 
@@ -559,7 +575,7 @@ const renewableSessionsStmt = db.prepare(`
   ORDER BY start_at ASC, id ASC
 `);
 // 下一期（同範本、任何場次）已有有效報名＝已續報。
-// 候補列只在沒掛單或訂單未取消時算：續報單逾期／取消後殘留的候補列不擋再次續報。
+// 候補列只在沒掛單或訂單未取消時算：續報單取消後殘留的候補列不擋再次續報。
 const renewedUsersStmt = db.prepare(`
   SELECT DISTINCT r.user_id FROM registrations r
   JOIN course_sessions s ON s.id = r.session_id
@@ -626,7 +642,7 @@ export function adminRenewNextPeriod({ sessionId, userId }) {
     const price = tpl.price_per_session;
     const pay = [], wait = [];
     for (const ns of ctx.sessions) {
-      // 仍在候補的場次（例如前一張續報單逾期後殘留）維持原排隊順位，不重報
+      // 仍在候補的場次（例如前一張續報單取消後殘留）維持原排隊順位，不重報
       if (getAnyReg.get(ns.id, user.id)?.status === 'waitlisted') continue;
       (sessionIsFull(ns.id) ? wait : pay).push(ns);
     }

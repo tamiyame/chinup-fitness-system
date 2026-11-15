@@ -2018,7 +2018,7 @@ function bindPendingHandlers(container) {
         toast('已取消訂單', 'success');
         loadPendingOrders();
       } catch (e) {
-        const msgs = { order_not_found: '找不到訂單', order_already_paid: '訂單已付款', forbidden: '無權操作此訂單' };
+        const msgs = { order_not_found: '找不到訂單', order_already_paid: '訂單已付款' };
         toast(msgs[e.data?.error] || `取消失敗：${e.message}`, 'error');
         btn.disabled = false;
       }

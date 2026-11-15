@@ -17,10 +17,10 @@ console.log('[admin-group-reg-api test] start');
 // 冪等清理：先清子表（group_orders.member_id 無 cascade 會擋 users 刪除），頭尾雙清比照 refund-api
 function cleanup() {
   db.exec(`
-    DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
-    DELETE FROM registrations WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
-    DELETE FROM group_orders WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0995%');
-    DELETE FROM users WHERE phone LIKE '0995%';
+    DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0995%' OR name = 'AGRAPI無電話客');
+    DELETE FROM registrations WHERE user_id IN (SELECT id FROM users WHERE phone LIKE '0995%' OR name = 'AGRAPI無電話客');
+    DELETE FROM group_orders WHERE member_id IN (SELECT id FROM users WHERE phone LIKE '0995%' OR name = 'AGRAPI無電話客');
+    DELETE FROM users WHERE phone LIKE '0995%' OR name = 'AGRAPI無電話客';
   `);
 }
 cleanup();
@@ -64,6 +64,23 @@ expect('退款明細寫入 200 元', () => {
 });
 const roster2 = await req('GET', `/api/admin/sessions/${sid}/registrations`, { token });
 expect('roster 顯示已取消', () => assert.equal(roster2.data.find((r) => r.id === row.id).status, 'cancelled'));
+
+// 待核對卡片「取消訂單」：管理者取消不比對客人身分（逾期不自動取消後，這是待付款單唯一的出口）
+const alias = await req('POST', '/api/public/group-orders', { body: { name: 'AGRAPI別名', phone: '0995000001', paySessionIds: [sid], waitlistSessionIds: [] } });
+expect('同電話、這次填別的名字報名 → 201', () => assert.equal(alias.status, 201));
+const aliasCancel = await req('POST', `/api/admin/group-orders/${alias.data.orderId}/cancel`, { token });
+expect('訂單姓名與帳號姓名不同 → 管理者取消 200', () => {
+  assert.equal(aliasCancel.status, 200);
+  assert.equal(db.prepare('SELECT status FROM group_orders WHERE id=?').get(alias.data.orderId).status, 'cancelled');
+});
+const nophone = await req('POST', `/api/admin/sessions/${sid}/registrations`, { token, body: { name: 'AGRAPI無電話客', paid: false } });
+expect('沒有電話的客人補報（未收款）→ 201 pending', () => { assert.equal(nophone.status, 201); assert.equal(nophone.data.status, 'pending'); });
+const nophoneCancel = await req('POST', `/api/admin/group-orders/${nophone.data.orderId}/cancel`, { token });
+expect('沒有電話的待付款單 → 管理者取消 200', () => {
+  assert.equal(nophoneCancel.status, 200);
+  assert.equal(db.prepare('SELECT status FROM group_orders WHERE id=?').get(nophone.data.orderId).status, 'cancelled');
+  assert.equal(db.prepare('SELECT status FROM registrations WHERE id=?').get(nophone.data.registrationId).status, 'cancelled');
+});
 
 // 過去未開課補登（補報即復活）＋未來（截止後）未開課同樣可補＋復活
 const sidPast = tpl.data.sessions[1].id;

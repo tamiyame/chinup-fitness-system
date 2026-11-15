@@ -5,10 +5,13 @@ import assert from 'node:assert/strict';
 process.env.LINE_MOCK = '1';
 const { db, offsetLocal } = await import('../src/db/connection.js');
 const { createTemplate, getTemplate } = await import('../src/services/courseService.js');
+const svc = await import('../src/services/groupOrderService.js');
 const {
   createGroupOrder, listPendingOrders, sessionIsFull, getPublicGroupCourses, getPublicSchedule,
-  confirmGroupOrder, cancelGroupOrder,
-} = await import('../src/services/groupOrderService.js');
+  confirmGroupOrder, cancelGroupOrder, adminBackfillRegistration,
+} = svc;
+// 用命名空間取用：函式不存在時是測試失敗，不是整個檔案載入失敗
+const adminCancelGroupOrder = (args) => svc.adminCancelGroupOrder(args);
 
 async function expect(label, fn) {
   try { await fn(); console.log(`  ✓ ${label}`); }
@@ -23,7 +26,7 @@ function reset() {
     DELETE FROM group_orders;
     DELETE FROM course_sessions;
     DELETE FROM course_templates;
-    DELETE FROM users WHERE phone LIKE '0979%' OR email = 'pne-admin@x.com';
+    DELETE FROM users WHERE phone LIKE '0979%' OR email = 'pne-admin@x.com' OR name = 'PNE-無電話';
   `);
 }
 const uidOf = (phone) => db.prepare('SELECT id FROM users WHERE phone = ?').get(phone).id;
@@ -41,7 +44,7 @@ const tpl = createTemplate({
   recurrence: 'weekly', cycle_start_date: dstr(1), cycle_end_date: dstr(40),
   registration_deadline_hours: 1, price_per_session: 500,
 });
-const [s1, s2, s3] = db.prepare('SELECT id FROM course_sessions WHERE template_id = ? ORDER BY start_at ASC').all(tpl.templateId).map((r) => r.id);
+const [s1, s2, s3, s4] = db.prepare('SELECT id FROM course_sessions WHERE template_id = ? ORDER BY start_at ASC').all(tpl.templateId).map((r) => r.id);
 const adminId = Number(db.prepare("INSERT INTO users (name, email, role, is_admin) VALUES ('PNE-管理', 'pne-admin@x.com', 'coach', 1)").run().lastInsertRowid);
 
 // 甲付款報 s1、乙付款報 s2；甲的單過期、乙的單沒過期
@@ -88,7 +91,9 @@ await expect('逾期單佔著的場次，別人付款報名 → 409 sessions_ful
 createGroupOrder({ name: 'PNE-丙', phone: '0979000003', paySessionIds: [], waitlistSessionIds: [s1] });
 
 // ── 3. 排程不再自動取消逾期單 ──
-// 把 cron.schedule 換成收集器，實際跑一遍排程註冊的每個工作（備份會寫檔，略過）。
+// 把 cron.schedule 換成收集器，實際跑一遍排程註冊的工作。
+// 已知與訂單無關、又會寫檔或碰外部服務／別張表的工作略過（備份、Google 日曆、LINE 重試、續購提醒）；
+// 之後新增的排程工作預設會被跑到，所以把逾期取消加回來（不管叫什麼名字）這裡會失敗。
 {
   const cron = (await import('node-cron')).default;
   const realSchedule = cron.schedule;
@@ -101,15 +106,15 @@ createGroupOrder({ name: 'PNE-丙', phone: '0979000003', paySessionIds: [], wait
     cron.schedule = realSchedule;
   }
   for (const fn of jobs) {
-    if (/runBackup/.test(String(fn))) continue;
+    if (/runBackup|reconcile|pullChanges|processFailedNotifications|processRenewalReminders/.test(String(fn))) continue;
     await fn();
   }
   await expect('排程有註冊工作（收集器有接到）', () => assert.ok(jobs.length >= 5, `got ${jobs.length}`));
-  await expect('跑完所有排程工作：逾期單仍是待付款、報名列仍 pending', () => {
+  await expect('跑完排程工作：逾期單仍是待付款、報名列仍 pending', () => {
     assert.equal(orderOf(oA.orderId).status, 'pending');
     assert.equal(regOf('0979000001', s1).status, 'pending');
   });
-  await expect('跑完所有排程工作：候補沒有被遞補', () => {
+  await expect('跑完排程工作：候補沒有被遞補', () => {
     assert.equal(regOf('0979000003', s1).status, 'waitlisted');
   });
 }
@@ -145,8 +150,8 @@ await expect('我的課表：逾期單的報名仍是 pending，帶原付款期�
 }
 
 // ── 6. 管理者手動處理：取消 → 釋出名額並遞補；已收款 → 照常核對 ──
-await expect('手動取消逾期單 → 訂單取消、候補的丙遞補成待付款', () => {
-  cancelGroupOrder({ orderId: oA.orderId, phone: '0979000001', name: 'PNE-甲' });
+await expect('管理者取消逾期單 → 訂單取消、候補的丙遞補成待付款', () => {
+  adminCancelGroupOrder({ orderId: oA.orderId });
   assert.equal(orderOf(oA.orderId).status, 'cancelled');
   assert.equal(regOf('0979000001', s1).status, 'cancelled');
   assert.equal(regOf('0979000003', s1).status, 'pending');
@@ -158,6 +163,40 @@ await expect('逾期單按已收款 → 訂單 paid、報名 confirmed', () => {
   assert.equal(regOf('0979000002', s2).status, 'confirmed');
   assert.ok(!listPendingOrders().some((o) => o.id === oB.orderId));
 });
+
+// ── 7. 管理者取消不比對客人身分（逾期不自動取消後，這是待付款單唯一的出口）──
+{
+  // 訂單上的姓名與帳號不同：回頭客這次用別的名字報名（帳號姓名以首次為準）
+  const oAlias = createGroupOrder({ name: 'PNE-乙的別名', phone: '0979000002', paySessionIds: [s4], waitlistSessionIds: [] });
+  await expect('訂單姓名與帳號姓名不同 → 管理者可取消', () => {
+    assert.equal(orderOf(oAlias.orderId).customer_name, 'PNE-乙的別名');
+    assert.deepEqual(adminCancelGroupOrder({ orderId: oAlias.orderId }), { ok: true });
+    assert.equal(orderOf(oAlias.orderId).status, 'cancelled');
+    assert.equal(regOf('0979000002', s4).status, 'cancelled');
+  });
+  // 沒有電話的客人（後台補報名、未收款）
+  const bf = adminBackfillRegistration({ sessionId: s4, name: 'PNE-無電話', paid: false, actorId: adminId });
+  await expect('沒有電話的待付款單 → 管理者可取消', () => {
+    assert.equal(orderOf(bf.orderId).customer_phone, '');
+    assert.deepEqual(adminCancelGroupOrder({ orderId: bf.orderId }), { ok: true });
+    assert.equal(orderOf(bf.orderId).status, 'cancelled');
+    assert.equal(db.prepare('SELECT status FROM registrations WHERE id = ?').get(bf.registrationId).status, 'cancelled');
+  });
+  await expect('管理者取消：已取消的再按一次不出錯；已收款的擋下；不存在 404', () => {
+    assert.deepEqual(adminCancelGroupOrder({ orderId: bf.orderId }), { ok: true });
+    try { adminCancelGroupOrder({ orderId: oB.orderId }); assert.fail('no throw'); }
+    catch (e) { assert.equal(e.status, 409); assert.equal(e.code, 'order_already_paid'); }
+    try { adminCancelGroupOrder({ orderId: 99999999 }); assert.fail('no throw'); }
+    catch (e) { assert.equal(e.status, 404); assert.equal(e.code, 'order_not_found'); }
+  });
+  await expect('客人自己放棄訂單仍要比對電話＋姓名', () => {
+    const o = createGroupOrder({ name: 'PNE-乙', phone: '0979000002', paySessionIds: [s4], waitlistSessionIds: [] });
+    try { cancelGroupOrder({ orderId: o.orderId, phone: '0979000002', name: '不是乙' }); assert.fail('no throw'); }
+    catch (e) { assert.equal(e.status, 403); assert.equal(e.code, 'forbidden'); }
+    assert.equal(orderOf(o.orderId).status, 'pending');
+    assert.deepEqual(cancelGroupOrder({ orderId: o.orderId, phone: '0979000002', name: 'PNE-乙' }), { ok: true });
+  });
+}
 
 reset();
 console.log('[pending-no-auto-expire test] done');
