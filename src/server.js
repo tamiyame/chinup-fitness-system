@@ -49,6 +49,7 @@ import {
   createGroupOrder as svcCreateGroupOrder,
   confirmGroupOrder as svcConfirmGroupOrder,
   cancelGroupOrder as svcCancelGroupOrder,
+  adminCancelGroupOrder as svcAdminCancelGroupOrder,
   cancelRegistrationPublic as svcCancelRegPublic,
   takeLeavePublic as svcTakeLeavePublic,
   expirePendingOrders as svcExpireOrders,
@@ -1276,9 +1277,7 @@ app.post('/api/admin/group-orders/:id/confirm', requireAdmin, asyncHandler((req,
   res.json(svcConfirmGroupOrder({ orderId: Number(req.params.id), actorId: req.user.id }));
 }));
 app.post('/api/admin/group-orders/:id/cancel', requireAdmin, asyncHandler((req, res) => {
-  const o = db.prepare('SELECT customer_phone, customer_name FROM group_orders WHERE id=?').get(Number(req.params.id));
-  if (!o) return res.status(404).json({ error: 'order_not_found' });
-  res.json(svcCancelGroupOrder({ orderId: Number(req.params.id), phone: o.customer_phone, name: o.customer_name }));
+  res.json(svcAdminCancelGroupOrder({ orderId: Number(req.params.id) }));
 }));
 
 // --- Admin: 教練課款項核對 ---
@@ -1329,6 +1328,7 @@ app.post('/api/admin/jobs/process-deadlines', requireAdmin, asyncHandler((req, r
   res.json({ processed: processDeadlines() });
 }));
 
+// 一次取消「所有」逾期的待付款團課訂單並遞補候補。排程已不再自動跑（業主 2026-11-15），後台也沒有按鈕接這支。
 app.post('/api/admin/jobs/expire-orders', requireAdmin, asyncHandler((req, res) => {
   res.json(svcExpireOrders());
 }));

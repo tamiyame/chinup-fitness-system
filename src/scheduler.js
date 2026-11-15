@@ -2,7 +2,6 @@ import cron from 'node-cron';
 import { processDeadlines } from './services/courseService.js';
 import { processFailedNotifications } from './services/notifications.js';
 import { runBackup } from './services/backupService.js';
-import { expirePendingOrders } from './services/groupOrderService.js';
 import { reconcile } from './services/gcalSync.js';
 import { pullChanges } from './services/gcalPull.js';
 import { processRenewalReminders } from './services/renewalReminderService.js';
@@ -47,15 +46,9 @@ export function startScheduler() {
     }
   });
 
-  // 每 10 分鐘釋出逾時未付的 pending 訂單並遞補候補
-  cron.schedule('*/10 * * * *', () => {
-    try {
-      const r = expirePendingOrders();
-      if (r.expired) console.log('[scheduler] expired pending orders:', r.expired);
-    } catch (e) {
-      console.error('[scheduler] expire-orders error:', e);
-    }
-  });
+  // 待付款的團課訂單過了付款期限「不」自動取消（業主 2026-11-15）：
+  // 訂單留在「待核對匯款」、名額照佔，等管理者手動按已收款或取消訂單。
+  // 這裡原本每 10 分鐘呼叫 expirePendingOrders()；要恢復自動取消就把那個排程加回來。
 
   // 每 5 分鐘重試失敗的 LINE 通知
   cron.schedule('*/5 * * * *', async () => {

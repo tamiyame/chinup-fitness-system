@@ -560,7 +560,7 @@ function showSuccess(result) {
     </div>
     ${amountHtml}
     <div class="mt-3 text-sm" style="color:#b91c1c;">
-      請於 <strong>${escapeHtml(expiresStr)}</strong> 前完成匯款，逾期訂單將自動取消。
+      請於 <strong>${escapeHtml(expiresStr)}</strong> 前完成匯款。
     </div>
   `;
 

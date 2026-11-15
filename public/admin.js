@@ -846,7 +846,7 @@ document.getElementById('drawer-content').addEventListener('click', async (e) =>
     const lines = [`將「${name}」續報 ${info.periodLabel}：`];
     if (payN > 0) lines.push(`${payN} 場 × ${nt(info.pricePerSession)} ＝ ${nt(payN * info.pricePerSession)}（待付款）`);
     if (info.fullCount) lines.push(payN > 0 ? `另 ${info.fullCount} 場已額滿，改排候補（不收費）` : `${info.fullCount} 場都已額滿，只排候補（不建訂單）`);
-    if (payN > 0) lines.push('', `付款期限 ${fmtDate(info.expiresAt)}，逾期未核對自動取消並釋出名額；到「報名作業」核對收款即完成報名。`);
+    if (payN > 0) lines.push('', `付款期限 ${fmtDate(info.expiresAt)}；逾期不會自動取消，會留在待核對等你處理。到「報名作業」核對收款即完成報名。`);
     if (!confirm(lines.join('\n'))) { rnBtn.disabled = false; return; }
     try {
       const r = await api(`/api/admin/sessions/${sid}/renewal`, { method: 'POST', body: { userId } });
@@ -1917,6 +1917,7 @@ function orderCardHtml(o) {
           <h3 class="card-title">${escapeHtml(o.customer_name)}</h3>
           <span class="badge badge-confirmed">團課</span>
           <span class="badge badge-waitlisted">待核對</span>
+          ${o.overdue ? '<span class="badge badge-cancelled">已逾期</span>' : ''}
         </div>
         <div class="a-row-sub">
           <div class="meta mb-2">
@@ -2017,7 +2018,7 @@ function bindPendingHandlers(container) {
         toast('已取消訂單', 'success');
         loadPendingOrders();
       } catch (e) {
-        const msgs = { order_not_found: '找不到訂單', order_already_paid: '訂單已付款', forbidden: '無權操作此訂單' };
+        const msgs = { order_not_found: '找不到訂單', order_already_paid: '訂單已付款' };
         toast(msgs[e.data?.error] || `取消失敗：${e.message}`, 'error');
         btn.disabled = false;
       }
