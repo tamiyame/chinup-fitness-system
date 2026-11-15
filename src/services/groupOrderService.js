@@ -28,7 +28,7 @@ function fmtMD(startAt) {
 }
 
 // 已佔名額：confirmed 一律算（含舊 member-flow 遷移過來、order_id 為 NULL 的列）；
-// pending 只在其訂單未過期時算。waitlisted 不算。
+// pending 只要掛著訂單就算——過了付款期限也照佔（逾期不自動取消，等管理者手動處理）。waitlisted 不算。
 const occupiedStmt = db.prepare(`
   SELECT COUNT(*) AS c
   FROM registrations r
@@ -36,10 +36,10 @@ const occupiedStmt = db.prepare(`
   WHERE r.session_id = ?
     AND r.on_leave = 0
     AND ( r.status = 'confirmed'
-          OR (r.status = 'pending' AND o.id IS NOT NULL AND o.expires_at >= ?) )
+          OR (r.status = 'pending' AND o.id IS NOT NULL) )
 `);
 export function sessionOccupied(sessionId) {
-  return occupiedStmt.get(sessionId, nowLocal()).c;
+  return occupiedStmt.get(sessionId).c;
 }
 export function sessionIsFull(sessionId) {
   const s = getSession.get(sessionId);
@@ -107,8 +107,8 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
       total += tpl.price_per_session;
     }
 
-    // 純候補（無付款場次）不建訂單：沒有應付款項，不該出現在「待核對匯款」、
-    // 也不該被逾期機制取消。候補名額由 promoteWaitlist 遞補時才開 24h 付款單。
+    // 純候補（無付款場次）不建訂單：沒有應付款項，不該出現在「待核對匯款」。
+    // 候補名額由 promoteWaitlist 遞補時才開 24h 付款單。
     const hasPay = paySessionIds.length > 0;
     let orderId = null, expiresAt = null;
     let originalAmount = total, discountAmount = null, discountCode_ = null, finalTotal = total;
@@ -131,7 +131,7 @@ export function createGroupOrder({ name, phone, paySessionIds = [], waitlistSess
     }
 
     // 候補桶（不付款；同單若有付款場次則掛同一張訂單，讓後台卡片能列出候補場次。
-    // 逾期/取消只動 status='pending' 的列，候補列掛單不受影響）
+    // 取消訂單只動 status='pending' 的列，候補列掛單不受影響）
     const waitlisted = [];
     for (const sid of waitlistSessionIds) {
       validateSelectable(sid);
@@ -166,16 +166,18 @@ function ownerMatches(user, phone, name) {
     user.name.trim().toLowerCase() === (name || '').trim().toLowerCase();
 }
 
-/** admin：待核對（pending 且未過期）訂單清單，含場次摘要。 */
+/** admin：待核對（pending）訂單清單，含場次摘要。
+ *  過了付款期限的也留在清單（逾期不自動取消），overdue＝伺服器時間判定的逾期旗標。 */
 export function listPendingOrders() {
   const now = nowLocal();
   const orders = db.prepare(`
     SELECT id, member_id, customer_name, customer_phone, total_amount, expires_at, created_at
-    FROM group_orders WHERE status='pending' AND expires_at >= ?
+    FROM group_orders WHERE status='pending'
     ORDER BY created_at ASC
-  `).all(now);
+  `).all();
   return orders.map((o) => ({
     ...o,
+    overdue: o.expires_at < now,
     // 含候補列（status='waitlisted'）：後台卡片標示「候補」，金額仍只計付款場次
     sessions: db.prepare(`
       SELECT s.start_at, t.name AS course_name, r.status
@@ -381,7 +383,8 @@ export function promoteWaitlist(sessionId) {
     if (!u) return;  // FK guarantees this, but stay defensive
     // 併單：同會員既有「未逾期 pending」訂單 → 掛同一張（一張卡、一次匯款；多場
     // 連續遞補不會一場一卡）。金額累加、期限延長到至少 now+24h 保障付款時間。
-    // 無既有訂單才開新 24h 單。
+    // 無既有訂單才開新 24h 單。已逾期的待付款單不併：它在等管理者處理，
+    // 併進去會延長它的期限，客人也收不到這次遞補的通知。
     const existing = db.prepare(
       "SELECT id FROM group_orders WHERE member_id=? AND status='pending' AND expires_at >= ? AND expires_at <= ? ORDER BY id DESC LIMIT 1"
     ).get(next.user_id, nowLocal(), mergeableOrderCutoff());
@@ -419,7 +422,9 @@ export function promoteWaitlist(sessionId) {
   });
 }
 
-/** 把所有逾時未付 pending order → cancelled，釋名額後對受影響場次遞補。 */
+/** 把所有逾時未付 pending order → cancelled，釋名額後對受影響場次遞補。
+ *  業主 2026-11-15 起排程不再呼叫（逾期不自動取消）；只剩手動端點
+ *  POST /api/admin/jobs/expire-orders 會用到，後台沒有按鈕接它。 */
 export function expirePendingOrders() {
   const now = nowLocal();
   const stale = db.prepare("SELECT id FROM group_orders WHERE status='pending' AND expires_at < ?").all(now);
@@ -601,7 +606,7 @@ export function getRenewalInfo(sessionId) {
 
 /** admin 續報下期：把期末最後一堂的正取／待付款客人報進同範本下一期所有可續報場次。
  *  未滿 → pending（範本單價、不套折扣），全部掛一張新待付款單；額滿 → 候補（不收費，有單就掛同一張）；
- *  全滿不建單。付款期限＝max(本單第一堂付款場次的報名截止, now＋一般訂單期限)，逾期由 expirePendingOrders 釋出。
+ *  全滿不建單。付款期限＝max(本單第一堂付款場次的報名截止, now＋一般訂單期限)；逾期不自動取消，留在待核對由管理者處理。
  *  建單當下不通知客人與教練（核對收款時沿用 confirmGroupOrder 通知）；候補照公開報名通知該場教練。 */
 export function adminRenewNextPeriod({ sessionId, userId }) {
   return tx(() => {

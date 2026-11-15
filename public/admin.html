@@ -756,7 +756,7 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
       <label class="form-label" for="line-official-id">LINE 官方帳號 ID（@開頭，例：@chinup；供綁定頁「開啟 LINE 傳送綁定碼」一鍵帶碼，留空則退回複製模式）</label>
       <input id="line-official-id" type="text" class="form-input mb-3" style="width:100%;" placeholder="@chinup">
       <div class="flex items-center gap-3 flex-wrap mb-3">
-        <label class="form-label mb-0" for="group-order-expiry-hours">團課訂單付款期限（小時；逾期未核對自動取消並釋出名額，候補遞補單固定 24 小時）</label>
+        <label class="form-label mb-0" for="group-order-expiry-hours">團課訂單付款期限（小時；逾期不會自動取消，留在待核對等你手動處理；候補遞補單固定 24 小時）</label>
         <input id="group-order-expiry-hours" type="number" min="1" max="720" step="1" class="form-input" style="width:90px;" placeholder="72">
       </div>
       <button id="save-bank-line" class="btn btn-primary btn-sm">儲存</button>

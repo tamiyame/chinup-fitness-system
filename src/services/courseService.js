@@ -120,14 +120,14 @@ const listSessionsForTemplate = db.prepare('SELECT * FROM course_sessions WHERE 
 const liveConfirmedCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id = ? AND status = 'confirmed' AND on_leave = 0");
 const liveWaitlistCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE session_id = ? AND status = 'waitlisted'");
 // 補報名 UI 滿額判定用：與 groupOrderService.occupiedStmt 同口徑
-// （confirmed 一律算；pending 只在其訂單未逾期時算；不 import 避免服務間耦合）
+// （confirmed 一律算；pending 掛著訂單就算，逾期也照佔；不 import 避免服務間耦合）
 const liveOccupiedCount = db.prepare(`
   SELECT COUNT(*) AS c
   FROM registrations r
   LEFT JOIN group_orders o ON o.id = r.order_id
   WHERE r.session_id = ? AND r.on_leave = 0
     AND ( r.status = 'confirmed'
-          OR (r.status = 'pending' AND o.id IS NOT NULL AND o.expires_at >= ?) )
+          OR (r.status = 'pending' AND o.id IS NOT NULL) )
 `);
 
 export function listTemplates() {
@@ -137,13 +137,12 @@ export function listTemplates() {
 export function getTemplate(id) {
   const t = db.prepare('SELECT * FROM course_templates WHERE id = ?').get(id);
   if (!t) throw new ApiError(404, 'template_not_found');
-  const now = nowLocal();
-  // 即時計算正取/候補人數（覆蓋可能過時的快取欄位）＋佔位數（滿額判定含未逾期 pending）。
+  // 即時計算正取/候補人數（覆蓋可能過時的快取欄位）＋佔位數（滿額判定含待付款 pending，逾期也算）。
   t.sessions = listSessionsForTemplate.all(id).map((s) => ({
     ...s,
     confirmed_count: liveConfirmedCount.get(s.id).c,
     waitlist_count: liveWaitlistCount.get(s.id).c,
-    occupied: liveOccupiedCount.get(s.id, now).c,
+    occupied: liveOccupiedCount.get(s.id).c,
   }));
   return t;
 }

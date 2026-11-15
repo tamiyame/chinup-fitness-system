@@ -1329,6 +1329,7 @@ app.post('/api/admin/jobs/process-deadlines', requireAdmin, asyncHandler((req, r
   res.json({ processed: processDeadlines() });
 }));
 
+// 一次取消「所有」逾期的待付款團課訂單並遞補候補。排程已不再自動跑（業主 2026-11-15），後台也沒有按鈕接這支。
 app.post('/api/admin/jobs/expire-orders', requireAdmin, asyncHandler((req, res) => {
   res.json(svcExpireOrders());
 }));
