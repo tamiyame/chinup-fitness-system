@@ -57,13 +57,16 @@ export function selectionOf(state, plans) {
   return { ok: false, message: '請先選堂數' };
 }
 
-export function calcTextOf(state, plans, hasDiscount) {
+// 試算列的三段：左邊的算式（或說明文字）、右邊的總額、下方的折扣說明；沒選好回 null
+export function calcPartsOf(state, plans, hasDiscount) {
   const sel = selectionOf(state, plans);
-  if (!sel.ok) return '';
-  if (sel.unitPrice === null) return '未填單價 → 建立為「無單價」方案';
-  const total = sel.unitPrice * sel.totalSessions;
-  return `${sel.totalSessions} 堂 × NT$${money(sel.unitPrice)} ＝ 總額 NT$${money(total)}`
-    + (hasDiscount ? '（套用折扣碼後以折後總額入帳）' : '');
+  if (!sel.ok) return null;
+  if (sel.unitPrice === null) return { text: '未填單價 → 建立為「無單價」方案', total: null, note: null };
+  return {
+    text: `${sel.totalSessions} 堂 × NT$${money(sel.unitPrice)}`,
+    total: `NT$${money(sel.unitPrice * sel.totalSessions)}`,
+    note: hasDiscount ? '套用折扣碼後以折後總額入帳' : null,
+  };
 }
 
 export function packageFields(sel) {
@@ -158,12 +161,26 @@ export function mountPlanPicker(container, { plans, hasDiscount, onChange }) {
 
   const setChecked = (el, on) => el.setAttribute('aria-checked', on ? 'true' : 'false');
 
+  // 試算列：左算式、右總額（大字）、折扣說明另起一行；沒有內容時保持空的（:empty 會整列隱藏）
+  function paintCalc() {
+    const parts = calcPartsOf(state, curPlans, hasDiscount());
+    calc.textContent = '';
+    if (!parts) return;
+    calc.appendChild(mk('span', 'pp-calc-text', parts.text));
+    if (parts.total) {
+      const tot = mk('span', 'pp-calc-total');
+      tot.append(mk('span', 'pp-calc-total-label', '總額'), mk('span', 'pp-calc-amt', parts.total));
+      calc.appendChild(tot);
+    }
+    if (parts.note) calc.appendChild(mk('span', 'pp-calc-note', parts.note));
+  }
+
   function paint() {
     typeBtns.forEach((b) => setChecked(b, b.dataset.type === state.sessionType));
     optBtns.forEach((b) => setChecked(b, state.choice === Number(b.dataset.sessions)));
     setChecked(customBtn, state.choice === 'custom');
     custom.hidden = state.choice !== 'custom';
-    calc.textContent = calcTextOf(state, curPlans, hasDiscount());
+    paintCalc();
   }
   function sync(rebuild) {
     if (rebuild) buildSessions();
@@ -185,7 +202,7 @@ export function mountPlanPicker(container, { plans, hasDiscount, onChange }) {
 
   return {
     selection: () => selectionOf(state, curPlans),
-    refresh: () => { calc.textContent = calcTextOf(state, curPlans, hasDiscount()); },
+    refresh: paintCalc,
     setPlans(next) {
       curPlans = next || [];
       state = withPlans(state, curPlans);
