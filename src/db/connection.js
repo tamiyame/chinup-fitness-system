@@ -274,6 +274,8 @@ addColumnIfMissing('customer_packages', 'discount_code', 'TEXT');
 // ── 2026-11-14 線上單堂方案 ──
 // source：方案來源（staff=教練／管理者開立、online=客人線上預約自動建立的一堂方案）；舊資料一律 staff。
 addColumnIfMissing('customer_packages', 'source', "TEXT NOT NULL DEFAULT 'staff' CHECK (source IN ('staff', 'online'))");
+// from_plan：1=照價目表開的方案、0=有套裝可選卻選自訂、NULL=舊資料／線上單堂／開立當下沒有套裝可選。
+addColumnIfMissing('customer_packages', 'from_plan', 'INTEGER CHECK (from_plan IN (0, 1))');
 // 依方案查名下預約（關閉、退款、改掛都會用到）；放在 package_id 欄位確定存在之後。
 db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_package ON bookings(package_id)');
 

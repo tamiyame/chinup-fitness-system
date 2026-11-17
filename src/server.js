@@ -102,6 +102,7 @@ import {
   getPackagesSummary as svcPackagesSummary,
   restorePackage as svcRestorePackage,
 } from './services/packageService.js';
+import { getPlanTable as svcGetPlanTable, replacePlanTable as svcReplacePlanTable } from './services/packagePlanService.js';
 import { getCoachWeek as svcGetCoachWeek, searchCustomers as svcSearchCustomers } from './services/coachCalendarService.js';
 import { sendBookingConfirmation } from './services/emailService.js';
 import { computePayroll, periodRange, defaultPeriod } from './services/payrollService.js';
@@ -892,8 +893,18 @@ app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
 
 // --- 方案（套餐）：教練/管理者管理客人方案 ---
 app.post('/api/coach/packages', requireCoach, asyncHandler((req, res) => {
-  const { memberId, sessionType, totalSessions, amount, expiresAt, note, discountCode } = req.body || {};
-  res.status(201).json(svcCreatePackage({ memberId: Number(memberId), sessionType, totalSessions, amount, expiresAt, note, discountCode, createdBy: req.user.id }));
+  const { memberId, sessionType, totalSessions, amount, expiresAt, note, discountCode, fromPlan } = req.body || {};
+  res.status(201).json(svcCreatePackage({ memberId: Number(memberId), sessionType, totalSessions, amount, expiresAt, note, discountCode, fromPlan, createdBy: req.user.id }));
+}));
+
+// 套裝方案價目表：教練可讀、管理者整張取代
+app.get('/api/coach/package-plans', requireCoach, asyncHandler((req, res) => {
+  res.json(svcGetPlanTable());
+}));
+
+app.put('/api/admin/package-plans', requireAdmin, asyncHandler((req, res) => {
+  const { version, plans } = req.body || {};
+  res.json(svcReplacePlanTable({ version, plans }));
 }));
 
 app.get('/api/coach/discount-codes', requireCoach, asyncHandler((req, res) => {

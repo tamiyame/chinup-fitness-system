@@ -524,6 +524,51 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
 .coach-color-opt{width:26px;height:26px;border-radius:50%;border:none;cursor:pointer;color:#fff;font-size:13px;font-weight:800;line-height:1;}
 .coach-color-opt:hover{transform:scale(1.15);}
 @media (max-width:640px){.coach-color-grid{grid-template-columns:repeat(8,26px);}}
+
+/* ===== 方案頁籤：套裝方案價目表 ===== */
+.pl-box{ background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; }
+.pl-grid{ display:grid; grid-template-columns:150px minmax(0,1fr) minmax(0,1fr); }
+.pl-head{ padding:10px 16px; background:#f8fafc; font-family:'Archivo','Noto Sans TC',sans-serif; font-weight:800; font-size:12px; letter-spacing:.12em; color:#475569; }
+.pl-head + .pl-head, .pl-cell, .pl-head.pl-h2{ border-left:1px solid #e5e7eb; }
+.pl-total{ display:flex; align-items:baseline; padding:20px 16px 0; border-top:1px solid #e5e7eb; min-width:0; }
+.pl-total .pl-n{ font-family:'Archivo',sans-serif; font-weight:900; font-size:28px; line-height:1; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
+.pl-total .pl-unit{ margin-left:5px; font-weight:700; font-size:14px; }
+.pl-total input{ box-sizing:border-box; width:100%; min-width:0; min-height:42px; padding:9px 8px; border:1px solid #d1d5db; border-radius:8px; background:#fff; font-family:'Archivo','Noto Sans TC',sans-serif; font-weight:800; font-size:16px; font-variant-numeric:tabular-nums; color:#0f172a; align-self:center; margin-top:-14px; }
+.pl-cell{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-width:0; padding:14px 16px; border-top:1px solid #e5e7eb; }
+.pl-lbl{ font-size:12px; color:#64748b; white-space:nowrap; }
+.pl-field{ display:flex; align-items:center; box-sizing:border-box; width:180px; flex:none; max-width:100%; border:1px solid #d1d5db; border-radius:8px; background:#fff; overflow:hidden; }
+.pl-field .pl-cur{ padding-left:12px; font-family:'Archivo',sans-serif; font-weight:700; font-size:13px; color:#64748b; }
+.pl-field input{ box-sizing:border-box; width:100%; min-width:0; min-height:42px; padding:9px 12px 9px 6px; border:0; background:transparent; font-family:'Archivo','Noto Sans TC',sans-serif; font-weight:800; font-size:16px; font-variant-numeric:tabular-nums; color:#0f172a; }
+.pl-field input:placeholder-shown{ font-weight:500; }
+.pl-field input:focus, .pl-total input:focus{ outline:none; }
+.pl-field:focus-within, .pl-total input:focus{ border-color:#0ea5e9; box-shadow:0 0 0 2px rgba(14,165,233,.25); }
+.pl-field.pl-bad, .pl-total input[aria-invalid="true"]{ border-color:#dc2626; }
+.pl-note{ font-size:13px; color:#475569; font-variant-numeric:tabular-nums; }
+.pl-actions{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 16px; border-top:1px solid #e5e7eb; background:#f8fafc; }
+.pl-dirty{ flex:1; min-width:0; text-align:right; }
+.pl-actions .btn-primary{ margin-left:auto; }
+.pl-dirty:not(.hidden) ~ .btn-primary{ margin-left:0; }
+.pl-conflict{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; padding:10px 14px; border:1px solid #dc2626; border-radius:8px; background:#fff; color:#b91c1c; font-size:14px; }
+.pl-conflict.hidden{ display:none; }
+@media (max-width:600px){
+  .pl-grid{ grid-template-columns:58px minmax(0,1fr) minmax(0,1fr); }
+  .pl-head{ padding:8px 8px; }
+  .pl-head:first-child{ padding-left:10px; }
+  .pl-total{ padding:20px 0 0 10px; white-space:nowrap; }
+  .pl-total .pl-n{ font-size:21px; }
+  .pl-total .pl-unit{ margin-left:3px; font-size:12px; }
+  .pl-total input{ padding:9px 4px; font-size:16px; margin-right:4px; }
+  .pl-cell{ display:block; padding:10px 8px; }
+  .pl-lbl{ display:none; }
+  .pl-field{ width:100%; }
+  .pl-field .pl-cur{ padding-left:8px; font-size:12px; }
+  .pl-field input{ padding:8px 6px 8px 4px; }
+  .pl-note{ display:block; margin-top:5px; font-size:12px; }
+  .pl-actions{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; padding:12px; }
+  .pl-actions .btn{ min-height:44px; padding-left:8px; padding-right:8px; white-space:nowrap; }
+  .pl-dirty{ grid-column:1 / -1; order:3; text-align:left; }
+  .pl-actions .btn-primary{ margin-left:0; }
+}
 </style>
 </head>
 <body>
@@ -568,6 +613,7 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
     <button data-atab="courses" class="tab tab-active" style="white-space:nowrap;">課程</button>
     <button data-atab="orders" class="tab" style="white-space:nowrap;">報名作業</button>
     <button data-atab="members" class="tab" style="white-space:nowrap;">會員</button>
+    <button data-atab="plans" class="tab" style="white-space:nowrap;">方案</button>
     <button data-atab="coaches" class="tab" style="white-space:nowrap;">教練</button>
     <button data-atab="discounts" class="tab" style="white-space:nowrap;">折扣碼</button>
     <button data-atab="notifs" class="tab" style="white-space:nowrap;">通知</button>
@@ -721,6 +767,29 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
       <p class="mt-3 text-xs text-gray-500">每週日 03:00 自動備份；保留最近 8 份。建議每週一上班時下載最新一份到本機保管。</p>
     </div>
   </dialog>
+
+  <div id="apanel-plans" class="tab-panel hidden">
+    <section class="mb-10">
+      <div class="a-sec-head">
+        <h2 class="section-title">套裝方案價目表</h2>
+        <span class="a-sec-line"></span>
+      </div>
+      <p class="subtle mb-3">直接在格子裡打每堂單價，總價自動算。有填價格的組合，才會出現在會員的「新增方案」。</p>
+      <div id="plans-conflict" class="pl-conflict hidden" role="alert">
+        <span>價目表已經在別的地方被改過，請重新載入後再修改。</span>
+        <button id="plans-reload" type="button" class="btn btn-ghost btn-sm">重新載入</button>
+      </div>
+      <div class="pl-box">
+        <div id="plans-table"></div>
+        <div class="pl-actions">
+          <button id="plans-add-row" type="button" class="btn btn-ghost">＋ 新增堂數</button>
+          <span id="plans-dirty" class="subtle pl-dirty hidden">有未儲存的變更</span>
+          <button id="plans-save" type="button" class="btn btn-primary">儲存價目表</button>
+        </div>
+      </div>
+      <p class="mt-3" style="font-size:12px;color:#64748b;">價格留空＝不提供這個組合；一整列都留空再儲存，這個堂數就會移除。改價只影響之後新開的方案，已經開給會員的不會變。</p>
+    </section>
+  </div>
 
   <div id="apanel-discounts" class="tab-panel hidden">
 

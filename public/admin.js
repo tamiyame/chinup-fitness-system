@@ -1,4 +1,6 @@
 import { api, toast, fmtDate, dow, bootAuth, escapeHtml } from '/app.js';
+import { parseAmount, priceNote, rowsFromPlans, plansFromRows } from '/package-plan-table.js';
+import { mountPlanPicker, packageFields } from '/package-plan-picker.js';
 
 const user = await bootAuth({ requireAdmin: true });
 // If bootAuth redirected, halt module execution so no admin content renders.
@@ -1442,9 +1444,14 @@ function discountOptionsHtml(codes) {
 async function renderMemberPackages(memberId, mountEl) {
   if (!mountEl) return;
   mountEl.innerHTML = '<p class="subtle" style="font-size:12px;">載入方案中…</p>';
+  // 方案與價目表同時請求；價目表取不到一律當空的（不擋開方案、不跳錯誤）
+  const plansReq = api('/api/coach/package-plans')
+    .then((r) => (Array.isArray(r?.plans) ? r.plans : []), () => []);
   let pkgs = [];
   try { pkgs = await api(`/api/coach/packages?memberId=${memberId}&includeArchived=1`); }
   catch { mountEl.innerHTML = '<p class="subtle" style="font-size:12px;color:var(--err-fg);">方案載入失敗</p>'; return; }
+  const plans = await plansReq;
+  const usePlans = plans.length > 0;
 
   pkgs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || b.id - a.id);   // 購買時間新→舊（只在這裡排；教練端下拉沿用後端順序）
   const rowHtml = pkgs.map(p => {
@@ -1509,7 +1516,13 @@ async function renderMemberPackages(memberId, mountEl) {
     <div id="pkg-list">${rowHtml}</div>
     <details style="margin-top:8px;">
       <summary style="font-size:13px;cursor:pointer;color:#0284c7;">＋ 新增方案</summary>
+${usePlans ? `      <div id="pkg-picker" style="margin-top:8px;"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
+        <input id="pkg-expiry" class="form-input" type="date" style="margin:0;" />
+        <select id="pkg-discount" class="form-select" style="margin:0;"></select>
+      </div>
+      <input id="pkg-note" class="form-input" placeholder="備註（可空）" style="margin:6px 0 0;" />
+      <button id="pkg-create" class="btn btn-primary btn-sm" style="margin-top:8px;">建立方案</button>` : `      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
         <select id="pkg-type" class="form-select" style="margin:0;"><option value="1on1">一對一</option><option value="1on2">一對二</option></select>
         <input id="pkg-total" class="form-input" type="number" min="1" placeholder="堂數" style="margin:0;" />
         <input id="pkg-unit" class="form-input" type="number" min="0" placeholder="每堂單價（可空）" style="margin:0;" />
@@ -1518,10 +1531,20 @@ async function renderMemberPackages(memberId, mountEl) {
       <input id="pkg-note" class="form-input" placeholder="備註（可空）" style="margin:6px 0 0;" />
       <select id="pkg-discount" class="form-select" style="margin:6px 0 0;"></select>
       <div id="pkg-calc" class="subtle" style="font-size:11px;margin-top:4px;"></div>
-      <button id="pkg-create" class="btn btn-primary btn-sm" style="margin-top:8px;">建立方案</button>
+      <button id="pkg-create" class="btn btn-primary btn-sm" style="margin-top:8px;">建立方案</button>`}
     </details>`;
 
   getDiscountCodes().then(codes => { const el = mountEl.querySelector('#pkg-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
+
+  // 選法（價目表有內容）：掛進容器；折扣碼改變時重畫試算
+  let picker = null;
+  if (usePlans) {
+    const dsel = mountEl.querySelector('#pkg-discount');
+    picker = mountPlanPicker(mountEl.querySelector('#pkg-picker'), {
+      plans, hasDiscount: () => !!dsel?.value, onChange: () => {},
+    });
+    if (dsel) dsel.onchange = () => picker.refresh();
+  }
 
   const pkgCalc = () => {
     const t = Number(mountEl.querySelector('#pkg-total').value);
@@ -1533,17 +1556,48 @@ async function renderMemberPackages(memberId, mountEl) {
     const disc = mountEl.querySelector('#pkg-discount')?.value;
     el.textContent = `${t} 堂 × NT$${Number(u).toLocaleString('zh-TW')} ＝ 總額 NT$${total.toLocaleString('zh-TW')}${disc ? '（套用折扣碼後以折後總額入帳）' : ''}`;
   };
+  if (!usePlans) {
   ['pkg-total', 'pkg-unit'].forEach(id => { const elm = mountEl.querySelector(`#${id}`); if (elm) elm.oninput = pkgCalc; });
   const pkgDsel = mountEl.querySelector('#pkg-discount'); if (pkgDsel) pkgDsel.onchange = pkgCalc;
   pkgCalc();
+  }
 
   // 建立
-  mountEl.querySelector('#pkg-create')?.addEventListener('click', async () => {
+  mountEl.querySelector('#pkg-create')?.addEventListener('click', async (ev) => {
+    const createBtn = ev.currentTarget;
+    if (usePlans) {
+      const sel = picker.selection();
+      if (!sel.ok) { toast(sel.message, 'error'); return; }
+      createBtn.disabled = true;
+      try {
+        await api('/api/coach/packages', { method: 'POST', body: {
+          memberId, ...packageFields(sel),
+          expiresAt: mountEl.querySelector('#pkg-expiry').value || null,
+          note: mountEl.querySelector('#pkg-note').value || null,
+          discountCode: mountEl.querySelector('#pkg-discount')?.value || null,
+        }});
+        toast('方案已建立', 'success');
+        renderMemberPackages(memberId, mountEl);
+      } catch (e) {
+        if (e.data?.error === 'plan_price_changed' || e.data?.error === 'plan_not_available') {
+          toast('價目表剛更新過，請重新選擇', 'error');
+          let fresh = [];
+          try { const r = await api('/api/coach/package-plans'); fresh = Array.isArray(r?.plans) ? r.plans : []; } catch { fresh = []; }
+          if (fresh.length) picker.setPlans(fresh);
+          else { await renderMemberPackages(memberId, mountEl); const d = mountEl.querySelector('details'); if (d) d.open = true; return; }   // 價目表變空 → 整個重畫成舊表單
+        } else {
+          const msgs = { invalid_total: '堂數不正確', invalid_amount: '金額不正確', invalid_expires_at: '到期日格式錯', invalid_session_type: '類型不正確' };
+          toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
+        }
+      } finally { createBtn.disabled = false; }
+      return;
+    }
     const total = Number(mountEl.querySelector('#pkg-total').value);
     if (!Number.isInteger(total) || total <= 0) { toast('請填正確堂數', 'error'); return; }
     const unitRaw = mountEl.querySelector('#pkg-unit').value;
     if (unitRaw !== '' && (!Number.isInteger(Number(unitRaw)) || Number(unitRaw) < 0)) { toast('單價需為 0 以上整數', 'error'); return; }
     const expiry = mountEl.querySelector('#pkg-expiry').value;
+    createBtn.disabled = true;
     try {
       await api('/api/coach/packages', { method: 'POST', body: {
         memberId, sessionType: mountEl.querySelector('#pkg-type').value, totalSessions: total,
@@ -1556,7 +1610,7 @@ async function renderMemberPackages(memberId, mountEl) {
     } catch (e) {
       const msgs = { invalid_total: '堂數不正確', invalid_amount: '金額不正確', invalid_expires_at: '到期日格式錯', invalid_session_type: '類型不正確' };
       toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
-    }
+    } finally { createBtn.disabled = false; }
   });
 
   // 調整 / 作廢 / 還原
@@ -3091,6 +3145,7 @@ loadDiscountCodes();
 loadOneOnOnePrice();
 loadPayroll();
 loadQuotes();
+loadPackagePlans();
 
 // ===== 報價單 =====
 let quotesCache = [];
@@ -3331,12 +3386,160 @@ function openQuoteDrawer(mode, quote) {
 document.getElementById('quote-new').addEventListener('click', () => openQuoteDrawer('create'));
 document.getElementById('quote-search').addEventListener('input', () => { _shownMap.delete('quotes'); renderQuotes(); });
 
+// ===== 方案頁籤：套裝方案價目表 =====
+let planTable = { version: '0', plans: [] };  // 伺服器最後一次回的內容
+let planRows = [];                             // 畫面上的列
+let plansDirty = false;
+let plansSaving = false;
+let plansLoaded = false;   // 至少成功讀到過一次價目表（第一次回應一定要套用；之後才有「輸入中不被洗掉」的保護）
+const PLAN_ERR = {
+  invalid_total: '堂數要填 1–200 的整數',
+  duplicate_plan: '這個堂數已經有了',
+  invalid_unit_price: '每堂單價要填 1–1,000,000 的整數',
+  invalid_plans: '最多 60 個組合',
+};
+
+const planNote = priceNote;
+
+function setPlansDirty(on) {
+  plansDirty = on;
+  document.getElementById('plans-dirty').classList.toggle('hidden', !on);
+}
+
+// force：「重新載入」按鈕用，捨棄本機未存的編輯；其他呼叫在回應到時若已開始輸入就不套用
+async function loadPackagePlans({ force = false } = {}) {
+  const box = document.getElementById('plans-table');
+  try {
+    const d = await api('/api/coach/package-plans');
+    if (!force && plansDirty && plansLoaded) return;
+    plansLoaded = true;
+    planTable = { version: d.version, plans: d.plans };
+    planRows = rowsFromPlans(d.plans);
+    setPlansDirty(false);
+    document.getElementById('plans-conflict').classList.add('hidden');
+    renderPackagePlans();
+  } catch (e) {
+    toast(`載入價目表失敗：${e.message}`, 'error');
+    if (!force && plansDirty && plansLoaded) return;   // 輸入中且已有資料：保留畫面，不換成失敗狀態
+    box.innerHTML = '<div class="empty-state"><p>載入失敗，請稍後再試</p></div>';
+  }
+}
+
+function renderPackagePlans() {
+  const box = document.getElementById('plans-table');
+  if (!planRows.length) {
+    box.innerHTML = '<div class="empty-state"><p>還沒有套裝方案。按「＋ 新增堂數」開始建立。</p></div>';
+    return;
+  }
+  // 手機欄窄，提示字縮短成「留空」（畫布 C 的作法）
+  const ph = window.matchMedia('(max-width:600px)').matches ? '留空' : '留空＝不提供';
+  const cell = (r, i, field, label) => {
+    const key = field === '1on1' ? 'p1on1' : 'p1on2';
+    const n = String(r.total).trim();
+    return `<div class="pl-cell"><span class="pl-lbl" aria-hidden="true">每堂</span><span class="pl-field"><span class="pl-cur">NT$</span>
+      <input type="text" inputmode="numeric" data-row="${i}" data-field="${field}" value="${escapeHtml(r[key])}" placeholder="${ph}" aria-label="${escapeHtml(`${label} ${n} 堂的每堂單價`)}"></span>
+      <span class="pl-note" data-note="${i}-${field}">${escapeHtml(planNote(r[key], r.total))}</span></div>`;
+  };
+  box.innerHTML = `<div class="pl-grid">
+    <div class="pl-head">堂數</div><div class="pl-head pl-h2">一對一</div><div class="pl-head pl-h2">一對二</div>
+    ${planRows.map((r, i) => `
+      <div class="pl-total">${r.isNew
+        ? `<input type="text" inputmode="numeric" data-row="${i}" data-field="total" value="${escapeHtml(r.total)}" placeholder="堂數" aria-label="堂數">`
+        : `<span class="pl-n">${escapeHtml(r.total)}</span><span class="pl-unit">堂</span>`}</div>
+      ${cell(r, i, '1on1', '一對一')}${cell(r, i, '1on2', '一對二')}`).join('')}
+  </div>`;
+}
+
+function clearPlanInvalid() {
+  document.querySelectorAll('#plans-table [aria-invalid]').forEach((el) => {
+    el.removeAttribute('aria-invalid');
+    el.closest('.pl-field')?.classList.remove('pl-bad');
+  });
+}
+
+function focusPlanField(rowIndex, field, mark) {
+  const el = document.querySelector(`#plans-table input[data-row="${rowIndex}"][data-field="${field}"]`);
+  if (!el) return;
+  if (mark) {
+    el.setAttribute('aria-invalid', 'true');
+    el.closest('.pl-field')?.classList.add('pl-bad');
+  }
+  el.focus();
+}
+
+async function savePackagePlans() {
+  if (plansSaving) return;
+  clearPlanInvalid();
+  const r = plansFromRows(planRows);
+  if (!r.ok) {
+    toast(r.message, 'error');
+    if (r.rowIndex >= 0) focusPlanField(r.rowIndex, r.field, true);
+    return;
+  }
+  plansSaving = true;
+  const btn = document.getElementById('plans-save');
+  btn.disabled = true;
+  // 請求期間鎖住表格，避免輸入被成功後的重畫洗掉
+  const setPlansLocked = (on) => {
+    document.querySelectorAll('#plans-table input').forEach((el) => { el.readOnly = on; });
+    document.getElementById('plans-add-row').disabled = on;
+  };
+  setPlansLocked(true);
+  try {
+    const d = await api('/api/admin/package-plans', { method: 'PUT', body: { version: planTable.version, plans: r.plans } });
+    planTable = { version: d.version, plans: d.plans };
+    planRows = rowsFromPlans(d.plans);
+    setPlansDirty(false);
+    document.getElementById('plans-conflict').classList.add('hidden');
+    toast('價目表已儲存', 'success');
+    renderPackagePlans();
+  } catch (e) {
+    const code = e.data?.error;
+    if (code === 'plans_changed') document.getElementById('plans-conflict').classList.remove('hidden');
+    else if (PLAN_ERR[code]) toast(PLAN_ERR[code], 'error');
+    else toast(`失敗：${e.message}`, 'error');
+  } finally {
+    plansSaving = false;
+    btn.disabled = false;
+    setPlansLocked(false);   // 成功時表格已重畫（新輸入框本來就可編輯），對新元素無害
+  }
+}
+
+// 輸入只更新資料與該格小字，不重畫整張表（輸入框要保持焦點）
+document.getElementById('plans-table').addEventListener('input', (ev) => {
+  const el = ev.target;
+  if (!el.matches || !el.matches('input[data-row]')) return;
+  const i = Number(el.dataset.row);
+  const row = planRows[i];
+  if (!row) return;
+  const f = el.dataset.field;
+  if (f === 'total') row.total = el.value;
+  else row[f === '1on1' ? 'p1on1' : 'p1on2'] = el.value;
+  el.removeAttribute('aria-invalid');
+  el.closest('.pl-field')?.classList.remove('pl-bad');
+  const tbl = document.getElementById('plans-table');
+  for (const k of ['1on1', '1on2']) {
+    const note = tbl.querySelector(`[data-note="${i}-${k}"]`);
+    if (note) note.textContent = planNote(row[k === '1on1' ? 'p1on1' : 'p1on2'], row.total);
+  }
+  setPlansDirty(true);
+});
+document.getElementById('plans-add-row').addEventListener('click', () => {
+  planRows.push({ total: '', isNew: true, p1on1: '', p1on2: '' });
+  setPlansDirty(true);
+  renderPackagePlans();
+  focusPlanField(planRows.length - 1, 'total', false);
+});
+document.getElementById('plans-save').addEventListener('click', savePackagePlans);
+document.getElementById('plans-reload').addEventListener('click', () => loadPackagePlans({ force: true }));
+
 // 後台分頁切換：點頁籤只顯示對應 panel（各區塊資料已於上方一次載入）。
 document.querySelectorAll('#admin-tabs .tab').forEach((t) => {
   t.addEventListener('click', () => {
     const id = t.dataset.atab;
     document.querySelectorAll('#admin-tabs .tab').forEach((x) => x.classList.toggle('tab-active', x === t));
     document.querySelectorAll('[id^="apanel-"]').forEach((p) => p.classList.toggle('hidden', p.id !== `apanel-${id}`));
+    if (id === 'plans' && !plansDirty) loadPackagePlans();
     window.scrollTo({ top: 0 });
   });
 });

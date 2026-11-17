@@ -1,6 +1,7 @@
 import { db, tx, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
 import { quoteDiscount, releaseRedemption } from './discountService.js';
+import { findPlan } from './packagePlanService.js';
 
 const SESSION_TYPES = ['1on1', '1on2'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -29,7 +30,7 @@ export function getPackage(id) {
   return row;
 }
 
-export function createPackage({ memberId, sessionType, totalSessions, amount = null, expiresAt = null, note = null, createdBy = null, discountCode = null }) {
+export function createPackage({ memberId, sessionType, totalSessions, amount = null, expiresAt = null, note = null, createdBy = null, discountCode = null, fromPlan }) {
   if (!memberId) throw new ApiError(400, 'missing_member');
   if (!SESSION_TYPES.includes(sessionType)) throw new ApiError(400, 'invalid_session_type');
   const total = Number(totalSessions);
@@ -52,6 +53,15 @@ export function createPackage({ memberId, sessionType, totalSessions, amount = n
   }
   const member = db.prepare('SELECT id FROM users WHERE id = ?').get(memberId);
   if (!member) throw new ApiError(404, 'member_not_found');
+  // 開立方式：undefined／null → NULL（舊行為）；false → 0；true → 1（須照價目表核價）；其他值拒絕。
+  if (fromPlan != null && typeof fromPlan !== 'boolean') throw new ApiError(400, 'invalid_from_plan');
+  if (fromPlan === true) {
+    const plan = findPlan(sessionType, total);
+    if (!plan) throw new ApiError(409, 'plan_not_available');
+    // 核價用折扣前的金額
+    if (amt !== plan.unitPrice * total) throw new ApiError(409, 'plan_price_changed');
+  }
+  const fromPlanStored = fromPlan == null ? null : (fromPlan ? 1 : 0);
   let discountCodeStored = null;
   // 僅在「有填金額」時才套折扣：amt==null（金額留空）→ 略過，不存碼、不把金額變成 0。
   if (discountCode != null && String(discountCode).trim() !== '' && amt != null) {
@@ -60,9 +70,9 @@ export function createPackage({ memberId, sessionType, totalSessions, amount = n
   }
   // created_at 用 nowLocal()（本地 wall-clock，與全站一致；不用 DEFAULT 的 UTC datetime('now')）。
   const info = db.prepare(
-    `INSERT INTO customer_packages (member_id, session_type, total_sessions, remaining_sessions, amount, expires_at, note, created_by, created_at, discount_code)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(memberId, sessionType, total, total, amt, exp, (note && note.trim()) || null, createdBy, nowLocal(), discountCodeStored);
+    `INSERT INTO customer_packages (member_id, session_type, total_sessions, remaining_sessions, amount, expires_at, note, created_by, created_at, discount_code, from_plan)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(memberId, sessionType, total, total, amt, exp, (note && note.trim()) || null, createdBy, nowLocal(), discountCodeStored, fromPlanStored);
   return getPackage(Number(info.lastInsertRowid));
 }
 

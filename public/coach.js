@@ -1,4 +1,5 @@
 import { api, fmtDate, dow, toast, getUser, escapeHtml, renderAuthBar } from './app.js';
+import { mountPlanPicker, packageFields } from './package-plan-picker.js';
 
 const $ = (id) => document.getElementById(id);
 const DOW_LABELS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
@@ -1111,6 +1112,14 @@ let regmCustomer = null;   // {id,name,phone}
 let regmPackages = [];     // 該客人有效方案
 let regmPackageId = null;  // 選中方案
 let regmCompanion = null; // {id,name,phone}｜同行客人（1對2 方案才有）
+let regmPlans = [];        // 套裝價目表（空＝新增方案維持舊表單）
+let regmPicker = null;     // 目前畫面上的選法（價目表有內容時才有）
+
+/** 取套裝價目表；失敗一律當成空的（不擋開方案、不跳錯誤）。 */
+async function fetchRegmPlans() {
+  try { const r = await api('/api/coach/package-plans'); return Array.isArray(r?.plans) ? r.plans : []; }
+  catch { return []; }
+}
 
 const PKG_TYPE = { '1on1': '一對一', '1on2': '一對二' };
 function regmClose() { $('regm-overlay').style.display = 'none'; regmCustomer = null; regmPackages = []; regmPackageId = null; regmCompanion = null; }
@@ -1165,9 +1174,11 @@ const PKG_LOCKED_NOTE = '先用完較早買的方案';
 async function loadRegmPackages(createdPkg = null) {
   const picked = $('regm-picked');
   picked.innerHTML = '<p class="regm-sub">載入方案中…</p>';
+  const plansReq = fetchRegmPlans();   // 與方案同時請求（失敗已在內部當成空陣列）
   let all = [];
   try { all = await api(`/api/coach/packages?memberId=${regmCustomer.id}`); }
   catch (e) { picked.innerHTML = `<p class="regm-sub" style="color:#dc2626;">${escapeHtml(e.message)}</p>`; return; }
+  regmPlans = await plansReq;
   regmPackages = sortPkgsOldFirst(all.filter(p => p.is_valid));
   const usable = regmPackages.filter(p => !pkgLocked(p));
   // 預設＝最早買、還有堂數的那筆；剛開了新方案 → 選「該類型」要先用的那筆（同類型舊方案還有堂數時就是舊的）
@@ -1249,6 +1260,13 @@ function renderRegmNewCustomer(query) {
 
 /** 開方案表單（無方案直出 &「＋ 新增方案」展開共用）。onCreated(pkg) 於建立成功後呼叫。 */
 function regmNewPkgFormHtml() {
+  if (regmPlans.length) return `
+      <div class="regm-newpkg">
+        <div id="regm-np-picker" class="regm-np-picker"></div>
+        <input id="regm-np-expiry" class="form-input" type="date" />
+        <select id="regm-np-discount" class="form-select"></select>
+        <button id="regm-np-create" class="btn-primary">建立方案</button>
+      </div>`;
   return `
       <div class="regm-newpkg">
         <select id="regm-np-type" class="form-select"><option value="1on1">一對一</option><option value="1on2">一對二</option></select>
@@ -1261,6 +1279,8 @@ function regmNewPkgFormHtml() {
       </div>`;
 }
 function bindRegmNewPkgForm(onCreated) {
+  regmPicker = null;
+  if (regmPlans.length) { bindRegmPlanForm(onCreated); return; }
   getDiscountCodes().then(codes => { const el = document.getElementById('regm-np-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
   const calc = () => {
     const t = Number($('regm-np-total').value);
@@ -1280,11 +1300,49 @@ function bindRegmNewPkgForm(onCreated) {
     if (!Number.isInteger(total) || total <= 0) { toast('請填正確堂數', 'error'); return; }
     const unit = $('regm-np-unit').value;
     if (unit !== '' && (!Number.isInteger(Number(unit)) || Number(unit) < 0)) { toast('單價需為 0 以上整數', 'error'); return; }
+    const btn = $('regm-np-create');
+    btn.disabled = true;
     try {
       const pkg = await api('/api/coach/packages', { method: 'POST', body: { memberId: regmCustomer.id, sessionType: $('regm-np-type').value, totalSessions: total, amount: unit === '' ? null : Number(unit) * total, expiresAt: $('regm-np-expiry').value || null, discountCode: document.getElementById('regm-np-discount')?.value || null } });
       toast('方案已建立', 'success');
       onCreated(pkg);
     } catch (e) { toast(`建立失敗：${e.message}`, 'error'); }
+    finally { btn.disabled = false; }
+  };
+}
+
+/** 價目表有內容時的開方案表單：選法＋到期日＋折扣碼＋建立。 */
+function bindRegmPlanForm(onCreated) {
+  const dsel = $('regm-np-discount');
+  getDiscountCodes().then(codes => { const el = document.getElementById('regm-np-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
+  const picker = mountPlanPicker($('regm-np-picker'), {
+    plans: regmPlans, hasDiscount: () => !!dsel.value, onChange: () => {},
+  });
+  regmPicker = picker;
+  dsel.onchange = () => picker.refresh();
+  $('regm-np-create').onclick = async () => {
+    const sel = picker.selection();
+    if (!sel.ok) { toast(sel.message, 'error'); return; }
+    const btn = $('regm-np-create');
+    btn.disabled = true;
+    try {
+      const pkg = await api('/api/coach/packages', { method: 'POST', body: { memberId: regmCustomer.id, ...packageFields(sel), expiresAt: $('regm-np-expiry').value || null, discountCode: dsel.value || null } });
+      toast('方案已建立', 'success');
+      onCreated(pkg);
+    } catch (e) {
+      if (e.data?.error === 'plan_price_changed' || e.data?.error === 'plan_not_available') {
+        toast('價目表剛更新過，請重新選擇', 'error');
+        const fresh = await fetchRegmPlans();
+        regmPlans = fresh;
+        if (fresh.length) picker.setPlans(fresh);
+        else {   // 價目表變空 → 整個重畫成舊表單（保留「＋ 新增方案」展開狀態）
+          const boxOpen = document.getElementById('regm-np-box') && !$('regm-np-box').classList.contains('hidden');
+          renderRegmPicked();
+          if (boxOpen) $('regm-np-box').classList.remove('hidden');
+          return;
+        }
+      } else toast(`建立失敗：${e.message}`, 'error');
+    } finally { const b = document.getElementById('regm-np-create'); if (b) b.disabled = false; }
   };
 }
 
