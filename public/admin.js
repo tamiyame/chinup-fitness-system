@@ -1,5 +1,5 @@
 import { api, toast, fmtDate, dow, bootAuth, escapeHtml } from '/app.js';
-import { parseAmount, priceNote, rowsFromPlans, plansFromRows } from '/package-plan-table.js';
+import { formFromPlan, planFromForm, formCalcText, summaryText, groupPlans, planRowParts, planErrorMessage } from '/package-plan-form.js';
 import { mountPlanPicker, packageFields } from '/package-plan-picker.js';
 
 const user = await bootAuth({ requireAdmin: true });
@@ -1444,7 +1444,7 @@ function discountOptionsHtml(codes) {
 async function renderMemberPackages(memberId, mountEl) {
   if (!mountEl) return;
   mountEl.innerHTML = '<p class="subtle" style="font-size:12px;">載入方案中…</p>';
-  // 方案與價目表同時請求；價目表取不到一律當空的（不擋開方案、不跳錯誤）
+  // 方案與啟用中的套裝同時請求；套裝取不到一律當空的（不擋開方案、不跳錯誤）
   const plansReq = api('/api/coach/package-plans')
     .then((r) => (Array.isArray(r?.plans) ? r.plans : []), () => []);
   let pkgs = [];
@@ -1536,7 +1536,7 @@ ${usePlans ? `      <div id="pkg-picker" style="margin-top:8px;"></div>
 
   getDiscountCodes().then(codes => { const el = mountEl.querySelector('#pkg-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
 
-  // 選法（價目表有內容）：掛進容器；折扣碼改變時重畫試算
+  // 選法（有啟用中的套裝）：掛進容器；折扣碼改變時重畫試算
   let picker = null;
   if (usePlans) {
     const dsel = mountEl.querySelector('#pkg-discount');
@@ -1580,11 +1580,11 @@ ${usePlans ? `      <div id="pkg-picker" style="margin-top:8px;"></div>
         renderMemberPackages(memberId, mountEl);
       } catch (e) {
         if (e.data?.error === 'plan_price_changed' || e.data?.error === 'plan_not_available') {
-          toast('價目表剛更新過，請重新選擇', 'error');
+          toast('套裝剛更新過，請重新選擇', 'error');
           let fresh = [];
           try { const r = await api('/api/coach/package-plans'); fresh = Array.isArray(r?.plans) ? r.plans : []; } catch { fresh = []; }
           if (fresh.length) picker.setPlans(fresh);
-          else { await renderMemberPackages(memberId, mountEl); const d = mountEl.querySelector('details'); if (d) d.open = true; return; }   // 價目表變空 → 整個重畫成舊表單
+          else { await renderMemberPackages(memberId, mountEl); const d = mountEl.querySelector('details'); if (d) d.open = true; return; }   // 沒有啟用中的套裝了 → 整個重畫成舊表單
         } else {
           const msgs = { invalid_total: '堂數不正確', invalid_amount: '金額不正確', invalid_expires_at: '到期日格式錯', invalid_session_type: '類型不正確' };
           toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
@@ -3386,152 +3386,186 @@ function openQuoteDrawer(mode, quote) {
 document.getElementById('quote-new').addEventListener('click', () => openQuoteDrawer('create'));
 document.getElementById('quote-search').addEventListener('input', () => { _shownMap.delete('quotes'); renderQuotes(); });
 
-// ===== 方案頁籤：套裝方案價目表 =====
-let planTable = { version: '0', plans: [] };  // 伺服器最後一次回的內容
-let planRows = [];                             // 畫面上的列
-let plansDirty = false;
-let plansSaving = false;
-let plansLoaded = false;   // 至少成功讀到過一次價目表（第一次回應一定要套用；之後才有「輸入中不被洗掉」的保護）
-const PLAN_ERR = {
-  invalid_total: '堂數要填 1–200 的整數',
-  duplicate_plan: '這個堂數已經有了',
-  invalid_unit_price: '每堂單價要填 1–1,000,000 的整數',
-  invalid_plans: '最多 60 個組合',
-};
+// ===== 方案頁籤：套裝方案（一列一個套裝；同堂數可以有好幾個價）=====
+let planList = [];       // 伺服器最後一次回的全部套裝（含停用）
+let planToggling = false;
 
-const planNote = priceNote;
+const closePlanDrawer = () => { document.getElementById('drawer').style.display = 'none'; };
 
-function setPlansDirty(on) {
-  plansDirty = on;
-  document.getElementById('plans-dirty').classList.toggle('hidden', !on);
-}
-
-// force：「重新載入」按鈕用，捨棄本機未存的編輯；其他呼叫在回應到時若已開始輸入就不套用
-async function loadPackagePlans({ force = false } = {}) {
-  const box = document.getElementById('plans-table');
+async function loadPackagePlans() {
   try {
-    const d = await api('/api/coach/package-plans');
-    if (!force && plansDirty && plansLoaded) return;
-    plansLoaded = true;
-    planTable = { version: d.version, plans: d.plans };
-    planRows = rowsFromPlans(d.plans);
-    setPlansDirty(false);
-    document.getElementById('plans-conflict').classList.add('hidden');
+    const d = await api('/api/admin/package-plans');
+    planList = Array.isArray(d?.plans) ? d.plans : [];
     renderPackagePlans();
   } catch (e) {
-    toast(`載入價目表失敗：${e.message}`, 'error');
-    if (!force && plansDirty && plansLoaded) return;   // 輸入中且已有資料：保留畫面，不換成失敗狀態
-    box.innerHTML = '<div class="empty-state"><p>載入失敗，請稍後再試</p></div>';
+    toast(`載入套裝方案失敗：${e.message}`, 'error');
+    if (planList.length) return;   // 已經有資料：保留畫面，不換成失敗狀態
+    document.getElementById('plans-summary-row').hidden = true;
+    document.getElementById('plans-list').innerHTML = '<div class="empty-state"><p>載入失敗，請稍後再試</p></div>';
   }
 }
 
 function renderPackagePlans() {
-  const box = document.getElementById('plans-table');
-  if (!planRows.length) {
-    box.innerHTML = '<div class="empty-state"><p>還沒有套裝方案。按「＋ 新增堂數」開始建立。</p></div>';
+  document.getElementById('plans-summary').textContent = summaryText(planList);
+  document.getElementById('plans-summary-row').hidden = !planList.length;   // 後半句說明寫在版面上，手機寬度會收起
+  const box = document.getElementById('plans-list');
+  if (!planList.length) {
+    box.innerHTML = '<div class="empty-state"><p>還沒有套裝方案。按「＋ 新增套裝」建立第一個。</p></div>';
     return;
   }
-  // 手機欄窄，提示字縮短成「留空」（畫布 C 的作法）
-  const ph = window.matchMedia('(max-width:600px)').matches ? '留空' : '留空＝不提供';
-  const cell = (r, i, field, label) => {
-    const key = field === '1on1' ? 'p1on1' : 'p1on2';
-    const n = String(r.total).trim();
-    return `<div class="pl-cell"><span class="pl-lbl" aria-hidden="true">每堂</span><span class="pl-field"><span class="pl-cur">NT$</span>
-      <input type="text" inputmode="numeric" data-row="${i}" data-field="${field}" value="${escapeHtml(r[key])}" placeholder="${ph}" aria-label="${escapeHtml(`${label} ${n} 堂的每堂單價`)}"></span>
-      <span class="pl-note" data-note="${i}-${field}">${escapeHtml(planNote(r[key], r.total))}</span></div>`;
+  const row = (p) => {
+    const t = planRowParts(p);
+    const who = escapeHtml(t.name ? `${t.title} ${t.name}` : t.title);
+    return `<div class="pk-row${p.isActive ? '' : ' pk-off'}" data-plan-id="${p.id}">
+      <div class="pk-main"><span class="pk-title">${escapeHtml(t.title)}</span>${t.name ? `<span class="pk-tag">${escapeHtml(t.name)}</span>` : ''}<span class="pk-st">${t.status}</span></div>
+      <div class="pk-num-cell pk-unit"><span class="pk-cap">每堂</span><span class="pk-num">${t.unit}</span></div>
+      <div class="pk-num-cell pk-total"><span class="pk-cap">總價</span><span class="pk-num">${t.total}</span></div>
+      <div class="pk-formula">${t.formula}</div>
+      <div class="pk-actions">
+        <button type="button" class="btn btn-ghost btn-sm" data-plan-edit="${p.id}" aria-label="編輯 ${who}">編輯</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-plan-toggle="${p.id}" aria-label="${t.toggleLabel} ${who}">${t.toggleLabel}</button>
+      </div>
+    </div>`;
   };
-  box.innerHTML = `<div class="pl-grid">
-    <div class="pl-head">堂數</div><div class="pl-head pl-h2">一對一</div><div class="pl-head pl-h2">一對二</div>
-    ${planRows.map((r, i) => `
-      <div class="pl-total">${r.isNew
-        ? `<input type="text" inputmode="numeric" data-row="${i}" data-field="total" value="${escapeHtml(r.total)}" placeholder="堂數" aria-label="堂數">`
-        : `<span class="pl-n">${escapeHtml(r.total)}</span><span class="pl-unit">堂</span>`}</div>
-      ${cell(r, i, '1on1', '一對一')}${cell(r, i, '1on2', '一對二')}`).join('')}
-  </div>`;
+  box.innerHTML = `<div class="pk-box">${groupPlans(planList).map((g) => `<div class="pk-group">${g.label}</div>${g.plans.map(row).join('')}`).join('')}</div>`;
 }
 
-function clearPlanInvalid() {
-  document.querySelectorAll('#plans-table [aria-invalid]').forEach((el) => {
-    el.removeAttribute('aria-invalid');
-    el.closest('.pl-field')?.classList.remove('pl-bad');
-  });
-}
-
-function focusPlanField(rowIndex, field, mark) {
-  const el = document.querySelector(`#plans-table input[data-row="${rowIndex}"][data-field="${field}"]`);
-  if (!el) return;
-  if (mark) {
-    el.setAttribute('aria-invalid', 'true');
-    el.closest('.pl-field')?.classList.add('pl-bad');
-  }
-  el.focus();
-}
-
-async function savePackagePlans() {
-  if (plansSaving) return;
-  clearPlanInvalid();
-  const r = plansFromRows(planRows);
-  if (!r.ok) {
-    toast(r.message, 'error');
-    if (r.rowIndex >= 0) focusPlanField(r.rowIndex, r.field, true);
-    return;
-  }
-  plansSaving = true;
-  const btn = document.getElementById('plans-save');
+async function togglePlanActive(id, btn) {
+  const p = planList.find((x) => x.id === id);
+  if (!p || planToggling) return;
+  planToggling = true;
   btn.disabled = true;
-  // 請求期間鎖住表格，避免輸入被成功後的重畫洗掉
-  const setPlansLocked = (on) => {
-    document.querySelectorAll('#plans-table input').forEach((el) => { el.readOnly = on; });
-    document.getElementById('plans-add-row').disabled = on;
-  };
-  setPlansLocked(true);
   try {
-    const d = await api('/api/admin/package-plans', { method: 'PUT', body: { version: planTable.version, plans: r.plans } });
-    planTable = { version: d.version, plans: d.plans };
-    planRows = rowsFromPlans(d.plans);
-    setPlansDirty(false);
-    document.getElementById('plans-conflict').classList.add('hidden');
-    toast('價目表已儲存', 'success');
-    renderPackagePlans();
+    await api(`/api/admin/package-plans/${id}`, { method: 'PATCH', body: { isActive: !p.isActive } });
+    toast(p.isActive ? '已停用，不會再出現在「新增方案」的選單' : '已啟用', 'success');
   } catch (e) {
-    const code = e.data?.error;
-    if (code === 'plans_changed') document.getElementById('plans-conflict').classList.remove('hidden');
-    else if (PLAN_ERR[code]) toast(PLAN_ERR[code], 'error');
-    else toast(`失敗：${e.message}`, 'error');
+    toast(planErrorMessage(e.data?.error) || `失敗：${e.message}`, 'error');
   } finally {
-    plansSaving = false;
-    btn.disabled = false;
-    setPlansLocked(false);   // 成功時表格已重畫（新輸入框本來就可編輯），對新元素無害
+    planToggling = false;
+    btn.disabled = false;       // 重讀也失敗（斷線）時畫面不會重畫，按鈕不能卡住
+    await loadPackagePlans();   // 成功或失敗都以伺服器為準重畫
   }
 }
 
-// 輸入只更新資料與該格小字，不重畫整張表（輸入框要保持焦點）
-document.getElementById('plans-table').addEventListener('input', (ev) => {
-  const el = ev.target;
-  if (!el.matches || !el.matches('input[data-row]')) return;
-  const i = Number(el.dataset.row);
-  const row = planRows[i];
-  if (!row) return;
-  const f = el.dataset.field;
-  if (f === 'total') row.total = el.value;
-  else row[f === '1on1' ? 'p1on1' : 'p1on2'] = el.value;
-  el.removeAttribute('aria-invalid');
-  el.closest('.pl-field')?.classList.remove('pl-bad');
-  const tbl = document.getElementById('plans-table');
-  for (const k of ['1on1', '1on2']) {
-    const note = tbl.querySelector(`[data-note="${i}-${k}"]`);
-    if (note) note.textContent = planNote(row[k === '1on1' ? 'p1on1' : 'p1on2'], row.total);
+// 新增（plan 傳 null）與編輯共用同一個側欄；編輯多一顆「刪除」
+function openPlanDrawer(plan) {
+  const isEdit = !!plan;
+  const form = formFromPlan(plan);
+  const content = document.getElementById('drawer-content');
+  document.getElementById('drawer-title').textContent = isEdit ? '編輯套裝方案' : '新增套裝方案';
+  document.getElementById('drawer-sub').style.display = 'none';
+  content.innerHTML = `
+    <form id="pkf-form" novalidate>
+      <div class="form-label" id="pkf-type-label">類型</div>
+      <div class="pkf-types" role="radiogroup" aria-labelledby="pkf-type-label">
+        <button type="button" class="pp-opt" role="radio" data-pkf-type="1on1">一對一</button>
+        <button type="button" class="pp-opt" role="radio" data-pkf-type="1on2">一對二</button>
+      </div>
+      <div class="pkf-grid">
+        <label class="pkf-field"><span class="form-label">堂數</span>
+          <input id="pkf-total" class="form-input pkf-num" type="text" inputmode="numeric" autocomplete="off" value="${escapeHtml(form.total)}"></label>
+        <label class="pkf-field"><span class="form-label">每堂單價</span>
+          <span class="pkf-money"><span class="pkf-cur">NT$</span><input id="pkf-unit" class="pkf-num" type="text" inputmode="numeric" autocomplete="off" value="${escapeHtml(form.unit)}"></span></label>
+      </div>
+      <p id="pkf-calc" class="pkf-calc" aria-live="polite"></p>
+      <label class="pkf-field" style="margin-top:16px;"><span class="form-label">名稱（可空）</span>
+        <input id="pkf-name" class="form-input" type="text" maxlength="20" autocomplete="off" value="${escapeHtml(form.name)}"></label>
+      <p class="pkf-hint">同一種堂數有好幾個價格時，用名稱分辨，例如「舊生價」「體驗價」。</p>
+      <label class="pkf-check"><input id="pkf-active" type="checkbox"${form.isActive ? ' checked' : ''}><span>啟用（出現在「新增方案」的選單裡）</span></label>
+      <p class="pkf-note">改價、停用或刪除只影響之後新開的方案，已經開給會員的不會變。</p>
+      <div class="pkf-actions">
+        <button id="pkf-save" type="submit" class="btn btn-primary">儲存</button>
+        <button id="pkf-cancel" type="button" class="btn btn-ghost">取消</button>
+        ${isEdit ? '<span class="pkf-spacer"></span><button id="pkf-delete" type="button" class="btn pkf-del">刪除</button>' : ''}
+      </div>
+    </form>`;
+
+  const el = (id) => document.getElementById(id);
+  const inputs = { total: el('pkf-total'), unit: el('pkf-unit'), name: el('pkf-name') };
+  let sessionType = form.sessionType;
+  const read = () => ({ sessionType, total: inputs.total.value, unit: inputs.unit.value, name: inputs.name.value, isActive: el('pkf-active').checked });
+  const paint = () => {
+    content.querySelectorAll('[data-pkf-type]').forEach((b) => b.setAttribute('aria-checked', b.dataset.pkfType === sessionType ? 'true' : 'false'));
+    el('pkf-calc').textContent = formCalcText(read());
+  };
+  const setInvalid = (field, on) => {
+    const input = inputs[field];
+    if (on) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+    if (field === 'unit') input.closest('.pkf-money').classList.toggle('pkf-bad', on);
+  };
+  content.querySelectorAll('[data-pkf-type]').forEach((b) => b.addEventListener('click', () => { sessionType = b.dataset.pkfType; paint(); }));
+  for (const field of Object.keys(inputs)) inputs[field].addEventListener('input', () => { setInvalid(field, false); paint(); });
+  el('pkf-cancel').addEventListener('click', closePlanDrawer);
+
+  let busy = false;
+  const formEl = el('pkf-form');
+  // 請求回來時側欄可能已經換成別的內容（另一個套裝、報價單、場次名單）：只關自己這一個，清單一律重讀
+  const closeAndReload = () => { if (formEl.isConnected) closePlanDrawer(); loadPackagePlans(); };
+
+  formEl.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (busy) return;
+    const r = planFromForm(read());
+    if (!r.ok) {
+      toast(r.message, 'error');
+      setInvalid(r.field, true);
+      inputs[r.field].focus();
+      return;
+    }
+    busy = true;
+    formEl.querySelector('#pkf-save').disabled = true;
+    try {
+      if (isEdit) await api(`/api/admin/package-plans/${plan.id}`, { method: 'PATCH', body: r.plan });
+      else await api('/api/admin/package-plans', { method: 'POST', body: r.plan });
+      toast(isEdit ? '套裝已更新' : '套裝已新增', 'success');
+      closeAndReload();
+    } catch (e) {
+      const code = e.data?.error;
+      toast(planErrorMessage(code) || `儲存失敗：${e.message}`, 'error');
+      if (code === 'plan_not_found') closeAndReload();   // 已經被別人刪掉
+    } finally {
+      busy = false;
+      formEl.querySelector('#pkf-save').disabled = false;
+    }
+  });
+
+  if (isEdit) el('pkf-delete').addEventListener('click', async () => {
+    if (busy) return;
+    const t = planRowParts(plan);
+    const who = t.name ? `${t.title}・${t.name}` : t.title;
+    if (!confirm(`確定刪除「${who}」（每堂 ${t.unit}）？\n刪除後不會再出現在「新增方案」的選單；已經開給會員的方案不受影響。`)) return;
+    busy = true;
+    try {
+      await api(`/api/admin/package-plans/${plan.id}`, { method: 'DELETE' });
+      toast('套裝已刪除', 'success');
+      closeAndReload();
+    } catch (e) {
+      const code = e.data?.error;
+      toast(planErrorMessage(code) || `刪除失敗：${e.message}`, 'error');
+      if (code === 'plan_not_found') closeAndReload();
+    } finally {
+      busy = false;
+    }
+  });
+
+  paint();
+  document.getElementById('drawer').style.display = 'block';
+  // 焦點移進側欄：新增直接從堂數開始打；編輯停在類型按鈕（不放輸入框，手機才不會一打開就跳鍵盤）
+  if (isEdit) content.querySelector('[data-pkf-type][aria-checked="true"]')?.focus();
+  else inputs.total.focus();
+}
+
+document.getElementById('plan-new').addEventListener('click', () => openPlanDrawer(null));
+document.getElementById('plans-list').addEventListener('click', (ev) => {
+  const editBtn = ev.target.closest('[data-plan-edit]');
+  if (editBtn) {
+    const p = planList.find((x) => x.id === Number(editBtn.dataset.planEdit));
+    if (p) openPlanDrawer(p);
+    return;
   }
-  setPlansDirty(true);
+  const toggleBtn = ev.target.closest('[data-plan-toggle]');
+  if (toggleBtn) togglePlanActive(Number(toggleBtn.dataset.planToggle), toggleBtn);
 });
-document.getElementById('plans-add-row').addEventListener('click', () => {
-  planRows.push({ total: '', isNew: true, p1on1: '', p1on2: '' });
-  setPlansDirty(true);
-  renderPackagePlans();
-  focusPlanField(planRows.length - 1, 'total', false);
-});
-document.getElementById('plans-save').addEventListener('click', savePackagePlans);
-document.getElementById('plans-reload').addEventListener('click', () => loadPackagePlans({ force: true }));
 
 // 後台分頁切換：點頁籤只顯示對應 panel（各區塊資料已於上方一次載入）。
 document.querySelectorAll('#admin-tabs .tab').forEach((t) => {
@@ -3539,7 +3573,7 @@ document.querySelectorAll('#admin-tabs .tab').forEach((t) => {
     const id = t.dataset.atab;
     document.querySelectorAll('#admin-tabs .tab').forEach((x) => x.classList.toggle('tab-active', x === t));
     document.querySelectorAll('[id^="apanel-"]').forEach((p) => p.classList.toggle('hidden', p.id !== `apanel-${id}`));
-    if (id === 'plans' && !plansDirty) loadPackagePlans();
+    if (id === 'plans') loadPackagePlans();
     window.scrollTo({ top: 0 });
   });
 });

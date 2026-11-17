@@ -1255,15 +1255,17 @@ details.session-row summary:hover { background: #f8faf9; }
 .sn-stat b{font-family:"Archivo","Noto Sans TC",sans-serif;font-size:22px;font-weight:800;color:var(--ink);}
 .sn-stat-sub{font-size:11px;color:var(--ink-mute);}
 
-/* 新增方案共用選法（package-plan-picker.js）：類型／堂數按鈕＋自訂輸入＋試算 */
-.pp-label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px;}
-.pp-row{display:flex;flex-wrap:wrap;gap:8px;}
-.pp-types .pp-opt{flex:1 1 0;}
+/* 新增方案共用選法（package-plan-picker.js）：套裝下拉選單＋自訂（類型按鈕、堂數、單價）＋試算；.pp-opt 也給後台套裝側欄的類型按鈕用 */
+.pp-select{display:block;width:100%;min-width:0;min-height:44px;font-size:16px;}
+.pp-select.pp-select-empty{color:#64748b;}
+.pp-select option{color:#0f172a;}
+.pp-types{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.pp-types .pp-opt{grid-column:auto;}  /* 教練彈窗的 .regm-newpkg button 會讓按鈕橫跨整列，這裡要並排 */
 .pp-opt{min-height:44px;padding:0 16px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#475569;font-family:"Archivo","Noto Sans TC",sans-serif;font-variant-numeric:tabular-nums;font-size:15px;font-weight:700;cursor:pointer;}
 .pp-opt[aria-checked="true"]{border-color:transparent;background:#f0f9ff;box-shadow:inset 0 0 0 2px #0ea5e9;color:#0c4a6e;font-weight:900;}
 .pp-opt:focus-visible{outline:none;border-color:#0ea5e9;box-shadow:var(--ring-focus);}
 .pp-opt[aria-checked="true"]:focus-visible{border-color:transparent;box-shadow:inset 0 0 0 2px #0ea5e9,var(--ring-focus);}
-.pp-custom{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
+.pp-custom{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;}
 .pp-custom[hidden]{display:none;}
 .pp-custom .form-input{width:100%;min-width:0;font-size:16px;}
 /* 試算列（業主 2026-11 選定）：髮絲線下方左邊算式、右邊總額大字；折扣說明另起一行靠右 */

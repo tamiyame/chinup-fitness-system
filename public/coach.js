@@ -1112,10 +1112,10 @@ let regmCustomer = null;   // {id,name,phone}
 let regmPackages = [];     // 該客人有效方案
 let regmPackageId = null;  // 選中方案
 let regmCompanion = null; // {id,name,phone}｜同行客人（1對2 方案才有）
-let regmPlans = [];        // 套裝價目表（空＝新增方案維持舊表單）
-let regmPicker = null;     // 目前畫面上的選法（價目表有內容時才有）
+let regmPlans = [];        // 啟用中的套裝（空＝新增方案維持舊表單）
+let regmPicker = null;     // 目前畫面上的選法（有啟用中的套裝時才有）
 
-/** 取套裝價目表；失敗一律當成空的（不擋開方案、不跳錯誤）。 */
+/** 取啟用中的套裝；失敗一律當成空的（不擋開方案、不跳錯誤）。 */
 async function fetchRegmPlans() {
   try { const r = await api('/api/coach/package-plans'); return Array.isArray(r?.plans) ? r.plans : []; }
   catch { return []; }
@@ -1311,7 +1311,7 @@ function bindRegmNewPkgForm(onCreated) {
   };
 }
 
-/** 價目表有內容時的開方案表單：選法＋到期日＋折扣碼＋建立。 */
+/** 有啟用中的套裝時的開方案表單：選法（下拉選單）＋到期日＋折扣碼＋建立。 */
 function bindRegmPlanForm(onCreated) {
   const dsel = $('regm-np-discount');
   getDiscountCodes().then(codes => { const el = document.getElementById('regm-np-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
@@ -1331,11 +1331,11 @@ function bindRegmPlanForm(onCreated) {
       onCreated(pkg);
     } catch (e) {
       if (e.data?.error === 'plan_price_changed' || e.data?.error === 'plan_not_available') {
-        toast('價目表剛更新過，請重新選擇', 'error');
+        toast('套裝剛更新過，請重新選擇', 'error');
         const fresh = await fetchRegmPlans();
         regmPlans = fresh;
         if (fresh.length) picker.setPlans(fresh);
-        else {   // 價目表變空 → 整個重畫成舊表單（保留「＋ 新增方案」展開狀態）
+        else {   // 沒有啟用中的套裝了 → 整個重畫成舊表單（保留「＋ 新增方案」展開狀態）
           const boxOpen = document.getElementById('regm-np-box') && !$('regm-np-box').classList.contains('hidden');
           renderRegmPicked();
           if (boxOpen) $('regm-np-box').classList.remove('hidden');

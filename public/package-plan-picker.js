@@ -1,60 +1,73 @@
-// 「新增方案」共用選法：類型按鈕＋堂數選項（取自價目表）＋自訂。
+// 「新增方案」共用選法：一個下拉選單列出啟用中的套裝，最後一項是自訂。
 // 後台會員彈窗（admin.js）與教練登錄彈窗（coach.js）共用。
 // 本檔不匯入任何模組，匯入時不碰 document／window（node 測試直接匯入純邏輯）。
 
 const TYPES = [['1on1', '一對一'], ['1on2', '一對二']];
+const TYPE_LABEL = Object.fromEntries(TYPES);
+const MSG_PICK = '請先選擇套裝';
 
-const isPosInt = (s) => /^\d+$/.test(String(s).trim()) && Number(s) > 0;
-const isNonNegInt = (s) => /^\d+$/.test(String(s).trim());
 const money = (n) => Number(n).toLocaleString('zh-TW');
 
-// 該類型的套裝選項，堂數小到大
-export function optionsForType(plans, sessionType) {
-  return (plans || [])
-    .filter((p) => p.sessionType === sessionType)
-    .map((p) => ({ totalSessions: p.totalSessions, unitPrice: p.unitPrice }))
-    .sort((a, b) => a.totalSessions - b.totalSessions);
+// '' 或全空白 → null；'1,400'、' 1400 '、'１，４００' → 1400；其他（小數、負號、文字）→ NaN
+export function parseAmount(text) {
+  const s = String(text ?? '')
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .trim();
+  if (s === '') return null;
+  const t = s.replace(/[,，]/g, '');
+  if (!/^\d+$/.test(t)) return NaN;
+  return Number(t);
 }
 
+// 「一對一 10 堂」
+export function planTitle(p) {
+  return `${TYPE_LABEL[p.sessionType] || p.sessionType} ${p.totalSessions} 堂`;
+}
+
+// 選單裡的一行：「一對一 10 堂・舊生價・每堂 NT$1,300」；沒有名稱就少中間那段
+export function planOptionLabel(p) {
+  return [planTitle(p), p.name || null, `每堂 NT$${money(p.unitPrice)}`].filter(Boolean).join('・');
+}
+
+// choice：null＝還沒選、數字＝套裝編號、'custom'＝自訂。sessionType 只有自訂時用得到。
 export function initialState(plans) {
-  const has = optionsForType(plans, '1on1').length > 0;
-  return { sessionType: '1on1', choice: has ? null : 'custom', customTotal: '', customUnit: '' };
+  return { choice: (plans || []).length ? null : 'custom', sessionType: '1on1', customTotal: '', customUnit: '' };
 }
 
-// 切換類型：自訂維持（輸入保留）；否則清掉選擇，新類型沒有套裝就轉自訂
-export function withType(state, plans, sessionType) {
-  if (state.choice === 'custom') return { ...state, sessionType };
-  const has = optionsForType(plans, sessionType).length > 0;
-  return { ...state, sessionType, choice: has ? null : 'custom' };
+// 選單的值（字串）→ 選擇
+export function withChoice(state, value) {
+  if (value === 'custom') return { ...state, choice: 'custom' };
+  return { ...state, choice: /^\d+$/.test(String(value)) ? Number(value) : null };
 }
 
-// 價目表重取後：自訂維持；其餘一律清掉，該類型沒有套裝就轉自訂
+// 套裝清單重新讀取後：自訂維持（輸入保留）；選過的套裝一律清掉重選，清單空了就轉自訂
 export function withPlans(state, plans) {
   if (state.choice === 'custom') return state;
-  const has = optionsForType(plans, state.sessionType).length > 0;
-  return { ...state, choice: has ? null : 'custom' };
+  return { ...state, choice: (plans || []).length ? null : 'custom' };
 }
 
 export function selectionOf(state, plans) {
-  const { sessionType, choice } = state;
+  const { choice } = state;
   if (typeof choice === 'number') {
-    const opt = optionsForType(plans, sessionType).find((o) => o.totalSessions === choice);
-    if (opt) return { ok: true, sessionType, totalSessions: opt.totalSessions, unitPrice: opt.unitPrice, fromPlan: true };
-    return { ok: false, message: '請先選堂數' };
+    const p = (plans || []).find((x) => x.id === choice);
+    if (!p) return { ok: false, message: MSG_PICK };
+    return { ok: true, sessionType: p.sessionType, totalSessions: p.totalSessions, unitPrice: p.unitPrice, fromPlan: true, planId: p.id };
   }
   if (choice === 'custom') {
-    if (!isPosInt(state.customTotal)) return { ok: false, message: '請填正確堂數' };
-    const unitRaw = String(state.customUnit).trim();
-    if (unitRaw !== '' && !isNonNegInt(unitRaw)) return { ok: false, message: '單價需為 0 以上整數' };
+    const total = parseAmount(state.customTotal);
+    if (total === null || Number.isNaN(total) || total < 1) return { ok: false, message: '請填正確堂數' };
+    const unit = parseAmount(state.customUnit);
+    if (Number.isNaN(unit)) return { ok: false, message: '單價需為 0 以上整數' };
     return {
       ok: true,
-      sessionType,
-      totalSessions: Number(state.customTotal),
-      unitPrice: unitRaw === '' ? null : Number(unitRaw),
+      sessionType: state.sessionType,
+      totalSessions: total,
+      unitPrice: unit,
+      // 有套裝可選卻選自訂 → false；本來就沒有套裝 → 不帶（與改版前相同）
       fromPlan: (plans || []).length > 0 ? false : undefined,
     };
   }
-  return { ok: false, message: '請先選堂數' };
+  return { ok: false, message: MSG_PICK };
 }
 
 // 試算列的三段：左邊的算式（或說明文字）、右邊的總額、下方的折扣說明；沒選好回 null
@@ -69,6 +82,7 @@ export function calcPartsOf(state, plans, hasDiscount) {
   };
 }
 
+// 送給 POST /api/coach/packages 的欄位
 export function packageFields(sel) {
   const out = {
     sessionType: sel.sessionType,
@@ -76,6 +90,7 @@ export function packageFields(sel) {
     amount: sel.unitPrice === null ? null : sel.unitPrice * sel.totalSessions,
   };
   if (sel.fromPlan !== undefined) out.fromPlan = sel.fromPlan;
+  if (sel.planId !== undefined) out.planId = sel.planId;
   return out;
 }
 
@@ -90,76 +105,60 @@ export function mountPlanPicker(container, { plans, hasDiscount, onChange }) {
     if (text !== undefined) el.textContent = text;
     return el;
   };
-  const radio = (label, onClick) => {
-    const b = mk('button', 'pp-opt', label);
-    b.type = 'button';
-    b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', 'false');
-    b.addEventListener('click', onClick);
-    return b;
+  const option = (value, text) => {
+    const o = mk('option', '', text);
+    o.value = value;
+    return o;
+  };
+  const numberInput = (label) => {
+    const el = mk('input', 'form-input');
+    el.type = 'text';
+    el.setAttribute('inputmode', 'numeric');
+    el.setAttribute('autocomplete', 'off');
+    el.setAttribute('aria-label', label);
+    el.placeholder = label;
+    return el;
   };
 
   container.textContent = '';
   const root = mk('div', 'pp');
-  const typeGroup = mk('div', 'pp-row pp-types');
+  const select = mk('select', 'form-select pp-select');
+  select.setAttribute('aria-label', '選擇套裝方案');
+
+  const custom = mk('div', 'pp-custom');
+  const typeGroup = mk('div', 'pp-types');
   typeGroup.setAttribute('role', 'radiogroup');
   typeGroup.setAttribute('aria-label', '類型');
   const typeBtns = TYPES.map(([val, label]) => {
-    const b = radio(label, () => {
-      state = withType(state, curPlans, val);
-      sync(true);
+    const b = mk('button', 'pp-opt', label);
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.dataset.type = val;
+    b.addEventListener('click', () => {
+      state = { ...state, sessionType: val };
+      paint();
       onChange();
     });
-    b.dataset.type = val;
     typeGroup.appendChild(b);
     return b;
   });
-  const sessGroup = mk('div', 'pp-row pp-sessions');
-  sessGroup.setAttribute('role', 'radiogroup');
-  sessGroup.setAttribute('aria-label', '堂數');
-  const custom = mk('div', 'pp-custom');
-  const totalIn = mk('input', 'form-input');
-  totalIn.type = 'number';
-  totalIn.setAttribute('inputmode', 'numeric');
-  totalIn.placeholder = '堂數';
-  const unitIn = mk('input', 'form-input');
-  unitIn.type = 'number';
-  unitIn.setAttribute('inputmode', 'numeric');
-  unitIn.placeholder = '每堂單價（可空）';
-  custom.append(totalIn, unitIn);
+  const totalIn = numberInput('堂數');
+  const unitIn = numberInput('每堂單價（可空）');
+  custom.append(typeGroup, totalIn, unitIn);
+
   const calc = mk('div', 'pp-calc');
   calc.setAttribute('aria-live', 'polite');
 
-  root.append(mk('div', 'pp-label', '類型'), typeGroup, mk('div', 'pp-label', '堂數'), sessGroup, custom, calc);
+  root.append(select, custom, calc);
   container.appendChild(root);
 
-  let optBtns = [];
-  let customBtn = null;
-
-  // 堂數選項列：只在類型或價目表改變時重建，輸入框本身不動
-  function buildSessions() {
-    sessGroup.textContent = '';
-    optBtns = optionsForType(curPlans, state.sessionType).map((o) => {
-      const b = radio(`${o.totalSessions} 堂`, () => {
-        state = { ...state, choice: o.totalSessions };
-        sync(false);
-        onChange();
-      });
-      b.dataset.sessions = String(o.totalSessions);
-      sessGroup.appendChild(b);
-      return b;
-    });
-    customBtn = radio('自訂', () => {
-      state = { ...state, choice: 'custom' };
-      sync(false);
-      onChange();
-      totalIn.focus();
-    });
-    customBtn.dataset.sessions = 'custom';
-    sessGroup.appendChild(customBtn);
+  // 選單內容：只在套裝清單改變時重建
+  function buildOptions() {
+    select.textContent = '';
+    select.appendChild(option('', '請選擇套裝'));
+    curPlans.forEach((p) => select.appendChild(option(String(p.id), planOptionLabel(p))));
+    select.appendChild(option('custom', '自訂（自己輸入堂數與單價）'));
   }
-
-  const setChecked = (el, on) => el.setAttribute('aria-checked', on ? 'true' : 'false');
 
   // 試算列：左算式、右總額（大字）、折扣說明另起一行；沒有內容時保持空的（:empty 會整列隱藏）
   function paintCalc() {
@@ -176,29 +175,32 @@ export function mountPlanPicker(container, { plans, hasDiscount, onChange }) {
   }
 
   function paint() {
-    typeBtns.forEach((b) => setChecked(b, b.dataset.type === state.sessionType));
-    optBtns.forEach((b) => setChecked(b, state.choice === Number(b.dataset.sessions)));
-    setChecked(customBtn, state.choice === 'custom');
+    select.value = state.choice === null ? '' : String(state.choice);
+    select.classList.toggle('pp-select-empty', state.choice === null);
+    typeBtns.forEach((b) => b.setAttribute('aria-checked', b.dataset.type === state.sessionType ? 'true' : 'false'));
     custom.hidden = state.choice !== 'custom';
     paintCalc();
   }
-  function sync(rebuild) {
-    if (rebuild) buildSessions();
-    paint();
-  }
 
+  select.addEventListener('change', () => {
+    state = withChoice(state, select.value);
+    paint();
+    onChange();
+    if (state.choice === 'custom') totalIn.focus();
+  });
   totalIn.addEventListener('input', () => {
     state = { ...state, customTotal: totalIn.value };
-    paint();
+    paintCalc();
     onChange();
   });
   unitIn.addEventListener('input', () => {
     state = { ...state, customUnit: unitIn.value };
-    paint();
+    paintCalc();
     onChange();
   });
 
-  sync(true);
+  buildOptions();
+  paint();
 
   return {
     selection: () => selectionOf(state, curPlans),
@@ -206,7 +208,8 @@ export function mountPlanPicker(container, { plans, hasDiscount, onChange }) {
     setPlans(next) {
       curPlans = next || [];
       state = withPlans(state, curPlans);
-      sync(true);
+      buildOptions();
+      paint();
     },
   };
 }

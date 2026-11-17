@@ -102,7 +102,7 @@ import {
   getPackagesSummary as svcPackagesSummary,
   restorePackage as svcRestorePackage,
 } from './services/packageService.js';
-import { getPlanTable as svcGetPlanTable, replacePlanTable as svcReplacePlanTable } from './services/packagePlanService.js';
+import { listPlans as svcListPlans, createPlan as svcCreatePlan, updatePlan as svcUpdatePlan, deletePlan as svcDeletePlan } from './services/packagePlanService.js';
 import { getCoachWeek as svcGetCoachWeek, searchCustomers as svcSearchCustomers } from './services/coachCalendarService.js';
 import { sendBookingConfirmation } from './services/emailService.js';
 import { computePayroll, periodRange, defaultPeriod } from './services/payrollService.js';
@@ -893,18 +893,34 @@ app.post('/api/coach/me/avatar', requireCoach, asyncHandler((req, res) => {
 
 // --- 方案（套餐）：教練/管理者管理客人方案 ---
 app.post('/api/coach/packages', requireCoach, asyncHandler((req, res) => {
-  const { memberId, sessionType, totalSessions, amount, expiresAt, note, discountCode, fromPlan } = req.body || {};
-  res.status(201).json(svcCreatePackage({ memberId: Number(memberId), sessionType, totalSessions, amount, expiresAt, note, discountCode, fromPlan, createdBy: req.user.id }));
+  const { memberId, sessionType, totalSessions, amount, expiresAt, note, discountCode, fromPlan, planId } = req.body || {};
+  res.status(201).json(svcCreatePackage({ memberId: Number(memberId), sessionType, totalSessions, amount, expiresAt, note, discountCode, fromPlan, planId, createdBy: req.user.id }));
 }));
 
-// 套裝方案價目表：教練可讀、管理者整張取代
+// 套裝方案（一列一個套裝）：教練只讀啟用中的（開方案用）；管理者讀全部，逐筆新增／修改／刪除。
+const planFields = (body) => {
+  const { sessionType, totalSessions, unitPrice, name, isActive } = body || {};
+  return { sessionType, totalSessions, unitPrice, name, isActive };
+};
 app.get('/api/coach/package-plans', requireCoach, asyncHandler((req, res) => {
-  res.json(svcGetPlanTable());
+  res.json({ plans: svcListPlans({ activeOnly: true }) });
 }));
 
-app.put('/api/admin/package-plans', requireAdmin, asyncHandler((req, res) => {
-  const { version, plans } = req.body || {};
-  res.json(svcReplacePlanTable({ version, plans }));
+app.get('/api/admin/package-plans', requireAdmin, asyncHandler((req, res) => {
+  res.json({ plans: svcListPlans() });
+}));
+
+app.post('/api/admin/package-plans', requireAdmin, asyncHandler((req, res) => {
+  res.status(201).json(svcCreatePlan(planFields(req.body)));
+}));
+
+// 停用／啟用也走這裡（只送 isActive）；沒送的欄位不動
+app.patch('/api/admin/package-plans/:id', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcUpdatePlan(Number(req.params.id), planFields(req.body)));
+}));
+
+app.delete('/api/admin/package-plans/:id', requireAdmin, asyncHandler((req, res) => {
+  res.json(svcDeletePlan(Number(req.params.id)));
 }));
 
 app.get('/api/coach/discount-codes', requireCoach, asyncHandler((req, res) => {
