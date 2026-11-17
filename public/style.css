@@ -1268,3 +1268,6 @@ details.session-row summary:hover { background: #f8faf9; }
 .pp-custom .form-input{width:100%;min-width:0;font-size:16px;}
 .pp-calc{margin-top:8px;font-size:12px;color:#64748b;font-variant-numeric:tabular-nums;}
 .pp-calc:empty{display:none;}
+
+/* 教練登錄彈窗：新增方案的選法佔滿兩欄格線整列 */
+.regm-newpkg .regm-np-picker{grid-column:1/-1;}

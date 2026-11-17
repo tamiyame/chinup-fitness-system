@@ -1,5 +1,6 @@
 import { api, toast, fmtDate, dow, bootAuth, escapeHtml } from '/app.js';
 import { parseAmount, rowsFromPlans, plansFromRows } from '/package-plan-table.js';
+import { mountPlanPicker, packageFields } from '/package-plan-picker.js';
 
 const user = await bootAuth({ requireAdmin: true });
 // If bootAuth redirected, halt module execution so no admin content renders.
@@ -1447,6 +1448,11 @@ async function renderMemberPackages(memberId, mountEl) {
   try { pkgs = await api(`/api/coach/packages?memberId=${memberId}&includeArchived=1`); }
   catch { mountEl.innerHTML = '<p class="subtle" style="font-size:12px;color:var(--err-fg);">方案載入失敗</p>'; return; }
 
+  // 套裝價目表：取不到一律當空的（不擋開方案、不跳錯誤）
+  let plans = [];
+  try { const r = await api('/api/coach/package-plans'); plans = Array.isArray(r?.plans) ? r.plans : []; } catch { plans = []; }
+  const usePlans = plans.length > 0;
+
   pkgs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || b.id - a.id);   // 購買時間新→舊（只在這裡排；教練端下拉沿用後端順序）
   const rowHtml = pkgs.map(p => {
     const arch = !!p.archived_at;
@@ -1510,7 +1516,13 @@ async function renderMemberPackages(memberId, mountEl) {
     <div id="pkg-list">${rowHtml}</div>
     <details style="margin-top:8px;">
       <summary style="font-size:13px;cursor:pointer;color:#0284c7;">＋ 新增方案</summary>
+${usePlans ? `      <div id="pkg-picker" style="margin-top:8px;"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
+        <input id="pkg-expiry" class="form-input" type="date" style="margin:0;" />
+        <select id="pkg-discount" class="form-select" style="margin:0;"></select>
+      </div>
+      <input id="pkg-note" class="form-input" placeholder="備註（可空）" style="margin:6px 0 0;" />
+      <button id="pkg-create" class="btn btn-primary btn-sm" style="margin-top:8px;">建立方案</button>` : `      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
         <select id="pkg-type" class="form-select" style="margin:0;"><option value="1on1">一對一</option><option value="1on2">一對二</option></select>
         <input id="pkg-total" class="form-input" type="number" min="1" placeholder="堂數" style="margin:0;" />
         <input id="pkg-unit" class="form-input" type="number" min="0" placeholder="每堂單價（可空）" style="margin:0;" />
@@ -1519,10 +1531,20 @@ async function renderMemberPackages(memberId, mountEl) {
       <input id="pkg-note" class="form-input" placeholder="備註（可空）" style="margin:6px 0 0;" />
       <select id="pkg-discount" class="form-select" style="margin:6px 0 0;"></select>
       <div id="pkg-calc" class="subtle" style="font-size:11px;margin-top:4px;"></div>
-      <button id="pkg-create" class="btn btn-primary btn-sm" style="margin-top:8px;">建立方案</button>
+      <button id="pkg-create" class="btn btn-primary btn-sm" style="margin-top:8px;">建立方案</button>`}
     </details>`;
 
   getDiscountCodes().then(codes => { const el = mountEl.querySelector('#pkg-discount'); if (el) el.innerHTML = discountOptionsHtml(codes); });
+
+  // 選法（價目表有內容）：掛進容器；折扣碼改變時重畫試算
+  let picker = null;
+  if (usePlans) {
+    const dsel = mountEl.querySelector('#pkg-discount');
+    picker = mountPlanPicker(mountEl.querySelector('#pkg-picker'), {
+      plans, hasDiscount: () => !!dsel?.value, onChange: () => {},
+    });
+    if (dsel) dsel.onchange = () => picker.refresh();
+  }
 
   const pkgCalc = () => {
     const t = Number(mountEl.querySelector('#pkg-total').value);
@@ -1534,17 +1556,48 @@ async function renderMemberPackages(memberId, mountEl) {
     const disc = mountEl.querySelector('#pkg-discount')?.value;
     el.textContent = `${t} 堂 × NT$${Number(u).toLocaleString('zh-TW')} ＝ 總額 NT$${total.toLocaleString('zh-TW')}${disc ? '（套用折扣碼後以折後總額入帳）' : ''}`;
   };
+  if (!usePlans) {
   ['pkg-total', 'pkg-unit'].forEach(id => { const elm = mountEl.querySelector(`#${id}`); if (elm) elm.oninput = pkgCalc; });
   const pkgDsel = mountEl.querySelector('#pkg-discount'); if (pkgDsel) pkgDsel.onchange = pkgCalc;
   pkgCalc();
+  }
 
   // 建立
-  mountEl.querySelector('#pkg-create')?.addEventListener('click', async () => {
+  mountEl.querySelector('#pkg-create')?.addEventListener('click', async (ev) => {
+    const createBtn = ev.currentTarget;
+    if (usePlans) {
+      const sel = picker.selection();
+      if (!sel.ok) { toast(sel.message, 'error'); return; }
+      createBtn.disabled = true;
+      try {
+        await api('/api/coach/packages', { method: 'POST', body: {
+          memberId, ...packageFields(sel),
+          expiresAt: mountEl.querySelector('#pkg-expiry').value || null,
+          note: mountEl.querySelector('#pkg-note').value || null,
+          discountCode: mountEl.querySelector('#pkg-discount')?.value || null,
+        }});
+        toast('方案已建立', 'success');
+        renderMemberPackages(memberId, mountEl);
+      } catch (e) {
+        if (e.data?.error === 'plan_price_changed' || e.data?.error === 'plan_not_available') {
+          toast('價目表剛更新過，請重新選擇', 'error');
+          let fresh = [];
+          try { const r = await api('/api/coach/package-plans'); fresh = Array.isArray(r?.plans) ? r.plans : []; } catch { fresh = []; }
+          if (fresh.length) picker.setPlans(fresh);
+          else { await renderMemberPackages(memberId, mountEl); const d = mountEl.querySelector('details'); if (d) d.open = true; return; }   // 價目表變空 → 整個重畫成舊表單
+        } else {
+          const msgs = { invalid_total: '堂數不正確', invalid_amount: '金額不正確', invalid_expires_at: '到期日格式錯', invalid_session_type: '類型不正確' };
+          toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
+        }
+      } finally { createBtn.disabled = false; }
+      return;
+    }
     const total = Number(mountEl.querySelector('#pkg-total').value);
     if (!Number.isInteger(total) || total <= 0) { toast('請填正確堂數', 'error'); return; }
     const unitRaw = mountEl.querySelector('#pkg-unit').value;
     if (unitRaw !== '' && (!Number.isInteger(Number(unitRaw)) || Number(unitRaw) < 0)) { toast('單價需為 0 以上整數', 'error'); return; }
     const expiry = mountEl.querySelector('#pkg-expiry').value;
+    createBtn.disabled = true;
     try {
       await api('/api/coach/packages', { method: 'POST', body: {
         memberId, sessionType: mountEl.querySelector('#pkg-type').value, totalSessions: total,
@@ -1557,7 +1610,7 @@ async function renderMemberPackages(memberId, mountEl) {
     } catch (e) {
       const msgs = { invalid_total: '堂數不正確', invalid_amount: '金額不正確', invalid_expires_at: '到期日格式錯', invalid_session_type: '類型不正確' };
       toast(msgs[e.data?.error] || `失敗：${e.message}`, 'error');
-    }
+    } finally { createBtn.disabled = false; }
   });
 
   // 調整 / 作廢 / 還原
