@@ -149,6 +149,11 @@ expect('planId 是字串 → 400 invalid_plan_id', () => {
   assert.equal(strId.status, 400);
   assert.equal(strId.data.error, 'invalid_plan_id');
 });
+const legacyTwo = await open(token, { fromPlan: true, amount: 1400 * 173 });
+expect('舊畫面（只送 fromPlan:true）：同堂數有兩種啟用中的價 → 409 plan_price_changed', () => {
+  assert.equal(legacyTwo.status, 409);
+  assert.equal(legacyTwo.data.error, 'plan_price_changed');
+});
 await req('PATCH', `/api/admin/package-plans/${oldie.data.id}`, { token, body: { isActive: false } });
 const offPlan = await open(token, { planId: oldie.data.id, fromPlan: true, amount: 1250 * 173 });
 expect('套裝停用後再用它開 → 409 plan_not_available', () => {
@@ -158,7 +163,7 @@ expect('套裝停用後再用它開 → 409 plan_not_available', () => {
 const legacyOk = await open(token, { fromPlan: true, amount: 1400 * 173 });
 const legacyBad = await open(token, { fromPlan: true, amount: 1250 * 173 });
 const legacyNone = await open(token, { fromPlan: true, totalSessions: 174, amount: 1400 * 174 });
-expect('舊畫面（只送 fromPlan:true）：對得上啟用中的價 → 201；對不上 → 409 plan_price_changed；沒有該堂數 → 409 plan_not_available', () => {
+expect('舊畫面（只送 fromPlan:true）：同堂數只剩一種價且金額相符 → 201；對不上 → 409 plan_price_changed；沒有該堂數 → 409 plan_not_available', () => {
   assert.equal(legacyOk.status, 201);
   assert.equal(fromPlanOf(legacyOk.data.id).from_plan, 1);
   assert.equal(legacyBad.status, 409);

@@ -68,10 +68,13 @@ export function createPackage({ memberId, sessionType, totalSessions, amount = n
     }
     usesPlan = true;
   } else if (fromPlan === true) {
-    // 還沒重新整理的舊畫面只送 fromPlan:true：金額等於任何一個啟用中同類型同堂數套裝的總價就算數
+    // 還沒重新整理的舊畫面只送 fromPlan:true，用類型＋堂數＋金額比對啟用中的套裝。
+    // 舊畫面同堂數只畫得出一顆按鈕、分不出是哪個價：同堂數有兩種以上的價時一律不收，
+    // 免得想開舊生價卻開成原價（舊畫面收到 plan_price_changed 會提示重選）。
     const candidates = matchActivePlans(sessionType, total);
     if (!candidates.length) throw new ApiError(409, 'plan_not_available');
-    if (!candidates.some((p) => amt === p.unitPrice * total)) throw new ApiError(409, 'plan_price_changed');
+    const prices = new Set(candidates.map((p) => p.unitPrice));
+    if (prices.size > 1 || amt !== candidates[0].unitPrice * total) throw new ApiError(409, 'plan_price_changed');
   }
   const fromPlanStored = usesPlan ? 1 : (fromPlan === false ? 0 : null);
   let discountCodeStored = null;

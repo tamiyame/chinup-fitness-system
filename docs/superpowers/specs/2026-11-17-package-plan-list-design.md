@@ -64,7 +64,7 @@ C 版的價目表是「堂數 × 類型」一格一個價，同類型同堂數�
 `POST /api/coach/packages` 多收 `planId`：
 
 - 有 `planId`：必須是正整數（否則 400 `invalid_plan_id`）。套裝不存在或已停用 → 409 `plan_not_available`；類型、堂數、或折扣前金額（單價 × 堂數）對不上 → 409 `plan_price_changed`。通過後 `from_plan = 1`。同時送 `fromPlan: false` 視為矛盾 → 400 `invalid_from_plan`。
-- 沒有 `planId` 但 `fromPlan: true`（還沒重新整理的舊畫面）：改用類型＋堂數＋金額比對啟用中的套裝；沒有這個類型＋堂數的套裝 → 409 `plan_not_available`，有但金額都對不上 → 409 `plan_price_changed`。
+- 沒有 `planId` 但 `fromPlan: true`（還沒重新整理的舊畫面）：改用類型＋堂數＋金額比對啟用中的套裝；沒有這個類型＋堂數的套裝 → 409 `plan_not_available`，金額對不上 → 409 `plan_price_changed`。舊畫面同堂數只畫得出一顆按鈕、分不出是哪個價，所以**同類型同堂數有兩種以上啟用中的價時一律回 409 `plan_price_changed`**（舊畫面會提示重選；重新整理後就是新選單），免得想開舊生價卻開成原價。
 - `fromPlan: false` → `from_plan = 0`；沒送 → NULL。與現在相同。
 
 ## 畫面

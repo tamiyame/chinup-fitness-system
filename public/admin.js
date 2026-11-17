@@ -3442,7 +3442,8 @@ async function togglePlanActive(id, btn) {
     toast(planErrorMessage(e.data?.error) || `失敗：${e.message}`, 'error');
   } finally {
     planToggling = false;
-    await loadPackagePlans();   // 成功或失敗都以伺服器為準重畫（按鈕也跟著換新）
+    btn.disabled = false;       // 重讀也失敗（斷線）時畫面不會重畫，按鈕不能卡住
+    await loadPackagePlans();   // 成功或失敗都以伺服器為準重畫
   }
 }
 
@@ -3497,10 +3498,11 @@ function openPlanDrawer(plan) {
   el('pkf-cancel').addEventListener('click', closePlanDrawer);
 
   let busy = false;
-  // 套裝已經被別人刪掉：關側欄、清單重讀
-  const afterGone = () => { closePlanDrawer(); loadPackagePlans(); };
+  const formEl = el('pkf-form');
+  // 請求回來時側欄可能已經換成別的內容（另一個套裝、報價單、場次名單）：只關自己這一個，清單一律重讀
+  const closeAndReload = () => { if (formEl.isConnected) closePlanDrawer(); loadPackagePlans(); };
 
-  el('pkf-form').addEventListener('submit', async (ev) => {
+  formEl.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     if (busy) return;
     const r = planFromForm(read());
@@ -3511,21 +3513,19 @@ function openPlanDrawer(plan) {
       return;
     }
     busy = true;
-    el('pkf-save').disabled = true;
+    formEl.querySelector('#pkf-save').disabled = true;
     try {
       if (isEdit) await api(`/api/admin/package-plans/${plan.id}`, { method: 'PATCH', body: r.plan });
       else await api('/api/admin/package-plans', { method: 'POST', body: r.plan });
       toast(isEdit ? '套裝已更新' : '套裝已新增', 'success');
-      closePlanDrawer();
-      loadPackagePlans();
+      closeAndReload();
     } catch (e) {
       const code = e.data?.error;
       toast(planErrorMessage(code) || `儲存失敗：${e.message}`, 'error');
-      if (code === 'plan_not_found') afterGone();
+      if (code === 'plan_not_found') closeAndReload();   // 已經被別人刪掉
     } finally {
       busy = false;
-      const b = document.getElementById('pkf-save');
-      if (b) b.disabled = false;
+      formEl.querySelector('#pkf-save').disabled = false;
     }
   });
 
@@ -3538,11 +3538,11 @@ function openPlanDrawer(plan) {
     try {
       await api(`/api/admin/package-plans/${plan.id}`, { method: 'DELETE' });
       toast('套裝已刪除', 'success');
-      afterGone();
+      closeAndReload();
     } catch (e) {
       const code = e.data?.error;
       toast(planErrorMessage(code) || `刪除失敗：${e.message}`, 'error');
-      if (code === 'plan_not_found') afterGone();
+      if (code === 'plan_not_found') closeAndReload();
     } finally {
       busy = false;
     }
@@ -3550,7 +3550,9 @@ function openPlanDrawer(plan) {
 
   paint();
   document.getElementById('drawer').style.display = 'block';
-  if (!isEdit) inputs.total.focus();
+  // 焦點移進側欄：新增直接從堂數開始打；編輯停在類型按鈕（不放輸入框，手機才不會一打開就跳鍵盤）
+  if (isEdit) content.querySelector('[data-pkf-type][aria-checked="true"]')?.focus();
+  else inputs.total.focus();
 }
 
 document.getElementById('plan-new').addEventListener('click', () => openPlanDrawer(null));

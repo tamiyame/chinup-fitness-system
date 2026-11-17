@@ -81,25 +81,37 @@ expect('基本欄位先檢查：類型錯仍是 400 invalid_session_type', () =>
 });
 
 // ---- 只帶 fromPlan:true（還沒重新整理的舊畫面）----
-expect('舊畫面 fromPlan:true：金額等於任何一個啟用中同類型同堂數套裝的總價 → 建立，from_plan = 1', () => {
+// 舊畫面同堂數只畫得出一顆按鈕、分不出是哪個價，所以同堂數有兩種價時一律不收，免得開成別的價
+expect('舊畫面 fromPlan:true：同類型同堂數有兩種啟用中的價 → 409 plan_price_changed（哪個金額都不收）', () => {
+  const n = count();
+  throwsCode(() => mk({ amount: 14000, fromPlan: true }), 409, 'plan_price_changed');
+  throwsCode(() => mk({ amount: 13000, fromPlan: true }), 409, 'plan_price_changed');
+  assert.equal(count(), n);
+});
+expect('舊畫面 fromPlan:true：同堂數只剩一種啟用中的價 → 金額相符就建立，from_plan = 1', () => {
+  plans.updatePlan(old.id, { isActive: false });
   assert.equal(mk({ amount: 14000, fromPlan: true }).from_plan, 1);
-  assert.equal(mk({ amount: 13000, fromPlan: true }).from_plan, 1);
+  plans.updatePlan(old.id, { isActive: true });
+  assert.equal(mk({ sessionType: '1on2', amount: 19000, fromPlan: true }).from_plan, 1);
+});
+expect('舊畫面 fromPlan:true：同堂數兩筆同價不同名稱 → 不算兩種價，照收', () => {
+  const twin = plans.createPlan({ sessionType: '1on2', totalSessions: 10, unitPrice: 1900, name: '員工價' });
+  assert.equal(mk({ sessionType: '1on2', amount: 19000, fromPlan: true }).from_plan, 1);
+  plans.deletePlan(twin.id);
 });
 expect('舊畫面 fromPlan:true：沒有這個類型＋堂數的啟用中套裝 → 409 plan_not_available', () => {
   const n = count();
   throwsCode(() => mk({ totalSessions: 20, amount: 28000, fromPlan: true }), 409, 'plan_not_available');
   assert.equal(count(), n);
 });
-expect('舊畫面 fromPlan:true：金額都對不上或沒帶 → 409 plan_price_changed', () => {
+expect('舊畫面 fromPlan:true：金額對不上或沒帶 → 409 plan_price_changed；停用的套裝不算', () => {
+  plans.updatePlan(old.id, { isActive: false });
   const n = count();
   throwsCode(() => mk({ amount: 15000, fromPlan: true }), 409, 'plan_price_changed');
+  throwsCode(() => mk({ amount: 13000, fromPlan: true }), 409, 'plan_price_changed');
   throwsCode(() => mk({ amount: null, fromPlan: true }), 409, 'plan_price_changed');
   throwsCode(() => mk({ fromPlan: true }), 409, 'plan_price_changed');
   assert.equal(count(), n);
-});
-expect('舊畫面 fromPlan:true：停用的套裝不算', () => {
-  plans.updatePlan(old.id, { isActive: false });
-  throwsCode(() => mk({ amount: 13000, fromPlan: true }), 409, 'plan_price_changed');
   plans.updatePlan(old.id, { isActive: true });
 });
 
