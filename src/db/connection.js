@@ -274,10 +274,42 @@ addColumnIfMissing('customer_packages', 'discount_code', 'TEXT');
 // ── 2026-11-14 線上單堂方案 ──
 // source：方案來源（staff=教練／管理者開立、online=客人線上預約自動建立的一堂方案）；舊資料一律 staff。
 addColumnIfMissing('customer_packages', 'source', "TEXT NOT NULL DEFAULT 'staff' CHECK (source IN ('staff', 'online'))");
-// from_plan：1=照價目表開的方案、0=有套裝可選卻選自訂、NULL=舊資料／線上單堂／開立當下沒有套裝可選。
+// from_plan：1=照套裝開的方案、0=有套裝可選卻選自訂、NULL=舊資料／線上單堂／開立當下沒有套裝可選。
 addColumnIfMissing('customer_packages', 'from_plan', 'INTEGER CHECK (from_plan IN (0, 1))');
 // 依方案查名下預約（關閉、退款、改掛都會用到）；放在 package_id 欄位確定存在之後。
 db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_package ON bookings(package_id)');
+
+// ── 2026-11-17 套裝方案改成一列一個套裝 ──
+// 原本的價目表是「類型＋堂數」唯一；同堂數要能有好幾個價格，唯一鍵拿不掉 → 整表重建（比照 discount_codes）。
+// 偵測訊號：沒有 is_active 欄位。舊資料原 id 照搬、name 是 NULL、is_active 是 1；沒有任何表指向它；重跑 no-op。
+{
+  const planCols = db.prepare('PRAGMA table_info(package_plans)').all().map((c) => c.name);
+  if (!planCols.includes('is_active')) {
+    try {
+      db.exec('BEGIN');
+      db.exec(`
+        CREATE TABLE package_plans_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_type TEXT NOT NULL CHECK (session_type IN ('1on1','1on2')),
+          total_sessions INTEGER NOT NULL CHECK (total_sessions > 0),
+          unit_price INTEGER NOT NULL CHECK (unit_price > 0),
+          name TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )`);
+      const { changes } = db.prepare(
+        'INSERT INTO package_plans_new (id, session_type, total_sessions, unit_price) SELECT id, session_type, total_sessions, unit_price FROM package_plans'
+      ).run();
+      db.exec('DROP TABLE package_plans');
+      db.exec('ALTER TABLE package_plans_new RENAME TO package_plans');
+      db.exec('COMMIT');
+      console.log(`[migrate] package_plans rebuilt (one row per plan); ${changes} plans kept`);
+    } catch (e) {
+      try { db.exec('ROLLBACK'); } catch {}
+      throw e;
+    }
+  }
+}
 
 // ── 2026-06-12 教練課付款狀態流 ──
 // paid_at NULL=待核對、非 NULL=已核對（鏡像 group_orders.paid_at/paid_by；status 不變，佔時段/容量照舊）。

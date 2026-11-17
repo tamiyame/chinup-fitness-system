@@ -1,4 +1,4 @@
-// 套裝方案價目表：既有資料庫升級（新表 package_plans、customer_packages 補 from_plan）。
+// 套裝方案：既有資料庫升級（customer_packages 補 from_plan；package_plans 從「類型＋堂數唯一」重建成一列一個套裝）。
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,7 +13,8 @@ for (const p of [dbPath, freshPath]) for (const s of ['', '-wal', '-shm']) rmSyn
 function expect(label, fn) { try { fn(); console.log(`  ✓ ${label}`); } catch (e) { console.log(`  ✗ ${label}`); console.error(e); process.exitCode = 1; } }
 console.log('[package-plan-migration test] start');
 
-// 改動前的 customer_packages（有 source、沒有 from_plan）＋一筆舊資料；沒有 package_plans 表
+// 改動前的 customer_packages（有 source、沒有 from_plan）＋一筆舊資料；
+// 以及價目表版本的 package_plans（類型＋堂數唯一，沒有 name／is_active）＋兩筆價目
 const old = new DatabaseSync(dbPath, { enableForeignKeyConstraints: false });
 old.exec(`
 CREATE TABLE customer_packages (
@@ -31,13 +32,21 @@ CREATE TABLE customer_packages (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   archived_at TEXT
 );
+CREATE TABLE package_plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_type TEXT NOT NULL CHECK (session_type IN ('1on1','1on2')),
+  total_sessions INTEGER NOT NULL CHECK (total_sessions > 0),
+  unit_price INTEGER NOT NULL CHECK (unit_price > 0),
+  UNIQUE (session_type, total_sessions)
+);
+INSERT INTO package_plans (id, session_type, total_sessions, unit_price) VALUES (3, '1on1', 1, 1500), (7, '1on2', 10, 1900);
 `);
 old.prepare("INSERT INTO customer_packages (member_id, session_type, total_sessions, remaining_sessions, amount, note) VALUES (1, '1on1', 10, 7, 14000, '舊方案')").run();
 old.close();
 
 process.env.DB_PATH = dbPath;
 const { db } = await import('../src/db/connection.js');
-const insPlan = (type, total, unit) => db.prepare('INSERT INTO package_plans (session_type, total_sessions, unit_price) VALUES (?, ?, ?)').run(type, total, unit);
+const insPlan = (type, total, unit, name = null) => Number(db.prepare('INSERT INTO package_plans (session_type, total_sessions, unit_price, name) VALUES (?, ?, ?, ?)').run(type, total, unit, name).lastInsertRowid);
 
 expect('既有資料表補上 from_plan，舊資料是 NULL、其他欄位不變', () => {
   assert.ok(db.prepare('PRAGMA table_info(customer_packages)').all().some((c) => c.name === 'from_plan'));
@@ -54,10 +63,24 @@ expect('from_plan 只接受 0／1／NULL', () => {
   db.prepare('UPDATE customer_packages SET from_plan = 0 WHERE id = 1').run();
   db.prepare('UPDATE customer_packages SET from_plan = NULL WHERE id = 1').run();
 });
-expect('package_plans 表存在；同類型同堂數不能重複，不同類型可以', () => {
-  insPlan('1on1', 10, 1400);
-  assert.throws(() => insPlan('1on1', 10, 1500), /UNIQUE/);
-  insPlan('1on2', 10, 1900);
+expect('舊價目重建後還在：id、類型、堂數、單價不變，名稱是 NULL、啟用中', () => {
+  const rows = db.prepare('SELECT id, session_type, total_sessions, unit_price, name, is_active FROM package_plans ORDER BY id').all().map((r) => ({ ...r }));
+  assert.deepEqual(rows, [
+    { id: 3, session_type: '1on1', total_sessions: 1, unit_price: 1500, name: null, is_active: 1 },
+    { id: 7, session_type: '1on2', total_sessions: 10, unit_price: 1900, name: null, is_active: 1 },
+  ]);
+  assert.ok(db.prepare('PRAGMA table_info(package_plans)').all().some((c) => c.name === 'created_at'));
+});
+expect('同類型同堂數可以有好幾筆；新的 id 接在舊的後面', () => {
+  const a = insPlan('1on1', 10, 1400);
+  const b = insPlan('1on1', 10, 1300, '舊生價');
+  assert.ok(a > 7 && b > a);
+  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM package_plans WHERE session_type = '1on1' AND total_sessions = 10").get().c, 2);
+});
+expect('is_active 只接受 0／1', () => {
+  assert.throws(() => db.prepare('UPDATE package_plans SET is_active = 2 WHERE id = 3').run(), /CHECK/);
+  db.prepare('UPDATE package_plans SET is_active = 0 WHERE id = 3').run();
+  db.prepare('UPDATE package_plans SET is_active = 1 WHERE id = 3').run();
 });
 expect('package_plans 的 CHECK：類型、堂數 > 0、單價 > 0', () => {
   assert.throws(() => insPlan('group', 10, 1400), /CHECK/);
@@ -70,12 +93,12 @@ const connUrl = new URL('../src/db/connection.js', import.meta.url).href;
 const boot = (path, body) => execFileSync(process.execPath, ['--input-type=module', '-e',
   `const { db } = await import(${JSON.stringify(connUrl)}); ${body}`], { env: { ...process.env, DB_PATH: path }, encoding: 'utf8' });
 expect('升級過的資料庫重複開機不出錯，資料還在', () => {
-  const out = boot(dbPath, "console.log(db.prepare('SELECT COUNT(*) AS c FROM package_plans').get().c);");
-  assert.equal(out.trim(), '2');
+  const out = boot(dbPath, "console.log(db.prepare('SELECT COUNT(*) AS c FROM package_plans').get().c, db.prepare('SELECT id FROM package_plans ORDER BY id LIMIT 2').all().map((r) => r.id).join(','));");
+  assert.equal(out.trim(), '4 3,7');
 });
-expect('全新資料庫的 customer_packages 也有 from_plan、也有 package_plans 表', () => {
-  const out = boot(freshPath, "console.log(db.prepare('PRAGMA table_info(customer_packages)').all().some((c) => c.name === 'from_plan'), !!db.prepare(\"SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'package_plans'\").get());");
-  assert.equal(out.trim(), 'true true');
+expect('全新資料庫的 customer_packages 有 from_plan；package_plans 有 name／is_active、同堂數可多筆', () => {
+  const out = boot(freshPath, "const cols = db.prepare('PRAGMA table_info(package_plans)').all().map((c) => c.name); const ins = db.prepare(\"INSERT INTO package_plans (session_type, total_sessions, unit_price) VALUES ('1on1', 10, ?)\"); ins.run(1400); ins.run(1300); console.log(db.prepare('PRAGMA table_info(customer_packages)').all().some((c) => c.name === 'from_plan'), cols.includes('name') && cols.includes('is_active') && cols.includes('created_at'), db.prepare('SELECT COUNT(*) AS c FROM package_plans WHERE is_active = 1').get().c);");
+  assert.equal(out.trim(), 'true true 2');
 });
 
 db.close();

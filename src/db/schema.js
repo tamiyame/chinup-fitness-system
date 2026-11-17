@@ -235,12 +235,16 @@ CREATE TABLE IF NOT EXISTS customer_packages (
 );
 CREATE INDEX IF NOT EXISTS idx_customer_packages_member ON customer_packages(member_id);
 
+-- 套裝方案：一列一個可以賣的套裝；同類型同堂數可以有好幾筆（用 name 分辨）。
+-- 欄位要和 connection.js 裡重建舊表用的定義一致。
 CREATE TABLE IF NOT EXISTS package_plans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_type TEXT NOT NULL CHECK (session_type IN ('1on1','1on2')),
   total_sessions INTEGER NOT NULL CHECK (total_sessions > 0),
   unit_price INTEGER NOT NULL CHECK (unit_price > 0),
-  UNIQUE (session_type, total_sessions)
+  name TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS bookings (

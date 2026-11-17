@@ -1,7 +1,7 @@
 import { db, tx, nowLocal } from '../db/connection.js';
 import { ApiError } from './registration.js';
 import { quoteDiscount, releaseRedemption } from './discountService.js';
-import { findPlan } from './packagePlanService.js';
+import { findActivePlan, matchActivePlans } from './packagePlanService.js';
 
 const SESSION_TYPES = ['1on1', '1on2'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -30,7 +30,7 @@ export function getPackage(id) {
   return row;
 }
 
-export function createPackage({ memberId, sessionType, totalSessions, amount = null, expiresAt = null, note = null, createdBy = null, discountCode = null, fromPlan }) {
+export function createPackage({ memberId, sessionType, totalSessions, amount = null, expiresAt = null, note = null, createdBy = null, discountCode = null, fromPlan, planId }) {
   if (!memberId) throw new ApiError(400, 'missing_member');
   if (!SESSION_TYPES.includes(sessionType)) throw new ApiError(400, 'invalid_session_type');
   const total = Number(totalSessions);
@@ -53,15 +53,27 @@ export function createPackage({ memberId, sessionType, totalSessions, amount = n
   }
   const member = db.prepare('SELECT id FROM users WHERE id = ?').get(memberId);
   if (!member) throw new ApiError(404, 'member_not_found');
-  // 開立方式：undefined／null → NULL（舊行為）；false → 0；true → 1（須照價目表核價）；其他值拒絕。
+  // 開立方式（存進 from_plan）：照套裝開 → 1；有套裝可選卻選自訂（fromPlan:false）→ 0；都沒帶 → NULL（舊行為）。
+  // 照套裝開的要核價，一律用折扣前的金額。
   if (fromPlan != null && typeof fromPlan !== 'boolean') throw new ApiError(400, 'invalid_from_plan');
-  if (fromPlan === true) {
-    const plan = findPlan(sessionType, total);
+  let usesPlan = fromPlan === true;
+  if (planId != null) {
+    // 新畫面帶套裝編號：同堂數可以有好幾個價，要對到「那一個」套裝
+    if (typeof planId !== 'number' || !Number.isInteger(planId) || planId <= 0) throw new ApiError(400, 'invalid_plan_id');
+    if (fromPlan === false) throw new ApiError(400, 'invalid_from_plan');
+    const plan = findActivePlan(planId);
     if (!plan) throw new ApiError(409, 'plan_not_available');
-    // 核價用折扣前的金額
-    if (amt !== plan.unitPrice * total) throw new ApiError(409, 'plan_price_changed');
+    if (plan.sessionType !== sessionType || plan.totalSessions !== total || amt !== plan.unitPrice * total) {
+      throw new ApiError(409, 'plan_price_changed');
+    }
+    usesPlan = true;
+  } else if (fromPlan === true) {
+    // 還沒重新整理的舊畫面只送 fromPlan:true：金額等於任何一個啟用中同類型同堂數套裝的總價就算數
+    const candidates = matchActivePlans(sessionType, total);
+    if (!candidates.length) throw new ApiError(409, 'plan_not_available');
+    if (!candidates.some((p) => amt === p.unitPrice * total)) throw new ApiError(409, 'plan_price_changed');
   }
-  const fromPlanStored = fromPlan == null ? null : (fromPlan ? 1 : 0);
+  const fromPlanStored = usesPlan ? 1 : (fromPlan === false ? 0 : null);
   let discountCodeStored = null;
   // 僅在「有填金額」時才套折扣：amt==null（金額留空）→ 略過，不存碼、不把金額變成 0。
   if (discountCode != null && String(discountCode).trim() !== '' && amt != null) {
