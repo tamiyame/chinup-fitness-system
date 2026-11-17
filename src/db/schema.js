@@ -228,11 +228,20 @@ CREATE TABLE IF NOT EXISTS customer_packages (
   note TEXT,
   discount_code TEXT,
   source TEXT NOT NULL DEFAULT 'staff' CHECK (source IN ('staff', 'online')),
+  from_plan INTEGER CHECK (from_plan IN (0, 1)),
   created_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   archived_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_customer_packages_member ON customer_packages(member_id);
+
+CREATE TABLE IF NOT EXISTS package_plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_type TEXT NOT NULL CHECK (session_type IN ('1on1','1on2')),
+  total_sessions INTEGER NOT NULL CHECK (total_sessions > 0),
+  unit_price INTEGER NOT NULL CHECK (unit_price > 0),
+  UNIQUE (session_type, total_sessions)
+);
 
 CREATE TABLE IF NOT EXISTS bookings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
