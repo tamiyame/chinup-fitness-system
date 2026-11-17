@@ -66,14 +66,18 @@ expect('withPlans：選過的套裝一律清掉；自訂維持；該類型沒有
 expect('選的套裝已不在價目表上 → 視同沒選', () => {
   assert.deepEqual(pp.selectionOf({ ...pp.initialState(plans), choice: 30 }, plans), { ok: false, message: '請先選堂數' });
 });
-expect('calcTextOf：文字與現有表單相同', () => {
+expect('calcPartsOf：算式、總額、折扣說明分成三段', () => {
   const chosen = { ...pp.initialState(plans), choice: 10 };
-  assert.equal(pp.calcTextOf(chosen, plans, false), '10 堂 × NT$1,400 ＝ 總額 NT$14,000');
-  assert.equal(pp.calcTextOf(chosen, plans, true), '10 堂 × NT$1,400 ＝ 總額 NT$14,000（套用折扣碼後以折後總額入帳）');
-  assert.equal(pp.calcTextOf(pp.initialState(plans), plans, false), '');
+  assert.deepEqual(pp.calcPartsOf(chosen, plans, false), { text: '10 堂 × NT$1,400', total: 'NT$14,000', note: null });
+  assert.deepEqual(pp.calcPartsOf(chosen, plans, true), { text: '10 堂 × NT$1,400', total: 'NT$14,000', note: '套用折扣碼後以折後總額入帳' });
   const custom = { sessionType: '1on1', choice: 'custom', customTotal: '8', customUnit: '1500' };
-  assert.equal(pp.calcTextOf(custom, plans, false), '8 堂 × NT$1,500 ＝ 總額 NT$12,000');
-  assert.equal(pp.calcTextOf({ ...custom, customUnit: '' }, plans, false), '未填單價 → 建立為「無單價」方案');
-  assert.equal(pp.calcTextOf({ ...custom, customTotal: '' }, plans, false), '');
+  assert.deepEqual(pp.calcPartsOf(custom, plans, false), { text: '8 堂 × NT$1,500', total: 'NT$12,000', note: null });
+});
+expect('calcPartsOf：沒選好 → null；未填單價 → 只有說明文字，沒有總額與折扣說明', () => {
+  assert.equal(pp.calcPartsOf(pp.initialState(plans), plans, false), null);
+  const custom = { sessionType: '1on1', choice: 'custom', customTotal: '8', customUnit: '' };
+  assert.deepEqual(pp.calcPartsOf(custom, plans, false), { text: '未填單價 → 建立為「無單價」方案', total: null, note: null });
+  assert.deepEqual(pp.calcPartsOf(custom, plans, true), { text: '未填單價 → 建立為「無單價」方案', total: null, note: null });
+  assert.equal(pp.calcPartsOf({ ...custom, customTotal: '' }, plans, false), null);
 });
 console.log('[package-plan-picker test] done');
