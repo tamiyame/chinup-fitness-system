@@ -1,4 +1,5 @@
 import { api, toast, fmtDate, dow, bootAuth, escapeHtml } from '/app.js';
+import { parseAmount, rowsFromPlans, plansFromRows } from '/package-plan-table.js';
 
 const user = await bootAuth({ requireAdmin: true });
 // If bootAuth redirected, halt module execution so no admin content renders.
@@ -3091,6 +3092,7 @@ loadDiscountCodes();
 loadOneOnOnePrice();
 loadPayroll();
 loadQuotes();
+loadPackagePlans();
 
 // ===== 報價單 =====
 let quotesCache = [];
@@ -3331,12 +3333,153 @@ function openQuoteDrawer(mode, quote) {
 document.getElementById('quote-new').addEventListener('click', () => openQuoteDrawer('create'));
 document.getElementById('quote-search').addEventListener('input', () => { _shownMap.delete('quotes'); renderQuotes(); });
 
+// ===== 方案頁籤：套裝方案價目表 =====
+let planTable = { version: '0', plans: [] };  // 伺服器最後一次回的內容
+let planRows = [];                             // 畫面上的列
+let plansDirty = false;
+let plansSaving = false;
+const PLAN_ERR = {
+  invalid_total: '堂數要填 1–200 的整數',
+  duplicate_plan: '這個堂數已經有了',
+  invalid_unit_price: '每堂單價要填 1–1,000,000 的整數',
+  invalid_plans: '最多 60 個組合',
+};
+
+function planNote(text, total) {
+  const v = parseAmount(text);
+  const n = typeof total === 'number' ? total : parseAmount(total);
+  if (v === null || Number.isNaN(v) || !n || Number.isNaN(n) || v < 1) return '不提供';
+  return `共 NT$${(v * n).toLocaleString('en-US')}`;
+}
+
+function setPlansDirty(on) {
+  plansDirty = on;
+  document.getElementById('plans-dirty').classList.toggle('hidden', !on);
+}
+
+async function loadPackagePlans() {
+  const box = document.getElementById('plans-table');
+  try {
+    const d = await api('/api/coach/package-plans');
+    planTable = { version: d.version, plans: d.plans };
+    planRows = rowsFromPlans(d.plans);
+    setPlansDirty(false);
+    document.getElementById('plans-conflict').classList.add('hidden');
+    renderPackagePlans();
+  } catch (e) {
+    toast(`載入價目表失敗：${e.message}`, 'error');
+    box.innerHTML = '<div class="empty-state"><p>載入失敗，請稍後再試</p></div>';
+  }
+}
+
+function renderPackagePlans() {
+  const box = document.getElementById('plans-table');
+  if (!planRows.length) {
+    box.innerHTML = '<div class="empty-state"><p>還沒有套裝方案。按「＋ 新增堂數」開始建立。</p></div>';
+    return;
+  }
+  // 手機欄窄，提示字縮短成「留空」（畫布 C 的作法）
+  const ph = window.matchMedia('(max-width:600px)').matches ? '留空' : '留空＝不提供';
+  const cell = (r, i, field, label) => {
+    const key = field === '1on1' ? 'p1on1' : 'p1on2';
+    const n = String(r.total).trim();
+    return `<div class="pl-cell"><span class="pl-field"><span class="pl-cur">NT$</span>
+      <input type="text" inputmode="numeric" data-row="${i}" data-field="${field}" value="${escapeHtml(r[key])}" placeholder="${ph}" aria-label="${escapeHtml(`${label} ${n} 堂的每堂單價`)}"></span>
+      <span class="pl-note" data-note="${i}-${field}">${escapeHtml(planNote(r[key], r.total))}</span></div>`;
+  };
+  box.innerHTML = `<div class="pl-grid">
+    <div class="pl-head">堂數</div><div class="pl-head pl-h2">一對一</div><div class="pl-head pl-h2">一對二</div>
+    ${planRows.map((r, i) => `
+      <div class="pl-total">${r.isNew
+        ? `<input type="text" inputmode="numeric" data-row="${i}" data-field="total" value="${escapeHtml(r.total)}" placeholder="堂數" aria-label="堂數">`
+        : `<span class="pl-n">${escapeHtml(r.total)}</span><span class="pl-unit">堂</span>`}</div>
+      ${cell(r, i, '1on1', '一對一')}${cell(r, i, '1on2', '一對二')}`).join('')}
+  </div>`;
+}
+
+function clearPlanInvalid() {
+  document.querySelectorAll('#plans-table [aria-invalid]').forEach((el) => {
+    el.removeAttribute('aria-invalid');
+    el.closest('.pl-field')?.classList.remove('pl-bad');
+  });
+}
+
+function focusPlanField(rowIndex, field, mark) {
+  const el = document.querySelector(`#plans-table input[data-row="${rowIndex}"][data-field="${field}"]`);
+  if (!el) return;
+  if (mark) {
+    el.setAttribute('aria-invalid', 'true');
+    el.closest('.pl-field')?.classList.add('pl-bad');
+  }
+  el.focus();
+}
+
+async function savePackagePlans() {
+  if (plansSaving) return;
+  clearPlanInvalid();
+  const r = plansFromRows(planRows);
+  if (!r.ok) {
+    toast(r.message, 'error');
+    if (r.rowIndex >= 0) focusPlanField(r.rowIndex, r.field, true);
+    return;
+  }
+  plansSaving = true;
+  const btn = document.getElementById('plans-save');
+  btn.disabled = true;
+  try {
+    const d = await api('/api/admin/package-plans', { method: 'PUT', body: { version: planTable.version, plans: r.plans } });
+    planTable = { version: d.version, plans: d.plans };
+    planRows = rowsFromPlans(d.plans);
+    setPlansDirty(false);
+    document.getElementById('plans-conflict').classList.add('hidden');
+    toast('價目表已儲存', 'success');
+    renderPackagePlans();
+  } catch (e) {
+    const code = e.data?.error;
+    if (code === 'plans_changed') document.getElementById('plans-conflict').classList.remove('hidden');
+    else if (PLAN_ERR[code]) toast(PLAN_ERR[code], 'error');
+    else toast(`失敗：${e.message}`, 'error');
+  } finally {
+    plansSaving = false;
+    btn.disabled = false;
+  }
+}
+
+// 輸入只更新資料與該格小字，不重畫整張表（輸入框要保持焦點）
+document.getElementById('plans-table').addEventListener('input', (ev) => {
+  const el = ev.target;
+  if (!el.matches || !el.matches('input[data-row]')) return;
+  const i = Number(el.dataset.row);
+  const row = planRows[i];
+  if (!row) return;
+  const f = el.dataset.field;
+  if (f === 'total') row.total = el.value;
+  else row[f === '1on1' ? 'p1on1' : 'p1on2'] = el.value;
+  el.removeAttribute('aria-invalid');
+  el.closest('.pl-field')?.classList.remove('pl-bad');
+  const tbl = document.getElementById('plans-table');
+  for (const k of ['1on1', '1on2']) {
+    const note = tbl.querySelector(`[data-note="${i}-${k}"]`);
+    if (note) note.textContent = planNote(row[k === '1on1' ? 'p1on1' : 'p1on2'], row.total);
+  }
+  setPlansDirty(true);
+});
+document.getElementById('plans-add-row').addEventListener('click', () => {
+  planRows.push({ total: '', isNew: true, p1on1: '', p1on2: '' });
+  setPlansDirty(true);
+  renderPackagePlans();
+  focusPlanField(planRows.length - 1, 'total', false);
+});
+document.getElementById('plans-save').addEventListener('click', savePackagePlans);
+document.getElementById('plans-reload').addEventListener('click', loadPackagePlans);
+
 // 後台分頁切換：點頁籤只顯示對應 panel（各區塊資料已於上方一次載入）。
 document.querySelectorAll('#admin-tabs .tab').forEach((t) => {
   t.addEventListener('click', () => {
     const id = t.dataset.atab;
     document.querySelectorAll('#admin-tabs .tab').forEach((x) => x.classList.toggle('tab-active', x === t));
     document.querySelectorAll('[id^="apanel-"]').forEach((p) => p.classList.toggle('hidden', p.id !== `apanel-${id}`));
+    if (id === 'plans' && !plansDirty) loadPackagePlans();
     window.scrollTo({ top: 0 });
   });
 });
