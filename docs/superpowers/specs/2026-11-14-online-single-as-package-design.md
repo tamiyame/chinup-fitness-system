@@ -277,6 +277,8 @@ CREATE INDEX IF NOT EXISTS idx_bookings_package ON bookings(package_id);
 
 ## 後台「方案」獨立頁籤（第二階段）
 
+> **2026-11-17 作廢。** 業主看過版面後說明：他要的不是跨會員的方案清單，而是先建好套裝方案（一對一 10 堂…）、開方案時用選的。這一節與下面「交付順序」的第二階段都不再實作，改看 `2026-11-17-package-plan-catalog-design.md`。以下保留當紀錄。
+
 ### 功能範圍
 
 （我的判斷，待業主看畫面時一併確認。）
