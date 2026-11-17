@@ -18,6 +18,8 @@ expect('parseAmount：空白 → null；千分位、前後空白、全形數字�
   assert.equal(pt.parseAmount(' 1400 '), 1400);
   assert.equal(pt.parseAmount('１４００'), 1400);
   assert.equal(pt.parseAmount('0'), 0);
+  assert.equal(pt.parseAmount('１，４００'), 1400);   // 全形逗號（中文輸入法）
+  assert.equal(pt.parseAmount('1，400'), 1400);
 });
 expect('parseAmount：小數、負號、文字 → NaN', () => {
   for (const t of ['14.5', '-5', 'abc', '1e3', '１４００元']) assert.ok(Number.isNaN(pt.parseAmount(t)), t);
@@ -79,5 +81,15 @@ expect('邊界值可以：堂數 1 與 200、單價 1 與 1,000,000', () => {
 expect('超過 60 個組合 → 最多 60 個組合', () => {
   const rows = Array.from({ length: 31 }, (_, i) => ({ total: String(i + 1), isNew: true, p1on1: '1000', p1on2: '1000' }));
   assert.deepEqual(pt.plansFromRows(rows), { ok: false, rowIndex: -1, field: 'total', message: '最多 60 個組合' });
+});
+expect('priceNote：留空 → 不提供；有效價格 → 共 NT$；讀不懂的值 → 空字串', () => {
+  assert.equal(pt.priceNote('', 10), '不提供');
+  assert.equal(pt.priceNote('   ', 10), '不提供');
+  assert.equal(pt.priceNote('1,400', 10), '共 NT$14,000');
+  assert.equal(pt.priceNote('１，４００', '10'), '共 NT$14,000');
+  for (const t of ['abc', '0', '1400元', '14.5', '1000001']) assert.equal(pt.priceNote(t, 10), '', t);
+  assert.equal(pt.priceNote('1400', ''), '');      // 堂數還沒填
+  assert.equal(pt.priceNote('1400', 'x'), '');
+  assert.equal(pt.priceNote('', ''), '不提供');
 });
 console.log('[package-plan-table test] done');

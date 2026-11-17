@@ -113,12 +113,12 @@ expect('fromPlan true 無此套裝 → 409 plan_not_available', () => {
   assert.equal(noPlan.status, 409);
   assert.equal(noPlan.data.error, 'plan_not_available');
 });
-const custom = await req('POST', '/api/coach/packages', { token, body: { memberId: mid, fromPlan: false, totalSessions: 8, amount: 12000 } });
+const custom = await req('POST', '/api/coach/packages', { token, body: { memberId: mid, fromPlan: false, sessionType: '1on1', totalSessions: 8, amount: 12000 } });
 expect('fromPlan false → 201、from_plan=0', () => {
   assert.equal(custom.status, 201);
   assert.equal(fromPlanOf(custom.data.id).from_plan, 0);
 });
-const legacy = await req('POST', '/api/coach/packages', { token, body: { memberId: mid, totalSessions: 8, amount: 12000 } });
+const legacy = await req('POST', '/api/coach/packages', { token, body: { memberId: mid, sessionType: '1on1', totalSessions: 8, amount: 12000 } });
 expect('不帶 fromPlan → 201、from_plan=null', () => {
   assert.equal(legacy.status, 201);
   assert.equal(fromPlanOf(legacy.data.id).from_plan, null);

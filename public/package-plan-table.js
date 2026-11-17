@@ -3,15 +3,25 @@
 
 const MSG_PRICE = '每堂單價要填 1–1,000,000 的整數';
 
-// '' 或全空白 → null；'1,400'、' 1400 '、'１４００' → 1400；其他 → NaN
+// '' 或全空白 → null；'1,400'、' 1400 '、'１４００'、'１，４００' → 1400；其他 → NaN
 export function parseAmount(text) {
   const s = String(text ?? '')
     .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
     .trim();
   if (s === '') return null;
-  const t = s.replace(/,/g, '');
+  const t = s.replace(/[,，]/g, '');
   if (!/^\d+$/.test(t)) return NaN;
   return Number(t);
+}
+
+// 價格格底下的小字：留空 → 不提供；有效價格＋可用堂數 → 共 NT$…；其他（讀不懂）→ 空字串
+export function priceNote(text, total) {
+  const v = parseAmount(text);
+  if (v === null) return '不提供';
+  if (Number.isNaN(v) || v < 1 || v > 1000000) return '';
+  const n = typeof total === 'number' ? total : parseAmount(total);
+  if (!n || Number.isNaN(n)) return '';
+  return `共 NT$${(v * n).toLocaleString('en-US')}`;
 }
 
 function fmt(n) { return Number(n).toLocaleString('en-US'); }

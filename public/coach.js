@@ -1174,10 +1174,11 @@ const PKG_LOCKED_NOTE = '先用完較早買的方案';
 async function loadRegmPackages(createdPkg = null) {
   const picked = $('regm-picked');
   picked.innerHTML = '<p class="regm-sub">載入方案中…</p>';
+  const plansReq = fetchRegmPlans();   // 與方案同時請求（失敗已在內部當成空陣列）
   let all = [];
   try { all = await api(`/api/coach/packages?memberId=${regmCustomer.id}`); }
   catch (e) { picked.innerHTML = `<p class="regm-sub" style="color:#dc2626;">${escapeHtml(e.message)}</p>`; return; }
-  regmPlans = await fetchRegmPlans();
+  regmPlans = await plansReq;
   regmPackages = sortPkgsOldFirst(all.filter(p => p.is_valid));
   const usable = regmPackages.filter(p => !pkgLocked(p));
   // 預設＝最早買、還有堂數的那筆；剛開了新方案 → 選「該類型」要先用的那筆（同類型舊方案還有堂數時就是舊的）
