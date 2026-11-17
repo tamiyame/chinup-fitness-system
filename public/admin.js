@@ -3391,6 +3391,7 @@ let planTable = { version: '0', plans: [] };  // 伺服器最後一次回的內�
 let planRows = [];                             // 畫面上的列
 let plansDirty = false;
 let plansSaving = false;
+let plansLoaded = false;   // 至少成功讀到過一次價目表（第一次回應一定要套用；之後才有「輸入中不被洗掉」的保護）
 const PLAN_ERR = {
   invalid_total: '堂數要填 1–200 的整數',
   duplicate_plan: '這個堂數已經有了',
@@ -3410,7 +3411,8 @@ async function loadPackagePlans({ force = false } = {}) {
   const box = document.getElementById('plans-table');
   try {
     const d = await api('/api/coach/package-plans');
-    if (!force && plansDirty) return;
+    if (!force && plansDirty && plansLoaded) return;
+    plansLoaded = true;
     planTable = { version: d.version, plans: d.plans };
     planRows = rowsFromPlans(d.plans);
     setPlansDirty(false);
@@ -3418,6 +3420,7 @@ async function loadPackagePlans({ force = false } = {}) {
     renderPackagePlans();
   } catch (e) {
     toast(`載入價目表失敗：${e.message}`, 'error');
+    if (!force && plansDirty && plansLoaded) return;   // 輸入中且已有資料：保留畫面，不換成失敗狀態
     box.innerHTML = '<div class="empty-state"><p>載入失敗，請稍後再試</p></div>';
   }
 }
