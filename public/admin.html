@@ -534,15 +534,16 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
 .pl-total .pl-n{ font-family:'Archivo',sans-serif; font-weight:900; font-size:28px; line-height:1; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
 .pl-total .pl-unit{ margin-left:5px; font-weight:700; font-size:14px; }
 .pl-total input{ box-sizing:border-box; width:100%; min-width:0; min-height:42px; padding:9px 8px; border:1px solid #d1d5db; border-radius:8px; background:#fff; font-family:'Archivo','Noto Sans TC',sans-serif; font-weight:800; font-size:16px; font-variant-numeric:tabular-nums; color:#0f172a; align-self:center; margin-top:-14px; }
-.pl-cell{ min-width:0; padding:14px 16px; border-top:1px solid #e5e7eb; }
-.pl-field{ display:flex; align-items:center; box-sizing:border-box; width:100%; max-width:200px; border:1px solid #d1d5db; border-radius:8px; background:#fff; overflow:hidden; }
+.pl-cell{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-width:0; padding:14px 16px; border-top:1px solid #e5e7eb; }
+.pl-lbl{ font-size:12px; color:#64748b; white-space:nowrap; }
+.pl-field{ display:flex; align-items:center; box-sizing:border-box; width:180px; flex:none; max-width:100%; border:1px solid #d1d5db; border-radius:8px; background:#fff; overflow:hidden; }
 .pl-field .pl-cur{ padding-left:12px; font-family:'Archivo',sans-serif; font-weight:700; font-size:13px; color:#64748b; }
 .pl-field input{ box-sizing:border-box; width:100%; min-width:0; min-height:42px; padding:9px 12px 9px 6px; border:0; background:transparent; font-family:'Archivo','Noto Sans TC',sans-serif; font-weight:800; font-size:16px; font-variant-numeric:tabular-nums; color:#0f172a; }
 .pl-field input:placeholder-shown{ font-weight:500; }
 .pl-field input:focus, .pl-total input:focus{ outline:none; }
 .pl-field:focus-within, .pl-total input:focus{ border-color:#0ea5e9; box-shadow:0 0 0 2px rgba(14,165,233,.25); }
 .pl-field.pl-bad, .pl-total input[aria-invalid="true"]{ border-color:#dc2626; }
-.pl-note{ display:block; margin-top:5px; font-size:13px; color:#475569; font-variant-numeric:tabular-nums; }
+.pl-note{ font-size:13px; color:#475569; font-variant-numeric:tabular-nums; }
 .pl-actions{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 16px; border-top:1px solid #e5e7eb; background:#f8fafc; }
 .pl-dirty{ flex:1; min-width:0; text-align:right; }
 .pl-actions .btn-primary{ margin-left:auto; }
@@ -557,11 +558,12 @@ details[open] > summary > .pg-chevron{ transform:rotate(45deg); }
   .pl-total .pl-n{ font-size:21px; }
   .pl-total .pl-unit{ margin-left:3px; font-size:12px; }
   .pl-total input{ padding:9px 4px; font-size:16px; margin-right:4px; }
-  .pl-cell{ padding:10px 8px; }
-  .pl-field{ max-width:none; }
+  .pl-cell{ display:block; padding:10px 8px; }
+  .pl-lbl{ display:none; }
+  .pl-field{ width:100%; }
   .pl-field .pl-cur{ padding-left:8px; font-size:12px; }
   .pl-field input{ padding:8px 6px 8px 4px; }
-  .pl-note{ font-size:12px; }
+  .pl-note{ display:block; margin-top:5px; font-size:12px; }
   .pl-actions{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; padding:12px; }
   .pl-actions .btn{ min-height:44px; padding-left:8px; padding-right:8px; white-space:nowrap; }
   .pl-dirty{ grid-column:1 / -1; order:3; text-align:left; }

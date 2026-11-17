@@ -3383,7 +3383,7 @@ function renderPackagePlans() {
   const cell = (r, i, field, label) => {
     const key = field === '1on1' ? 'p1on1' : 'p1on2';
     const n = String(r.total).trim();
-    return `<div class="pl-cell"><span class="pl-field"><span class="pl-cur">NT$</span>
+    return `<div class="pl-cell"><span class="pl-lbl" aria-hidden="true">每堂</span><span class="pl-field"><span class="pl-cur">NT$</span>
       <input type="text" inputmode="numeric" data-row="${i}" data-field="${field}" value="${escapeHtml(r[key])}" placeholder="${ph}" aria-label="${escapeHtml(`${label} ${n} 堂的每堂單價`)}"></span>
       <span class="pl-note" data-note="${i}-${field}">${escapeHtml(planNote(r[key], r.total))}</span></div>`;
   };
